@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1B2C3D4E5F60718DEADBEEF /* SpaceKeyFix.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718BEEFDEAD /* SpaceKeyFix.m */; };
 		26FB31DB1E1FD03E4D185C99 /* PresageModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 95D825E99A0FD645C00F00C1 /* PresageModule.m */; };
 		42A2C1803AEA92B14FAD318A /* libPods-signal-app-macOS.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 618A2A6ABF8E27A8E3312058 /* libPods-signal-app-macOS.a */; };
 		5142014D2437B4B30078DB4F /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5142014C2437B4B30078DB4F /* AppDelegate.mm */; };
@@ -38,6 +39,7 @@
 		618A2A6ABF8E27A8E3312058 /* libPods-signal-app-macOS.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-signal-app-macOS.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		88072ED278358CE35CDB1B3B /* PresageModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PresageModule.swift; sourceTree = "<group>"; };
 		95D825E99A0FD645C00F00C1 /* PresageModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = PresageModule.m; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718BEEFDEAD /* SpaceKeyFix.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = SpaceKeyFix.m; sourceTree = "<group>"; };
 		D07DEBCB56BA0C05D6686F13 /* Pods-signal-app-macOS.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-signal-app-macOS.debug.xcconfig"; path = "Target Support Files/Pods-signal-app-macOS/Pods-signal-app-macOS.debug.xcconfig"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		FF4F3294F0B388BC62D496B0 /* presage_rn.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = presage_rn.swift; sourceTree = "<group>"; };
@@ -95,6 +97,7 @@
 				13883A8C2AA72399992DC76D /* signal-app-macOS-Bridging-Header.h */,
 				88072ED278358CE35CDB1B3B /* PresageModule.swift */,
 				95D825E99A0FD645C00F00C1 /* PresageModule.m */,
+				A1B2C3D4E5F60718BEEFDEAD /* SpaceKeyFix.m */,
 			);
 			path = "signal-app-macOS";
 			sourceTree = "<group>";
@@ -360,6 +363,7 @@
 				5142014D2437B4B30078DB4F /* AppDelegate.mm in Sources */,
 				5F4D61A2DAE035D60F5B5669 /* PresageModule.swift in Sources */,
 				26FB31DB1E1FD03E4D185C99 /* PresageModule.m in Sources */,
+				A1B2C3D4E5F60718DEADBEEF /* SpaceKeyFix.m in Sources */,
 				61A07EBCE7FD3C2C3080354A /* presage_rn.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
