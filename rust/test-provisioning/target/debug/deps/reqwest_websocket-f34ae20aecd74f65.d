@@ -1,0 +1,10 @@
+/Users/hassan/Documents/chat/signal-app/rust/test-provisioning/target/debug/deps/reqwest_websocket-f34ae20aecd74f65.d: /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/lib.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/json.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/native.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/protocol.rs
+
+/Users/hassan/Documents/chat/signal-app/rust/test-provisioning/target/debug/deps/libreqwest_websocket-f34ae20aecd74f65.rlib: /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/lib.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/json.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/native.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/protocol.rs
+
+/Users/hassan/Documents/chat/signal-app/rust/test-provisioning/target/debug/deps/libreqwest_websocket-f34ae20aecd74f65.rmeta: /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/lib.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/json.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/native.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/protocol.rs
+
+/Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/lib.rs:
+/Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/json.rs:
+/Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/native.rs:
+/Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-websocket-0.4.4/src/protocol.rs:

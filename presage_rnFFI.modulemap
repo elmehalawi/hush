@@ -1,0 +1,4 @@
+module presage_rnFFI {
+    header "presage_rnFFI.h"
+    export *
+}

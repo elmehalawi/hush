@@ -1,0 +1,37 @@
+[package]
+name = "presage-rn"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+name = "presage_rn"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+
+[dependencies]
+uniffi = { version = "0.28", features = ["cli"] }
+presage = { git = "https://github.com/whisperfish/presage", rev = "47faeca3d53d2fc736ae5d9a1ffcf0d17b4e25d5" }
+presage-store-sqlite = { git = "https://github.com/whisperfish/presage", rev = "47faeca3d53d2fc736ae5d9a1ffcf0d17b4e25d5" }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
+thiserror = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+parking_lot = "0.12"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-oslog = "0.2"
+futures-util = "0.3"
+futures-channel = "0.3"
+hex = "0.4"
+url = "2"
+stacker = "0.1"
+
+[build-dependencies]
+uniffi = { version = "0.28", features = ["build"] }
+
+[patch.crates-io]
+# signal-protocol uses a fork of this library via the patch mechanism of cargo.
+# Since it is not transitive, we have to add the patch here explicitly.
+"curve25519-dalek" = { git = 'https://github.com/signalapp/curve25519-dalek', tag = 'signal-curve25519-4.1.3' }

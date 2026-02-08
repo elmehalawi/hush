@@ -1,0 +1,14 @@
+/Users/hassan/Documents/chat/signal-app/rust/test-provisioning/target/release/deps/serde-1117acb07bbefcf4.d: /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/hassan/Documents/chat/signal-app/rust/test-provisioning/target/release/build/serde-cc820038cd1f2b82/out/private.rs
+
+/Users/hassan/Documents/chat/signal-app/rust/test-provisioning/target/release/deps/libserde-1117acb07bbefcf4.rlib: /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/hassan/Documents/chat/signal-app/rust/test-provisioning/target/release/build/serde-cc820038cd1f2b82/out/private.rs
+
+/Users/hassan/Documents/chat/signal-app/rust/test-provisioning/target/release/deps/libserde-1117acb07bbefcf4.rmeta: /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/hassan/Documents/chat/signal-app/rust/test-provisioning/target/release/build/serde-cc820038cd1f2b82/out/private.rs
+
+/Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/Users/hassan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/Users/hassan/Documents/chat/signal-app/rust/test-provisioning/target/release/build/serde-cc820038cd1f2b82/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/hassan/Documents/chat/signal-app/rust/test-provisioning/target/release/build/serde-cc820038cd1f2b82/out
