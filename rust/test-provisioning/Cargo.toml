@@ -1,0 +1,17 @@
+[package]
+name = "test-provisioning"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+presage = { git = "https://github.com/whisperfish/presage", rev = "47faeca3d53d2fc736ae5d9a1ffcf0d17b4e25d5" }
+presage-store-sqlite = { git = "https://github.com/whisperfish/presage", rev = "47faeca3d53d2fc736ae5d9a1ffcf0d17b4e25d5" }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+futures-channel = "0.3"
+anyhow = "1"
+url = "2"
+
+[patch.crates-io]
+"curve25519-dalek" = { git = 'https://github.com/signalapp/curve25519-dalek', tag = 'signal-curve25519-4.1.3' }

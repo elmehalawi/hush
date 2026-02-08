@@ -1,0 +1,9 @@
+name: presage-rn
+
+rust:
+  dir: ./rust/presage-rn
+  manifestPath: Cargo.toml
+
+bindings:
+  ts:
+    dir: ./src/generated
