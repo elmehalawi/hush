@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   messagesContent: {
-    paddingTop: 110,
+    paddingTop: 80,
     paddingBottom: 80,
   },
   topBlur: {
@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: -292,
     right: 0,
-    height: 110,
+    height: 80,
   },
   headerPillContainer: {
     position: 'absolute',
