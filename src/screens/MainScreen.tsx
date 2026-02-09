@@ -49,7 +49,7 @@ export function MainScreen({onSendMessage, onSelectChannel}: MainScreenProps) {
       </View>
 
       {/* Glass sidebar overlay */}
-      <GlassView style={styles.sidebar} cornerRadius={16}>
+      <GlassView style={styles.sidebar} cornerRadius={26}>
         <ChannelList
           channels={channels}
           selectedId={selectedChannelId}
