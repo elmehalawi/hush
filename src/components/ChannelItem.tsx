@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   selected: {
-    backgroundColor: '#1B4B8A',
+    backgroundColor: '#0058D0',
     borderRadius: 10,
   },
   avatar: {
