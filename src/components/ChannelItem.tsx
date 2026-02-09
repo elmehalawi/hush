@@ -1,6 +1,7 @@
 import React from 'react';
 import {View, Text, Pressable, StyleSheet} from 'react-native';
 import {Channel} from '../store/signalStore';
+import {GlassView} from './GlassView';
 import {colors} from '../theme/colors';
 
 interface ChannelItemProps {
@@ -15,6 +16,7 @@ export function ChannelItem({channel, isSelected, onSelect}: ChannelItemProps) {
       style={[styles.container, isSelected && styles.selected]}
       onPress={() => onSelect(channel.id)}>
       <View style={styles.avatar}>
+        <GlassView style={StyleSheet.absoluteFill} cornerRadius={20} tintColor="rgba(30, 120, 255, 0.45)" />
         <Text style={styles.avatarText}>
           {channel.isGroup ? '#' : channel.name.charAt(0).toUpperCase()}
         </Text>
@@ -54,7 +56,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#2196f3',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
