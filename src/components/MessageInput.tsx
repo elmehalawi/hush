@@ -18,6 +18,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
     const [text, setText] = useState('');
     const isDark = useColorScheme() === 'dark';
     const inputRef = useRef<TextInput>(null);
+    const sendingRef = useRef(false);
 
     useImperativeHandle(ref, () => ({
       focus: () => {
@@ -25,16 +26,24 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       },
       insertText: (letter: string) => {
         setText(prev => prev + letter);
+        sendingRef.current = false;
         inputRef.current?.focus();
       },
     }));
 
     const handleSend = () => {
+      if (sendingRef.current) return;
       const trimmed = text.trim();
       if (trimmed.length > 0) {
+        sendingRef.current = true;
         onSend(trimmed);
       }
       setText('');
+    };
+
+    const handleTextChange = (newText: string) => {
+      sendingRef.current = false;
+      setText(newText);
     };
 
     return (
@@ -44,7 +53,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
             ref={inputRef}
             style={[styles.input, isDark && {color: '#FFFFFF'}]}
             value={text}
-            onChangeText={setText}
+            onChangeText={handleTextChange}
             placeholder="Signal Message"
             placeholderTextColor="#9e9e9e"
             multiline
