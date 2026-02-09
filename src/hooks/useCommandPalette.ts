@@ -31,6 +31,7 @@ export function useCommandPalette(
       lastMessage: c.lastMessage || null,
       avatarPath: c.avatarPath || null,
       isGroup: c.isGroup,
+      unreadCount: c.unreadCount,
     }));
 
     CommandPaletteModule.updateChannels(nativeChannels);

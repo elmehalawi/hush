@@ -6,6 +6,7 @@ struct CommandPaletteChannelData {
     let lastMessage: String?
     let avatarPath: String?
     let isGroup: Bool
+    let unreadCount: Int
 }
 
 // MARK: - Channel Row View
@@ -17,6 +18,7 @@ class ChannelRowView: NSView {
     private var avatarImageLayer: CALayer?
     private let nameLabel: NSTextField
     private let previewLabel: NSTextField
+    private var badgeView: NSView?
     var isSelected: Bool = false {
         didSet { needsDisplay = true }
     }
@@ -82,12 +84,44 @@ class ChannelRowView: NSView {
         addSubview(nameLabel)
         addSubview(previewLabel)
 
+        // Unread badge
+        if channel.unreadCount > 0 {
+            let badge = NSView()
+            badge.wantsLayer = true
+            badge.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+            badge.layer?.cornerRadius = 9
+            badge.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(badge)
+
+            let badgeLabel = NSTextField(labelWithString: "\(channel.unreadCount)")
+            badgeLabel.font = NSFont.systemFont(ofSize: 10, weight: .semibold)
+            badgeLabel.textColor = .white
+            badgeLabel.alignment = .center
+            badgeLabel.translatesAutoresizingMaskIntoConstraints = false
+            badge.addSubview(badgeLabel)
+
+            NSLayoutConstraint.activate([
+                badge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+                badge.centerYAnchor.constraint(equalTo: centerYAnchor),
+                badge.heightAnchor.constraint(equalToConstant: 18),
+                badge.widthAnchor.constraint(greaterThanOrEqualToConstant: 18),
+
+                badgeLabel.centerXAnchor.constraint(equalTo: badge.centerXAnchor),
+                badgeLabel.centerYAnchor.constraint(equalTo: badge.centerYAnchor),
+                badgeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: badge.leadingAnchor, constant: 4),
+                badgeLabel.trailingAnchor.constraint(lessThanOrEqualTo: badge.trailingAnchor, constant: -4),
+            ])
+
+            badgeView = badge
+        }
+
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         previewLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        let trailingConstant: CGFloat = channel.unreadCount > 0 ? -36 : -12
         NSLayoutConstraint.activate([
             nameLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 52),
-            nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: trailingConstant),
             nameLabel.topAnchor.constraint(equalTo: topAnchor, constant: 6),
 
             previewLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),

@@ -523,9 +523,21 @@ public protocol SignalClientProtocol: AnyObject {
     func isLinked() -> Bool
 
     /**
+     * Mark a channel as read up to the given timestamp.
+     * Updates the persisted read state and returns the updated unread count (always 0).
+     */
+    func markAsRead(channelId: String, upToTimestamp: UInt64) throws
+
+    /**
      * Send a text message to a channel
      */
     func sendMessage(channelId: String, text: String) throws -> Message
+
+    /**
+     * Send a read receipt for the given message timestamps to a specific sender.
+     * For group messages, receipts go to individual senders, not the group.
+     */
+    func sendReadReceipt(senderUuid: String, timestamps: [UInt64]) throws
 
     /**
      * Start the device linking process with callbacks
@@ -659,6 +671,17 @@ open class SignalClient:
     }
 
     /**
+     * Mark a channel as read up to the given timestamp.
+     * Updates the persisted read state and returns the updated unread count (always 0).
+     */
+    open func markAsRead(channelId: String, upToTimestamp: UInt64) throws { try rustCallWithError(FfiConverterTypeSignalError.lift) {
+        uniffi_presage_rn_fn_method_signalclient_mark_as_read(self.uniffiClonePointer(),
+                                                              FfiConverterString.lower(channelId),
+                                                              FfiConverterUInt64.lower(upToTimestamp), $0)
+    }
+    }
+
+    /**
      * Send a text message to a channel
      */
     open func sendMessage(channelId: String, text: String) throws -> Message {
@@ -667,6 +690,17 @@ open class SignalClient:
                                                                   FfiConverterString.lower(channelId),
                                                                   FfiConverterString.lower(text), $0)
         })
+    }
+
+    /**
+     * Send a read receipt for the given message timestamps to a specific sender.
+     * For group messages, receipts go to individual senders, not the group.
+     */
+    open func sendReadReceipt(senderUuid: String, timestamps: [UInt64]) throws { try rustCallWithError(FfiConverterTypeSignalError.lift) {
+        uniffi_presage_rn_fn_method_signalclient_send_read_receipt(self.uniffiClonePointer(),
+                                                                   FfiConverterString.lower(senderUuid),
+                                                                   FfiConverterSequenceUInt64.lower(timestamps), $0)
+    }
     }
 
     /**
@@ -1909,6 +1943,31 @@ private struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
+private struct FfiConverterSequenceUInt64: FfiConverterRustBuffer {
+    typealias SwiftType = [UInt64]
+
+    public static func write(_ value: [UInt64], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterUInt64.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [UInt64] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [UInt64]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            try seq.append(FfiConverterUInt64.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
 private struct FfiConverterSequenceTypeAttachment: FfiConverterRustBuffer {
     typealias SwiftType = [Attachment]
 
@@ -2012,7 +2071,13 @@ private var initializationResult: InitializationResult = {
     if uniffi_presage_rn_checksum_method_signalclient_is_linked() != 59372 {
         return InitializationResult.apiChecksumMismatch
     }
+    if uniffi_presage_rn_checksum_method_signalclient_mark_as_read() != 20851 {
+        return InitializationResult.apiChecksumMismatch
+    }
     if uniffi_presage_rn_checksum_method_signalclient_send_message() != 4543 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_signalclient_send_read_receipt() != 45772 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_start_linking() != 23009 {

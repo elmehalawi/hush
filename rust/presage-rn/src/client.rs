@@ -1,5 +1,6 @@
 //! Signal client implementation wrapping Presage
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -14,7 +15,7 @@ use presage::libsignal_service::zkgroup::profiles::ProfileKey;
 use presage::manager::Registered;
 use presage::model::identity::OnNewIdentity;
 use presage::proto::attachment_pointer::AttachmentIdentifier;
-use presage::proto::{AttachmentPointer, DataMessage, GroupContextV2};
+use presage::proto::{receipt_message, AttachmentPointer, DataMessage, GroupContextV2, ReceiptMessage};
 use presage::store::{ContentsStore, Thread};
 use presage_store_sqlite::SqliteStore;
 use tracing::{error, info, warn};
@@ -43,6 +44,8 @@ pub struct SignalClient {
     user_id: RwLock<Option<Uuid>>,
     /// Guard to prevent spawning multiple receive threads
     is_receiving: Arc<AtomicBool>,
+    /// Per-channel last-read timestamp, persisted to read_state.json
+    read_state: Arc<RwLock<HashMap<String, u64>>>,
 }
 
 #[uniffi::export]
@@ -99,6 +102,9 @@ impl SignalClient {
 
         let data_dir = PathBuf::from(&data_dir);
 
+        // Load persisted read state
+        let read_state = load_read_state(&data_dir);
+
         Ok(Arc::new(Self {
             manager: RwLock::new(manager),
             store_path,
@@ -107,6 +113,7 @@ impl SignalClient {
             stop_flag: Arc::new(AtomicBool::new(false)),
             user_id: RwLock::new(user_id),
             is_receiving: Arc::new(AtomicBool::new(false)),
+            read_state: Arc::new(RwLock::new(read_state)),
         }))
     }
 
@@ -361,7 +368,11 @@ impl SignalClient {
                 }
             }
 
-            // Populate last message timestamps from stored messages
+            // Read the persisted read-state so we can compute unread counts
+            let read_state = self.read_state.read().clone();
+            let my_user_id = self.user_id.read();
+
+            // Populate last message timestamps and unread counts from stored messages
             for channel in &mut channels {
                 let thread = if channel.is_group {
                     let key_bytes = match hex::decode(&channel.id) {
@@ -377,31 +388,55 @@ impl SignalClient {
                     }
                 };
 
+                let last_read_ts = read_state.get(&channel.id).copied().unwrap_or(0);
+
                 // messages() returns results ordered by ts DESC, so first = most recent
-                if let Ok(mut messages_iter) = manager.store().messages(&thread, ..).await {
-                    if let Some(Ok(content)) = messages_iter.next() {
-                        channel.last_message_timestamp = Some(content.metadata.timestamp);
-                        let (body, attachments) = match &content.body {
-                            ContentBody::DataMessage(dm) => {
-                                (dm.body.clone(), &dm.attachments)
-                            }
-                            ContentBody::SynchronizeMessage(sync) => {
-                                if let Some(sent) = &sync.sent {
-                                    if let Some(dm) = &sent.message {
+                if let Ok(messages_iter) = manager.store().messages(&thread, ..).await {
+                    let mut got_last = false;
+                    let mut unread = 0u32;
+                    for result in messages_iter {
+                        if let Ok(content) = result {
+                            let ts = content.metadata.timestamp;
+                            let sender_uuid = content.metadata.sender.raw_uuid();
+                            let is_outgoing = my_user_id.map_or(false, |me| sender_uuid == me);
+
+                            if !got_last {
+                                channel.last_message_timestamp = Some(ts);
+                                let (body, attachments) = match &content.body {
+                                    ContentBody::DataMessage(dm) => {
                                         (dm.body.clone(), &dm.attachments)
-                                    } else {
-                                        (None, &vec![] as &Vec<AttachmentPointer>)
                                     }
-                                } else {
-                                    (None, &vec![] as &Vec<AttachmentPointer>)
-                                }
+                                    ContentBody::SynchronizeMessage(sync) => {
+                                        if let Some(sent) = &sync.sent {
+                                            if let Some(dm) = &sent.message {
+                                                (dm.body.clone(), &dm.attachments)
+                                            } else {
+                                                (None, &vec![] as &Vec<AttachmentPointer>)
+                                            }
+                                        } else {
+                                            (None, &vec![] as &Vec<AttachmentPointer>)
+                                        }
+                                    }
+                                    _ => (None, &vec![] as &Vec<AttachmentPointer>),
+                                };
+                                channel.last_message = body.or_else(|| {
+                                    attachment_preview_text(attachments)
+                                });
+                                got_last = true;
                             }
-                            _ => (None, &vec![] as &Vec<AttachmentPointer>),
-                        };
-                        channel.last_message = body.or_else(|| {
-                            attachment_preview_text(attachments)
-                        });
+
+                            // Count incoming messages newer than last_read_ts
+                            if !is_outgoing && ts > last_read_ts {
+                                unread += 1;
+                            }
+
+                            // Once we're past the last-read boundary, no more unreads
+                            if ts <= last_read_ts {
+                                break;
+                            }
+                        }
                     }
+                    channel.unread_count = unread;
                 }
             }
 
@@ -695,6 +730,7 @@ impl SignalClient {
         let attachments_dir = self.data_dir.join("attachments");
         let _ = std::fs::create_dir_all(&attachments_dir);
         let runtime_handle = self.runtime.handle().clone();
+        let read_state = self.read_state.clone();
 
         std::thread::Builder::new()
             .name("signal-receive".to_string())
@@ -750,6 +786,31 @@ impl SignalClient {
                                                 .await;
                                                 message.attachments.push(attachment);
                                             }
+
+                                            // For incoming messages, increment unread count and emit channel update
+                                            if !message.is_outgoing {
+                                                let channel_id = message.channel_id.clone();
+                                                let state = read_state.read();
+                                                let last_read = state.get(&channel_id).copied().unwrap_or(0);
+                                                // Count this message as unread if it's newer than last read
+                                                if message.timestamp > last_read {
+                                                    // We don't have the full count here, so compute approximate
+                                                    // by counting how many messages we've seen since last read.
+                                                    // For simplicity, just tell JS the channel was updated.
+                                                    drop(state);
+                                                    listener.on_channel_updated(Channel {
+                                                        id: channel_id,
+                                                        name: String::new(), // JS will merge with existing
+                                                        is_group: message.channel_id.len() == 64,
+                                                        unread_count: 0, // placeholder; JS computes from events
+                                                        last_message: message.body.clone(),
+                                                        last_message_timestamp: Some(message.timestamp),
+                                                        avatar_path: None,
+                                                        phone_number: None,
+                                                    });
+                                                }
+                                            }
+
                                             listener.on_message(message);
                                         }
                                     }
@@ -789,6 +850,67 @@ impl SignalClient {
     pub fn stop_receiving(&self) {
         self.stop_flag.store(true, Ordering::SeqCst);
         info!("Stop receiving requested");
+    }
+
+    /// Mark a channel as read up to the given timestamp.
+    /// Updates the persisted read state and returns the updated unread count (always 0).
+    pub fn mark_as_read(&self, channel_id: String, up_to_timestamp: u64) -> Result<(), SignalError> {
+        {
+            let mut state = self.read_state.write();
+            let current = state.get(&channel_id).copied().unwrap_or(0);
+            if up_to_timestamp > current {
+                state.insert(channel_id.clone(), up_to_timestamp);
+                save_read_state(&self.data_dir, &state);
+            }
+        }
+        info!("Marked channel {} as read up to {}", channel_id, up_to_timestamp);
+        Ok(())
+    }
+
+    /// Send a read receipt for the given message timestamps to a specific sender.
+    /// For group messages, receipts go to individual senders, not the group.
+    pub fn send_read_receipt(
+        &self,
+        sender_uuid: String,
+        timestamps: Vec<u64>,
+    ) -> Result<(), SignalError> {
+        if timestamps.is_empty() {
+            return Ok(());
+        }
+
+        let mut manager_guard = self.manager.write();
+        let manager = manager_guard.as_mut().ok_or(SignalError::NotLinked)?;
+
+        let recipient: Uuid = sender_uuid.parse().map_err(|_| SignalError::ParseError {
+            message: "Invalid sender UUID".to_string(),
+        })?;
+
+        let receipt = ReceiptMessage {
+            r#type: Some(receipt_message::Type::Read as i32),
+            timestamp: timestamps.clone(),
+        };
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+
+        const RED_ZONE: usize = 512 * 1024;
+        const STACK_SIZE: usize = 8 * 1024 * 1024;
+
+        stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
+            self.runtime.block_on(async {
+                let recipient_aci = Aci::from(recipient);
+                manager
+                    .send_message(recipient_aci, ContentBody::ReceiptMessage(receipt), now)
+                    .await
+                    .map_err(|e| SignalError::SendFailed {
+                        message: format!("Failed to send read receipt: {}", e),
+                    })?;
+                info!("Sent read receipt for {} timestamps to {}", timestamps.len(), sender_uuid);
+                Ok(())
+            })
+        })
     }
 }
 
@@ -869,6 +991,30 @@ fn process_content(
             None
         }
         _ => None,
+    }
+}
+
+/// Load read state from disk, returning empty map on any error.
+fn load_read_state(data_dir: &std::path::Path) -> HashMap<String, u64> {
+    let path = data_dir.join("read_state.json");
+    match std::fs::read_to_string(&path) {
+        Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
+        Err(_) => HashMap::new(),
+    }
+}
+
+/// Persist read state to disk. Best-effort; errors are logged.
+fn save_read_state(data_dir: &std::path::Path, state: &HashMap<String, u64>) {
+    let path = data_dir.join("read_state.json");
+    match serde_json::to_string(state) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(&path, json) {
+                warn!("Failed to write read_state.json: {}", e);
+            }
+        }
+        Err(e) => {
+            warn!("Failed to serialize read state: {}", e);
+        }
     }
 }
 

@@ -353,9 +353,19 @@ RustBuffer uniffi_presage_rn_fn_method_signalclient_get_user_id(void*_Nonnull pt
 int8_t uniffi_presage_rn_fn_method_signalclient_is_linked(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_MARK_AS_READ
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_MARK_AS_READ
+void uniffi_presage_rn_fn_method_signalclient_mark_as_read(void*_Nonnull ptr, RustBuffer channel_id, uint64_t up_to_timestamp, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SEND_MESSAGE
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SEND_MESSAGE
 RustBuffer uniffi_presage_rn_fn_method_signalclient_send_message(void*_Nonnull ptr, RustBuffer channel_id, RustBuffer text, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SEND_READ_RECEIPT
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SEND_READ_RECEIPT
+void uniffi_presage_rn_fn_method_signalclient_send_read_receipt(void*_Nonnull ptr, RustBuffer sender_uuid, RustBuffer timestamps, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_START_LINKING
@@ -693,9 +703,21 @@ uint16_t uniffi_presage_rn_checksum_method_signalclient_is_linked(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_MARK_AS_READ
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_MARK_AS_READ
+uint16_t uniffi_presage_rn_checksum_method_signalclient_mark_as_read(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SEND_MESSAGE
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SEND_MESSAGE
 uint16_t uniffi_presage_rn_checksum_method_signalclient_send_message(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SEND_READ_RECEIPT
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SEND_READ_RECEIPT
+uint16_t uniffi_presage_rn_checksum_method_signalclient_send_read_receipt(void
     
 );
 #endif
