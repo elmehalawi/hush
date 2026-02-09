@@ -84,8 +84,6 @@ const styles = StyleSheet.create({
     bottom: 12,
     left: 12,
     width: 268,
-    borderRadius: 16,
-    overflow: 'hidden',
   },
   inputContainer: {
     position: 'absolute',
