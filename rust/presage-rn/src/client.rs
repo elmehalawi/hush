@@ -400,6 +400,30 @@ impl SignalClient {
                             let sender_uuid = content.metadata.sender.raw_uuid();
                             let is_outgoing = my_user_id.map_or(false, |me| sender_uuid == me);
 
+                            // Skip protocol-level messages (profile key updates, etc.)
+                            let dominated_by_flags = match &content.body {
+                                ContentBody::DataMessage(dm) => {
+                                    let flags = dm.flags.unwrap_or(0);
+                                    flags != 0 && dm.body.is_none() && dm.attachments.is_empty()
+                                }
+                                ContentBody::SynchronizeMessage(sync) => {
+                                    if let Some(sent) = &sync.sent {
+                                        if let Some(dm) = &sent.message {
+                                            let flags = dm.flags.unwrap_or(0);
+                                            flags != 0 && dm.body.is_none() && dm.attachments.is_empty()
+                                        } else {
+                                            false
+                                        }
+                                    } else {
+                                        false
+                                    }
+                                }
+                                _ => false,
+                            };
+                            if dominated_by_flags {
+                                continue;
+                            }
+
                             if !got_last {
                                 channel.last_message_timestamp = Some(ts);
                                 let (body, attachments) = match &content.body {
@@ -927,6 +951,13 @@ fn process_content(
 
     match &content.body {
         ContentBody::DataMessage(dm) => {
+            // Skip protocol-level messages that aren't user-visible
+            // (profile key updates, expiration timer changes, end-session)
+            let flags = dm.flags.unwrap_or(0);
+            if flags != 0 && dm.body.is_none() && dm.attachments.is_empty() {
+                return None;
+            }
+
             let body = dm.body.clone();
             let pointers = dm.attachments.clone();
             let channel_id = if let Some(group_v2) = &dm.group_v2 {
@@ -957,6 +988,11 @@ fn process_content(
         ContentBody::SynchronizeMessage(sync) => {
             if let Some(sent) = &sync.sent {
                 if let Some(dm) = &sent.message {
+                    let flags = dm.flags.unwrap_or(0);
+                    if flags != 0 && dm.body.is_none() && dm.attachments.is_empty() {
+                        return None;
+                    }
+
                     let body = dm.body.clone();
                     let pointers = dm.attachments.clone();
 
