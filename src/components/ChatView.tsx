@@ -52,14 +52,17 @@ export function ChatView({channel, messages}: ChatViewProps) {
 
       {/* Small glass pill header */}
       <View style={styles.headerPillContainer} pointerEvents="none">
-        <GlassView style={styles.headerPill} cornerRadius={16}>
+        <View style={styles.headerPillWrapper}>
           <View style={styles.pillAvatar}>
             <Text style={styles.pillAvatarText}>{initial}</Text>
           </View>
-          <Text style={styles.pillName} numberOfLines={1}>
-            {channel.name}
-          </Text>
-        </GlassView>
+          <View style={styles.headerPill}>
+            <GlassView style={StyleSheet.absoluteFill} cornerRadius={16} />
+            <Text style={styles.pillName} numberOfLines={1}>
+              {channel.name}
+            </Text>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -102,30 +105,35 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
+  headerPillWrapper: {
+    alignItems: 'center',
+  },
   headerPill: {
     alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 16,
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    marginTop: -6,
   },
   pillAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#2196f3',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
+    zIndex: 1,
   },
   pillAvatarText: {
     color: 'white',
-    fontSize: 11,
+    fontSize: 17,
     fontWeight: '600',
   },
   pillName: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '500',
     color: colors.label,
+    textAlign: 'center',
   },
   noMessages: {
     flex: 1,
