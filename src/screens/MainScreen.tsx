@@ -1,11 +1,17 @@
-import React, {useCallback} from 'react';
-import {View, StyleSheet} from 'react-native';
+import React, {useCallback, useRef, useState} from 'react';
+import {View, StyleSheet, PanResponder} from 'react-native';
 import {useSignalStore} from '../store/signalStore';
 import {ChannelList} from '../components/ChannelList';
 import {ChatView} from '../components/ChatView';
 import {MessageInput} from '../components/MessageInput';
 import {GlassView} from '../components/GlassView';
 import {GlassContainerView} from '../components/GlassContainerView';
+
+const SIDEBAR_DEFAULT = 268;
+const SIDEBAR_MIN = 100;
+const SIDEBAR_MAX = 500;
+const SIDEBAR_MARGIN = 12;
+const COLLAPSE_THRESHOLD = 120;
 
 interface MainScreenProps {
   onSendMessage: (channelId: string, text: string) => void;
@@ -18,8 +24,33 @@ export function MainScreen({onSendMessage, onSelectChannel}: MainScreenProps) {
   const messages = useSignalStore(state => state.messages);
   const setSelectedChannelId = useSignalStore(state => state.setSelectedChannelId);
 
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
+  const startWidthRef = useRef(SIDEBAR_DEFAULT);
+  const currentWidthRef = useRef(SIDEBAR_DEFAULT);
+
   const selectedChannel = channels.find(c => c.id === selectedChannelId) || null;
   const channelMessages = selectedChannelId ? messages[selectedChannelId] || [] : [];
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        startWidthRef.current = currentWidthRef.current;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const newWidth = Math.min(
+          SIDEBAR_MAX,
+          Math.max(SIDEBAR_MIN, startWidthRef.current + gestureState.dx),
+        );
+        currentWidthRef.current = newWidth;
+        setSidebarWidth(newWidth);
+      },
+    }),
+  ).current;
+
+  const collapsed = sidebarWidth < COLLAPSE_THRESHOLD;
+  const chatLeft = sidebarWidth + SIDEBAR_MARGIN * 2;
 
   const handleSelectChannel = useCallback(
     (id: string) => {
@@ -41,7 +72,7 @@ export function MainScreen({onSendMessage, onSelectChannel}: MainScreenProps) {
   return (
     <View style={styles.container}>
       {/* Chat area fills behind sidebar and input */}
-      <View style={styles.chatArea}>
+      <View style={[styles.chatArea, {left: chatLeft}]}>
         <ChatView
           channel={selectedChannel}
           messages={channelMessages}
@@ -49,17 +80,26 @@ export function MainScreen({onSendMessage, onSelectChannel}: MainScreenProps) {
       </View>
 
       {/* Glass sidebar overlay */}
-      <GlassView style={styles.sidebar} cornerRadius={26}>
+      <GlassView
+        style={[styles.sidebar, {width: sidebarWidth}]}
+        cornerRadius={26}>
         <ChannelList
           channels={channels}
           selectedId={selectedChannelId}
           onSelect={handleSelectChannel}
+          collapsed={collapsed}
         />
       </GlassView>
 
+      {/* Resize handle */}
+      <View
+        {...panResponder.panHandlers}
+        style={[styles.resizeHandle, {left: sidebarWidth + SIDEBAR_MARGIN - 4}]}
+      />
+
       {/* Glass input bar floating at bottom over chat area */}
       {selectedChannel && (
-        <GlassContainerView style={styles.inputContainer}>
+        <GlassContainerView style={[styles.inputContainer, {left: chatLeft}]}>
           <MessageInput onSend={handleSendMessage} />
         </GlassContainerView>
       )}
@@ -75,7 +115,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     bottom: 0,
-    left: 292,
     right: 0,
   },
   sidebar: {
@@ -83,12 +122,18 @@ const styles = StyleSheet.create({
     top: 12,
     bottom: 12,
     left: 12,
-    width: 268,
+  },
+  resizeHandle: {
+    position: 'absolute',
+    top: 12,
+    bottom: 12,
+    width: 8,
+    cursor: 'col-resize',
+    zIndex: 10,
   },
   inputContainer: {
     position: 'absolute',
     bottom: 0,
-    left: 292,
     right: 0,
   },
 });
