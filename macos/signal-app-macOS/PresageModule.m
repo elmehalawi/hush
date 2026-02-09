@@ -42,4 +42,6 @@ RCT_EXTERN_METHOD(stopReceiving:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(fetchAllAvatars:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(previewFile:(NSString *)filePath)
+
 @end

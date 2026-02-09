@@ -21,6 +21,23 @@ pub struct Channel {
     pub phone_number: Option<String>,
 }
 
+/// Represents a message attachment (image, video, file, etc.)
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct Attachment {
+    /// MIME content type (e.g. "image/jpeg", "video/mp4")
+    pub content_type: String,
+    /// File path on disk (None if download failed)
+    pub file_path: Option<String>,
+    /// Original file name (if available)
+    pub file_name: Option<String>,
+    /// Width in pixels (for images/videos)
+    pub width: Option<u32>,
+    /// Height in pixels (for images/videos)
+    pub height: Option<u32>,
+    /// File size in bytes
+    pub size: Option<u32>,
+}
+
 /// Represents a single message
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Message {
@@ -40,6 +57,8 @@ pub struct Message {
     pub is_outgoing: bool,
     /// Delivery/read status
     pub status: MessageStatus,
+    /// Attachments (images, videos, files)
+    pub attachments: Vec<Attachment>,
 }
 
 /// Message delivery status

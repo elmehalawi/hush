@@ -13,7 +13,8 @@ use presage::libsignal_service::protocol::{Aci, ServiceId};
 use presage::libsignal_service::zkgroup::profiles::ProfileKey;
 use presage::manager::Registered;
 use presage::model::identity::OnNewIdentity;
-use presage::proto::{DataMessage, GroupContextV2};
+use presage::proto::attachment_pointer::AttachmentIdentifier;
+use presage::proto::{AttachmentPointer, DataMessage, GroupContextV2};
 use presage::store::{ContentsStore, Thread};
 use presage_store_sqlite::SqliteStore;
 use tracing::{error, info, warn};
@@ -21,7 +22,7 @@ use uuid::Uuid;
 
 use crate::callbacks::{LinkingCallback, MessageListener};
 use crate::error::SignalError;
-use crate::types::{Channel, Message, MessageStatus};
+use crate::types::{Attachment, Channel, Message, MessageStatus};
 
 type PresageManager = presage::Manager<SqliteStore, Registered>;
 
@@ -380,19 +381,26 @@ impl SignalClient {
                 if let Ok(mut messages_iter) = manager.store().messages(&thread, ..).await {
                     if let Some(Ok(content)) = messages_iter.next() {
                         channel.last_message_timestamp = Some(content.metadata.timestamp);
-                        match &content.body {
+                        let (body, attachments) = match &content.body {
                             ContentBody::DataMessage(dm) => {
-                                channel.last_message = dm.body.clone();
+                                (dm.body.clone(), &dm.attachments)
                             }
                             ContentBody::SynchronizeMessage(sync) => {
                                 if let Some(sent) = &sync.sent {
                                     if let Some(dm) = &sent.message {
-                                        channel.last_message = dm.body.clone();
+                                        (dm.body.clone(), &dm.attachments)
+                                    } else {
+                                        (None, &vec![] as &Vec<AttachmentPointer>)
                                     }
+                                } else {
+                                    (None, &vec![] as &Vec<AttachmentPointer>)
                                 }
                             }
-                            _ => {}
-                        }
+                            _ => (None, &vec![] as &Vec<AttachmentPointer>),
+                        };
+                        channel.last_message = body.or_else(|| {
+                            attachment_preview_text(attachments)
+                        });
                     }
                 }
             }
@@ -413,6 +421,8 @@ impl SignalClient {
         let manager_guard = self.manager.read();
         let manager = manager_guard.as_ref().ok_or(SignalError::NotLinked)?;
         let my_user_id = self.user_id.read().ok_or(SignalError::NotLinked)?;
+        let attachments_dir = self.data_dir.join("attachments");
+        let _ = std::fs::create_dir_all(&attachments_dir);
 
         self.runtime.block_on(async {
             let thread = if channel_id.len() == 64 {
@@ -431,15 +441,28 @@ impl SignalClient {
                 Thread::Contact(uuid)
             };
 
-            let mut messages = Vec::new();
+            let mut messages_with_pointers = Vec::new();
             if let Ok(iter) = manager.store().messages(&thread, ..).await {
                 for result in iter {
                     if let Ok(content) = result {
-                        if let Some(msg) = process_content(&content, my_user_id) {
-                            messages.push(msg);
+                        if let Some((msg, pointers)) = process_content(&content, my_user_id) {
+                            messages_with_pointers.push((msg, pointers));
                         }
                     }
                 }
+            }
+
+            // Download attachments
+            let mut messages = Vec::new();
+            for (mut msg, pointers) in messages_with_pointers {
+                if !pointers.is_empty() {
+                    for pointer in &pointers {
+                        let attachment =
+                            download_and_save_attachment(manager, pointer, &attachments_dir).await;
+                        msg.attachments.push(attachment);
+                    }
+                }
+                messages.push(msg);
             }
 
             // messages() returns DESC order; reverse to chronological
@@ -521,6 +544,7 @@ impl SignalClient {
                 timestamp,
                 is_outgoing: true,
                 status: MessageStatus::Sent,
+                attachments: vec![],
             })
         })
         })
@@ -666,7 +690,10 @@ impl SignalClient {
 
         let stop_flag = self.stop_flag.clone();
         let is_receiving = self.is_receiving.clone();
-        let manager_clone = manager.clone();
+        let manager_for_stream = manager.clone();
+        let manager_for_attachments = manager.clone();
+        let attachments_dir = self.data_dir.join("attachments");
+        let _ = std::fs::create_dir_all(&attachments_dir);
         let runtime_handle = self.runtime.handle().clone();
 
         std::thread::Builder::new()
@@ -680,13 +707,13 @@ impl SignalClient {
                     runtime_handle.block_on(async move {
                         info!("Starting message receive loop");
 
-                        let mut manager_clone = manager_clone;
+                        let mut manager_for_stream = manager_for_stream;
                         loop {
                             if stop_flag.load(Ordering::SeqCst) {
                                 break;
                             }
 
-                            match manager_clone.receive_messages().await {
+                            match manager_for_stream.receive_messages().await {
                                 Ok(stream) => {
                                     let mut stream = Box::pin(stream);
                                     while let Some(received) = stream.next().await {
@@ -695,21 +722,36 @@ impl SignalClient {
                                             break;
                                         }
 
-                                        stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
+                                        // Parse message inside stacker (crypto may need stack space)
+                                        let result = stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
                                             match received {
                                                 presage::model::messages::Received::Content(content) => {
-                                                    if let Some(message) = process_content(&content, my_user_id) {
-                                                        listener.on_message(message);
-                                                    }
+                                                    process_content(&content, my_user_id)
                                                 }
                                                 presage::model::messages::Received::QueueEmpty => {
                                                     info!("Message queue is empty");
+                                                    None
                                                 }
                                                 presage::model::messages::Received::Contacts => {
                                                     info!("Received contacts sync");
+                                                    None
                                                 }
                                             }
                                         });
+
+                                        // Download attachments outside stacker (async I/O)
+                                        if let Some((mut message, pointers)) = result {
+                                            for pointer in &pointers {
+                                                let attachment = download_and_save_attachment(
+                                                    &manager_for_attachments,
+                                                    pointer,
+                                                    &attachments_dir,
+                                                )
+                                                .await;
+                                                message.attachments.push(attachment);
+                                            }
+                                            listener.on_message(message);
+                                        }
                                     }
                                 }
                                 Err(e) => {
@@ -750,8 +792,12 @@ impl SignalClient {
     }
 }
 
-/// Process incoming content and convert to our Message type
-fn process_content(content: &Content, my_user_id: Uuid) -> Option<Message> {
+/// Process incoming content and convert to our Message type.
+/// Returns the Message along with any raw AttachmentPointers that need downloading.
+fn process_content(
+    content: &Content,
+    my_user_id: Uuid,
+) -> Option<(Message, Vec<AttachmentPointer>)> {
     let sender_service_id = content.metadata.sender;
     let sender_uuid = sender_service_id.raw_uuid();
     let timestamp = content.metadata.timestamp;
@@ -760,38 +806,38 @@ fn process_content(content: &Content, my_user_id: Uuid) -> Option<Message> {
     match &content.body {
         ContentBody::DataMessage(dm) => {
             let body = dm.body.clone();
+            let pointers = dm.attachments.clone();
             let channel_id = if let Some(group_v2) = &dm.group_v2 {
-                // Group message
                 if let Some(master_key) = &group_v2.master_key {
                     hex::encode(master_key)
                 } else {
                     return None;
                 }
             } else {
-                // Direct message - use sender ID as channel
                 sender_uuid.to_string()
             };
 
-            Some(Message {
-                id: timestamp.to_string(),
-                channel_id,
-                sender_id: sender_uuid.to_string(),
-                sender_name: None,
-                body,
-                timestamp,
-                is_outgoing,
-                status: MessageStatus::Delivered,
-            })
+            Some((
+                Message {
+                    id: timestamp.to_string(),
+                    channel_id,
+                    sender_id: sender_uuid.to_string(),
+                    sender_name: None,
+                    body,
+                    timestamp,
+                    is_outgoing,
+                    status: MessageStatus::Delivered,
+                    attachments: vec![],
+                },
+                pointers,
+            ))
         }
         ContentBody::SynchronizeMessage(sync) => {
-            // Handle sent messages (messages we sent from another device)
             if let Some(sent) = &sync.sent {
                 if let Some(dm) = &sent.message {
                     let body = dm.body.clone();
+                    let pointers = dm.attachments.clone();
 
-                    // Check for group context first — group messages also
-                    // have destination_service_id set, so we must prioritize
-                    // the group_v2 field to route them correctly.
                     let channel_id = if let Some(group_v2) = &dm.group_v2 {
                         if let Some(master_key) = &group_v2.master_key {
                             hex::encode(master_key)
@@ -804,20 +850,160 @@ fn process_content(content: &Content, my_user_id: Uuid) -> Option<Message> {
                         return None;
                     };
 
-                    return Some(Message {
-                        id: timestamp.to_string(),
-                        channel_id,
-                        sender_id: my_user_id.to_string(),
-                        sender_name: None,
-                        body,
-                        timestamp,
-                        is_outgoing: true,
-                        status: MessageStatus::Sent,
-                    });
+                    return Some((
+                        Message {
+                            id: timestamp.to_string(),
+                            channel_id,
+                            sender_id: my_user_id.to_string(),
+                            sender_name: None,
+                            body,
+                            timestamp,
+                            is_outgoing: true,
+                            status: MessageStatus::Sent,
+                            attachments: vec![],
+                        },
+                        pointers,
+                    ));
                 }
             }
             None
         }
         _ => None,
+    }
+}
+
+/// Generate a preview string for attachment-only messages (e.g. "📷 Photo")
+fn attachment_preview_text(attachments: &[AttachmentPointer]) -> Option<String> {
+    if attachments.is_empty() {
+        return None;
+    }
+    let first_type = attachments[0]
+        .content_type
+        .as_deref()
+        .unwrap_or("application/octet-stream");
+    let label = if first_type.starts_with("image/") {
+        "📷 Photo"
+    } else if first_type.starts_with("video/") {
+        "🎥 Video"
+    } else if first_type.starts_with("audio/") {
+        "🎵 Audio"
+    } else {
+        "📎 File"
+    };
+    if attachments.len() > 1 {
+        Some(format!("{} (+{})", label, attachments.len() - 1))
+    } else {
+        Some(label.to_string())
+    }
+}
+
+/// Determine file extension from a MIME content type
+fn extension_from_content_type(content_type: &str) -> &str {
+    match content_type {
+        "image/jpeg" => "jpg",
+        "image/png" => "png",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        "image/heic" => "heic",
+        "image/heif" => "heif",
+        "video/mp4" => "mp4",
+        "video/quicktime" => "mov",
+        "video/3gpp" => "3gp",
+        "audio/aac" => "aac",
+        "audio/mpeg" => "mp3",
+        "audio/ogg" => "ogg",
+        _ => "bin",
+    }
+}
+
+/// Download an attachment from Signal CDN, cache it to disk, and return metadata.
+async fn download_and_save_attachment(
+    manager: &PresageManager,
+    pointer: &AttachmentPointer,
+    attachments_dir: &std::path::Path,
+) -> Attachment {
+    let content_type = pointer
+        .content_type
+        .clone()
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    let file_name = pointer.file_name.clone();
+    let width = pointer.width;
+    let height = pointer.height;
+    let size = pointer.size;
+
+    // Build a unique cache key from digest or CDN identifier
+    let cache_key = if let Some(digest) = &pointer.digest {
+        hex::encode(digest)
+    } else {
+        match &pointer.attachment_identifier {
+            Some(AttachmentIdentifier::CdnId(id)) => format!("cdn_{}", id),
+            Some(AttachmentIdentifier::CdnKey(key)) => {
+                format!("key_{}", key.replace('/', "_"))
+            }
+            None => format!(
+                "unknown_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+            ),
+        }
+    };
+
+    let ext = extension_from_content_type(&content_type);
+    let file_path = attachments_dir.join(format!("{}.{}", cache_key, ext));
+
+    // Return cached file if it exists
+    if file_path.exists() {
+        return Attachment {
+            content_type,
+            file_path: Some(file_path.to_string_lossy().to_string()),
+            file_name,
+            width,
+            height,
+            size,
+        };
+    }
+
+    // Download and decrypt from Signal CDN
+    match manager.get_attachment(pointer).await {
+        Ok(data) => {
+            if std::fs::write(&file_path, &data).is_ok() {
+                info!(
+                    "Saved attachment {} ({} bytes)",
+                    file_path.display(),
+                    data.len()
+                );
+                Attachment {
+                    content_type,
+                    file_path: Some(file_path.to_string_lossy().to_string()),
+                    file_name,
+                    width,
+                    height,
+                    size,
+                }
+            } else {
+                warn!("Failed to write attachment to disk");
+                Attachment {
+                    content_type,
+                    file_path: None,
+                    file_name,
+                    width,
+                    height,
+                    size,
+                }
+            }
+        }
+        Err(e) => {
+            warn!("Failed to download attachment: {}", e);
+            Attachment {
+                content_type,
+                file_path: None,
+                file_name,
+                width,
+                height,
+                size,
+            }
+        }
     }
 }

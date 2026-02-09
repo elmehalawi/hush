@@ -750,6 +750,139 @@ public func FfiConverterTypeSignalClient_lower(_ value: SignalClient) -> UnsafeM
 }
 
 /**
+ * Represents a message attachment (image, video, file, etc.)
+ */
+public struct Attachment {
+    /**
+     * MIME content type (e.g. "image/jpeg", "video/mp4")
+     */
+    public var contentType: String
+    /**
+     * File path on disk (None if download failed)
+     */
+    public var filePath: String?
+    /**
+     * Original file name (if available)
+     */
+    public var fileName: String?
+    /**
+     * Width in pixels (for images/videos)
+     */
+    public var width: UInt32?
+    /**
+     * Height in pixels (for images/videos)
+     */
+    public var height: UInt32?
+    /**
+     * File size in bytes
+     */
+    public var size: UInt32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * MIME content type (e.g. "image/jpeg", "video/mp4")
+         */ contentType: String,
+        /**
+            * File path on disk (None if download failed)
+            */ filePath: String?,
+        /**
+            * Original file name (if available)
+            */ fileName: String?,
+        /**
+            * Width in pixels (for images/videos)
+            */ width: UInt32?,
+        /**
+            * Height in pixels (for images/videos)
+            */ height: UInt32?,
+        /**
+            * File size in bytes
+            */ size: UInt32?
+    ) {
+        self.contentType = contentType
+        self.filePath = filePath
+        self.fileName = fileName
+        self.width = width
+        self.height = height
+        self.size = size
+    }
+}
+
+extension Attachment: Equatable, Hashable {
+    public static func == (lhs: Attachment, rhs: Attachment) -> Bool {
+        if lhs.contentType != rhs.contentType {
+            return false
+        }
+        if lhs.filePath != rhs.filePath {
+            return false
+        }
+        if lhs.fileName != rhs.fileName {
+            return false
+        }
+        if lhs.width != rhs.width {
+            return false
+        }
+        if lhs.height != rhs.height {
+            return false
+        }
+        if lhs.size != rhs.size {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(contentType)
+        hasher.combine(filePath)
+        hasher.combine(fileName)
+        hasher.combine(width)
+        hasher.combine(height)
+        hasher.combine(size)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAttachment: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Attachment {
+        return
+            try Attachment(
+                contentType: FfiConverterString.read(from: &buf),
+                filePath: FfiConverterOptionString.read(from: &buf),
+                fileName: FfiConverterOptionString.read(from: &buf),
+                width: FfiConverterOptionUInt32.read(from: &buf),
+                height: FfiConverterOptionUInt32.read(from: &buf),
+                size: FfiConverterOptionUInt32.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: Attachment, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.contentType, into: &buf)
+        FfiConverterOptionString.write(value.filePath, into: &buf)
+        FfiConverterOptionString.write(value.fileName, into: &buf)
+        FfiConverterOptionUInt32.write(value.width, into: &buf)
+        FfiConverterOptionUInt32.write(value.height, into: &buf)
+        FfiConverterOptionUInt32.write(value.size, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAttachment_lift(_ buf: RustBuffer) throws -> Attachment {
+    return try FfiConverterTypeAttachment.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAttachment_lower(_ value: Attachment) -> RustBuffer {
+    return FfiConverterTypeAttachment.lower(value)
+}
+
+/**
  * Represents a conversation channel (contact or group)
  */
 public struct Channel {
@@ -946,6 +1079,10 @@ public struct Message {
      * Delivery/read status
      */
     public var status: MessageStatus
+    /**
+     * Attachments (images, videos, files)
+     */
+    public var attachments: [Attachment]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -973,7 +1110,10 @@ public struct Message {
             */ isOutgoing: Bool,
         /**
             * Delivery/read status
-            */ status: MessageStatus
+            */ status: MessageStatus,
+        /**
+            * Attachments (images, videos, files)
+            */ attachments: [Attachment]
     ) {
         self.id = id
         self.channelId = channelId
@@ -983,6 +1123,7 @@ public struct Message {
         self.timestamp = timestamp
         self.isOutgoing = isOutgoing
         self.status = status
+        self.attachments = attachments
     }
 }
 
@@ -1012,6 +1153,9 @@ extension Message: Equatable, Hashable {
         if lhs.status != rhs.status {
             return false
         }
+        if lhs.attachments != rhs.attachments {
+            return false
+        }
         return true
     }
 
@@ -1024,6 +1168,7 @@ extension Message: Equatable, Hashable {
         hasher.combine(timestamp)
         hasher.combine(isOutgoing)
         hasher.combine(status)
+        hasher.combine(attachments)
     }
 }
 
@@ -1041,7 +1186,8 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
                 body: FfiConverterOptionString.read(from: &buf),
                 timestamp: FfiConverterUInt64.read(from: &buf),
                 isOutgoing: FfiConverterBool.read(from: &buf),
-                status: FfiConverterTypeMessageStatus.read(from: &buf)
+                status: FfiConverterTypeMessageStatus.read(from: &buf),
+                attachments: FfiConverterSequenceTypeAttachment.read(from: &buf)
             )
     }
 
@@ -1054,6 +1200,7 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
         FfiConverterUInt64.write(value.timestamp, into: &buf)
         FfiConverterBool.write(value.isOutgoing, into: &buf)
         FfiConverterTypeMessageStatus.write(value.status, into: &buf)
+        FfiConverterSequenceTypeAttachment.write(value.attachments, into: &buf)
     }
 }
 
@@ -1690,6 +1837,30 @@ extension FfiConverterCallbackInterfaceMessageListener: FfiConverter {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
+private struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
+    typealias SwiftType = UInt32?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterUInt32.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterUInt32.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
 private struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
     typealias SwiftType = UInt64?
 
@@ -1732,6 +1903,31 @@ private struct FfiConverterOptionString: FfiConverterRustBuffer {
         case 1: return try FfiConverterString.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private struct FfiConverterSequenceTypeAttachment: FfiConverterRustBuffer {
+    typealias SwiftType = [Attachment]
+
+    public static func write(_ value: [Attachment], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAttachment.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Attachment] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Attachment]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            try seq.append(FfiConverterTypeAttachment.read(from: &buf))
+        }
+        return seq
     }
 }
 
