@@ -29,8 +29,15 @@
     window.styleMask |= NSWindowStyleMaskFullSizeContentView;
     window.backgroundColor = [NSColor windowBackgroundColor];
 
+    // Add an empty toolbar so the window gets the larger Tahoe squircle
+    // corner radius (~24-26pt) instead of the titlebar-only radius (~16pt).
+    NSToolbar *toolbar = [[NSToolbar alloc] initWithIdentifier:@"MainToolbar"];
+    toolbar.showsBaselineSeparator = NO;
+    window.toolbar = toolbar;
+    window.toolbarStyle = NSWindowToolbarStyleUnifiedCompact;
+
     // Move traffic light buttons inside the conversation panel
-    // Sidebar panel is at left:12, top:12 with borderRadius:16
+    // Sidebar panel is at left:12, top:12 with borderRadius:26
     [self repositionTrafficLights:window];
     [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidResizeNotification
                                                       object:window
