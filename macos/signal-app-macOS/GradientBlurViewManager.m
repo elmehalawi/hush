@@ -6,6 +6,7 @@
 @implementation GradientBlurViewManager
 
 RCT_EXPORT_MODULE(GradientBlurView)
+RCT_EXPORT_VIEW_PROPERTY(blurRadius, CGFloat)
 
 - (NSView *)view
 {
