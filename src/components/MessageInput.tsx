@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {View, TextInput, StyleSheet} from 'react-native';
+import {View, TextInput, StyleSheet, useColorScheme} from 'react-native';
 import {GlassView} from './GlassView';
 import {GlassButton} from './GlassButton';
 
@@ -10,6 +10,7 @@ interface MessageInputProps {
 
 export function MessageInput({onSend, disabled}: MessageInputProps) {
   const [text, setText] = useState('');
+  const isDark = useColorScheme() === 'dark';
 
   const handleSend = () => {
     const trimmed = text.trim();
@@ -30,7 +31,7 @@ export function MessageInput({onSend, disabled}: MessageInputProps) {
     <View style={styles.container}>
       <GlassView style={styles.inputWrapper} cornerRadius={20}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, isDark && {color: '#FFFFFF'}]}
           value={text}
           onChangeText={setText}
           placeholder="Type a message..."
