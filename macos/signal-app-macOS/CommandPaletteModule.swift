@@ -164,7 +164,8 @@ class CommandPaletteModule: RCTEventEmitter {
                 name: name,
                 lastMessage: dict["lastMessage"] as? String,
                 avatarPath: dict["avatarPath"] as? String,
-                isGroup: dict["isGroup"] as? Bool ?? false
+                isGroup: dict["isGroup"] as? Bool ?? false,
+                unreadCount: dict["unreadCount"] as? Int ?? 0
             )
             channels.append(channel)
         }

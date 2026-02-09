@@ -311,6 +311,35 @@ class PresageModule: RCTEventEmitter {
         resolver(nil)
     }
 
+    @objc(markAsRead:upToTimestamp:senderUuid:timestamps:resolver:rejecter:)
+    func markAsRead(_ channelId: String, upToTimestamp: Double, senderUuid: String, timestamps: [Double], resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let client = client else {
+            rejecter("NOT_INITIALIZED", "Client not initialized", nil)
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                // Update read state
+                try client.markAsRead(channelId: channelId, upToTimestamp: UInt64(upToTimestamp))
+
+                // Send read receipt to the sender (best-effort)
+                if !senderUuid.isEmpty {
+                    let ts = timestamps.map { UInt64($0) }
+                    do {
+                        try client.sendReadReceipt(senderUuid: senderUuid, timestamps: ts)
+                    } catch {
+                        NSLog("PresageModule: Failed to send read receipt: \(error)")
+                    }
+                }
+
+                resolver(nil)
+            } catch {
+                rejecter("MARK_READ_ERROR", "Failed to mark as read: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
     @objc(fetchAllAvatars:rejecter:)
     func fetchAllAvatars(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
         guard let client = client else {

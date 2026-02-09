@@ -59,6 +59,8 @@ interface SignalStore {
   addMessage: (message: Message) => void;
   setMessages: (channelId: string, messages: Message[]) => void;
   updateChannel: (channel: Channel) => void;
+  markChannelAsRead: (channelId: string) => void;
+  incrementUnread: (channelId: string) => void;
 }
 
 export const useSignalStore = create<SignalStore>((set, get) => ({
@@ -82,7 +84,7 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
   setUserId: (id: string | null) => set({userId: id}),
 
   addMessage: (message: Message) => {
-    const {messages, channels} = get();
+    const {messages, channels, selectedChannelId} = get();
     const channelMessages = messages[message.channelId] || [];
 
     // Update the channel's last message info for sorting
@@ -92,10 +94,13 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
       const channel = channels[channelIndex];
       if (!channel.lastMessageTimestamp || message.timestamp >= channel.lastMessageTimestamp) {
         updatedChannels = [...channels];
+        const unreadDelta =
+          !message.isOutgoing && message.channelId !== selectedChannelId ? 1 : 0;
         updatedChannels[channelIndex] = {
           ...channel,
           lastMessage: message.body || channel.lastMessage,
           lastMessageTimestamp: message.timestamp,
+          unreadCount: channel.unreadCount + unreadDelta,
         };
       }
     }
@@ -124,10 +129,41 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
     const index = channels.findIndex(c => c.id === channel.id);
     if (index >= 0) {
       const newChannels = [...channels];
-      newChannels[index] = channel;
+      // Merge: keep existing fields if new channel has empty/placeholder values
+      const existing = newChannels[index];
+      newChannels[index] = {
+        ...existing,
+        lastMessage: channel.lastMessage || existing.lastMessage,
+        lastMessageTimestamp: channel.lastMessageTimestamp || existing.lastMessageTimestamp,
+        avatarPath: channel.avatarPath || existing.avatarPath,
+        name: channel.name || existing.name,
+      };
       set({channels: newChannels});
     } else {
       set({channels: [...channels, channel]});
+    }
+  },
+
+  markChannelAsRead: (channelId: string) => {
+    const {channels} = get();
+    const index = channels.findIndex(c => c.id === channelId);
+    if (index >= 0 && channels[index].unreadCount > 0) {
+      const newChannels = [...channels];
+      newChannels[index] = {...newChannels[index], unreadCount: 0};
+      set({channels: newChannels});
+    }
+  },
+
+  incrementUnread: (channelId: string) => {
+    const {channels} = get();
+    const index = channels.findIndex(c => c.id === channelId);
+    if (index >= 0) {
+      const newChannels = [...channels];
+      newChannels[index] = {
+        ...newChannels[index],
+        unreadCount: newChannels[index].unreadCount + 1,
+      };
+      set({channels: newChannels});
     }
   },
 }));

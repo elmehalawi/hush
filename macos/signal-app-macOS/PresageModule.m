@@ -39,6 +39,13 @@ RCT_EXTERN_METHOD(startReceiving:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(stopReceiving:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(markAsRead:(NSString *)channelId
+                  upToTimestamp:(double)upToTimestamp
+                  senderUuid:(NSString *)senderUuid
+                  timestamps:(NSArray *)timestamps
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(fetchAllAvatars:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 

@@ -104,6 +104,7 @@ export function useSignalClient() {
   const setChannels = useSignalStore(state => state.setChannels);
   const addMessage = useSignalStore(state => state.addMessage);
   const updateChannel = useSignalStore(state => state.updateChannel);
+  const markChannelAsRead = useSignalStore(state => state.markChannelAsRead);
 
   // Initialize client
   const initialize = useCallback(async () => {
@@ -282,6 +283,40 @@ export function useSignalClient() {
     }
   }, []);
 
+  // Mark a channel as read — clears unread badge and sends read receipt
+  const markAsRead = useCallback(
+    async (channelId: string) => {
+      if (!PresageModule || !isInitialized.current) return;
+
+      const state = useSignalStore.getState();
+      const channelMessages = state.messages[channelId];
+      if (!channelMessages || channelMessages.length === 0) return;
+
+      // Find the latest message timestamp
+      const latestTs = channelMessages[channelMessages.length - 1].timestamp;
+
+      // Find the last incoming message sender + their timestamps (for read receipt)
+      const incomingMessages = channelMessages.filter(m => !m.isOutgoing);
+      const lastIncoming = incomingMessages[incomingMessages.length - 1];
+
+      // Clear badge immediately in JS
+      markChannelAsRead(channelId);
+
+      try {
+        await PresageModule.markAsRead(
+          channelId,
+          latestTs,
+          lastIncoming?.senderId || '',
+          lastIncoming ? incomingMessages.map(m => m.timestamp) : [],
+        );
+      } catch (error) {
+        console.error('Failed to mark as read:', error);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   // Set up event listeners ONCE on mount
   useEffect(() => {
     console.log('Setting up event listeners, presageEventEmitter:', !!presageEventEmitter);
@@ -303,7 +338,24 @@ export function useSignalClient() {
           .catch(() => {});
       }),
       presageEventEmitter.addListener('onMessage', (message: NativeMessage) => {
-        addMessage(convertMessage(message));
+        const converted = convertMessage(message);
+        addMessage(converted);
+
+        // Auto-mark as read if this message is in the currently selected channel
+        if (!converted.isOutgoing) {
+          const currentSelectedId = useSignalStore.getState().selectedChannelId;
+          if (currentSelectedId === converted.channelId && PresageModule && isInitialized.current) {
+            // Fire-and-forget: mark as read + send read receipt
+            PresageModule.markAsRead(
+              converted.channelId,
+              converted.timestamp,
+              converted.senderId,
+              [converted.timestamp],
+            ).catch(() => {});
+            // Clear badge immediately
+            useSignalStore.getState().markChannelAsRead(converted.channelId);
+          }
+        }
       }),
       presageEventEmitter.addListener('onChannelUpdated', (channel: NativeChannel) => {
         updateChannel(convertChannel(channel));
@@ -349,5 +401,6 @@ export function useSignalClient() {
     sendMessage,
     startReceiving,
     stopReceiving,
+    markAsRead,
   };
 }
