@@ -11,6 +11,16 @@ export interface Channel {
   avatarPath?: string;
 }
 
+export interface Attachment {
+  contentType: string;
+  filePath?: string;
+  fileName?: string;
+  width?: number;
+  height?: number;
+  size?: number;
+  thumbnailPath?: string;
+}
+
 export interface Message {
   id: string;
   channelId: string;
@@ -20,6 +30,7 @@ export interface Message {
   timestamp: number;
   isOutgoing: boolean;
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+  attachments: Attachment[];
 }
 
 export type LinkingState =

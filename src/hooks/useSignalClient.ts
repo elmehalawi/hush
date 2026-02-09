@@ -1,6 +1,6 @@
 import {useEffect, useRef, useCallback} from 'react';
 import {NativeModules, NativeEventEmitter, Platform} from 'react-native';
-import {useSignalStore, Message, Channel} from '../store/signalStore';
+import {useSignalStore, Message, Channel, Attachment} from '../store/signalStore';
 
 // Get the native module
 const {PresageModule} = NativeModules;
@@ -24,6 +24,16 @@ interface NativeChannel {
   avatarPath: string | null;
 }
 
+interface NativeAttachment {
+  contentType: string;
+  filePath: string | null;
+  fileName: string | null;
+  width: number | null;
+  height: number | null;
+  size: number | null;
+  thumbnailPath: string | null;
+}
+
 interface NativeMessage {
   id: string;
   channelId: string;
@@ -33,6 +43,7 @@ interface NativeMessage {
   timestamp: number;
   isOutgoing: boolean;
   status: string;
+  attachments: NativeAttachment[] | null;
 }
 
 // Convert native channel to store channel
@@ -48,6 +59,19 @@ function convertChannel(native: NativeChannel): Channel {
   };
 }
 
+// Convert native attachment to store attachment
+function convertAttachment(native: NativeAttachment): Attachment {
+  return {
+    contentType: native.contentType,
+    filePath: native.filePath || undefined,
+    fileName: native.fileName || undefined,
+    width: native.width || undefined,
+    height: native.height || undefined,
+    size: native.size || undefined,
+    thumbnailPath: native.thumbnailPath || undefined,
+  };
+}
+
 // Convert native message to store message
 function convertMessage(native: NativeMessage): Message {
   return {
@@ -59,6 +83,7 @@ function convertMessage(native: NativeMessage): Message {
     timestamp: native.timestamp,
     isOutgoing: native.isOutgoing,
     status: native.status as Message['status'],
+    attachments: (native.attachments || []).map(convertAttachment),
   };
 }
 

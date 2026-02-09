@@ -1,5 +1,8 @@
 import Foundation
 import Contacts
+import AVFoundation
+import AppKit
+import Quartz
 
 @objc(PresageModule)
 class PresageModule: RCTEventEmitter {
@@ -289,6 +292,17 @@ class PresageModule: RCTEventEmitter {
         }
     }
 
+    // MARK: - Quick Look Preview
+
+    private let quickLookCoordinator = QuickLookCoordinator()
+
+    @objc(previewFile:)
+    func previewFile(_ filePath: String) {
+        DispatchQueue.main.async {
+            self.quickLookCoordinator.previewFile(path: filePath)
+        }
+    }
+
     // MARK: - macOS Contacts Integration
 
     private lazy var contactStore = CNContactStore()
@@ -374,17 +388,64 @@ class PresageModule: RCTEventEmitter {
         ]
     }
 
+    private func attachmentToDict(_ attachment: Attachment) -> [String: Any?] {
+        var dict: [String: Any?] = [
+            "contentType": attachment.contentType,
+            "filePath": attachment.filePath,
+            "fileName": attachment.fileName,
+        ]
+        dict["width"] = attachment.width.map { NSNumber(value: $0) }
+        dict["height"] = attachment.height.map { NSNumber(value: $0) }
+        dict["size"] = attachment.size.map { NSNumber(value: $0) }
+
+        // Generate thumbnail for video attachments
+        if attachment.contentType.hasPrefix("video/"), let videoPath = attachment.filePath {
+            dict["thumbnailPath"] = generateVideoThumbnail(videoPath: videoPath)
+        }
+
+        return dict
+    }
+
+    private func generateVideoThumbnail(videoPath: String) -> String? {
+        let thumbPath = videoPath + ".thumb.jpg"
+        if FileManager.default.fileExists(atPath: thumbPath) {
+            return thumbPath
+        }
+
+        let url = URL(fileURLWithPath: videoPath)
+        let asset = AVAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 560, height: 720)
+
+        let time = CMTime(seconds: 0, preferredTimescale: 600)
+        do {
+            let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
+            let rep = NSBitmapImageRep(cgImage: cgImage)
+            guard let jpegData = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
+                return nil
+            }
+            try jpegData.write(to: URL(fileURLWithPath: thumbPath))
+            return thumbPath
+        } catch {
+            NSLog("PresageModule: Failed to generate video thumbnail: \(error)")
+            return nil
+        }
+    }
+
     private func messageToDict(_ message: Message) -> [String: Any?] {
-        return [
+        var dict: [String: Any?] = [
             "id": message.id,
             "channelId": message.channelId,
             "senderId": message.senderId,
             "senderName": message.senderName,
             "body": message.body,
-            "timestamp": NSNumber(value: message.timestamp),
             "isOutgoing": message.isOutgoing,
-            "status": messageStatusToString(message.status)
+            "status": messageStatusToString(message.status),
         ]
+        dict["timestamp"] = NSNumber(value: message.timestamp)
+        dict["attachments"] = message.attachments.map { attachmentToDict($0) }
+        return dict
     }
 
     private func messageStatusToString(_ status: MessageStatus) -> String {
@@ -457,5 +518,32 @@ class MessageListenerImpl: MessageListener {
         DispatchQueue.main.async {
             self.onErrorHandler(error)
         }
+    }
+}
+
+// MARK: - Quick Look
+
+class QuickLookCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+    private var fileURL: NSURL?
+
+    func previewFile(path: String) {
+        fileURL = NSURL(fileURLWithPath: path)
+        guard let panel = QLPreviewPanel.shared() else { return }
+        panel.dataSource = self
+        panel.delegate = self
+
+        if panel.isVisible {
+            panel.reloadData()
+        } else {
+            panel.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        return fileURL != nil ? 1 : 0
+    }
+
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
+        return fileURL
     }
 }
