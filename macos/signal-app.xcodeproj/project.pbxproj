@@ -17,6 +17,7 @@
 		61A07EBCE7FD3C2C3080354A /* presage_rn.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF4F3294F0B388BC62D496B0 /* presage_rn.swift */; };
 		6E1AE3D49BD4788FD7AD7321 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4E9B0F71EAE6838AB6756B60 /* PrivacyInfo.xcprivacy */; };
 		A1B2C3D4E5F60718DEADBEEF /* SpaceKeyFix.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718BEEFDEAD /* SpaceKeyFix.m */; };
+		SCRL001A00000000000001 /* ScrollFix.m in Sources */ = {isa = PBXBuildFile; fileRef = SCRL001F00000000000001 /* ScrollFix.m */; };
 		BLUR001A00000000000001 /* GradientBlurView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BLUR001F00000000000001 /* GradientBlurView.swift */; };
 		BLUR001A00000000000002 /* GradientBlurViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = BLUR001F00000000000002 /* GradientBlurViewManager.m */; };
 		CF281B0187CE890B79CD7141 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4E9B0F71EAE6838AB6756B60 /* PrivacyInfo.xcprivacy */; };
@@ -48,6 +49,7 @@
 		88072ED278358CE35CDB1B3B /* PresageModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PresageModule.swift; sourceTree = "<group>"; };
 		95D825E99A0FD645C00F00C1 /* PresageModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = PresageModule.m; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718BEEFDEAD /* SpaceKeyFix.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = SpaceKeyFix.m; sourceTree = "<group>"; };
+		SCRL001F00000000000001 /* ScrollFix.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ScrollFix.m; sourceTree = "<group>"; };
 		BLUR001F00000000000001 /* GradientBlurView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GradientBlurView.swift; sourceTree = "<group>"; };
 		BLUR001F00000000000002 /* GradientBlurViewManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GradientBlurViewManager.m; sourceTree = "<group>"; };
 		D07DEBCB56BA0C05D6686F13 /* Pods-signal-app-macOS.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-signal-app-macOS.debug.xcconfig"; path = "Target Support Files/Pods-signal-app-macOS/Pods-signal-app-macOS.debug.xcconfig"; sourceTree = "<group>"; };
@@ -114,6 +116,7 @@
 				88072ED278358CE35CDB1B3B /* PresageModule.swift */,
 				95D825E99A0FD645C00F00C1 /* PresageModule.m */,
 				A1B2C3D4E5F60718BEEFDEAD /* SpaceKeyFix.m */,
+				SCRL001F00000000000001 /* ScrollFix.m */,
 				GLASS001F00000000000001 /* GlassEffectView.swift */,
 				GLASS001F00000000000002 /* GlassEffectViewManager.m */,
 				GLASS001F00000000000003 /* GlassContainerView.swift */,
@@ -388,6 +391,7 @@
 				5F4D61A2DAE035D60F5B5669 /* PresageModule.swift in Sources */,
 				26FB31DB1E1FD03E4D185C99 /* PresageModule.m in Sources */,
 				A1B2C3D4E5F60718DEADBEEF /* SpaceKeyFix.m in Sources */,
+				SCRL001A00000000000001 /* ScrollFix.m in Sources */,
 				61A07EBCE7FD3C2C3080354A /* presage_rn.swift in Sources */,
 				GLASS001A00000000000001 /* GlassEffectView.swift in Sources */,
 				GLASS001A00000000000002 /* GlassEffectViewManager.m in Sources */,
