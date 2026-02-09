@@ -34,7 +34,7 @@ export function MessageInput({onSend, disabled}: MessageInputProps) {
           style={[styles.input, isDark && {color: '#FFFFFF'}]}
           value={text}
           onChangeText={setText}
-          placeholder="Type a message..."
+          placeholder="Signal Message"
           placeholderTextColor="#9e9e9e"
           multiline
           editable={!disabled}
