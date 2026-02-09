@@ -54,6 +54,7 @@ export function ChatView({channel, messages}: ChatViewProps) {
       <View style={styles.headerPillContainer} pointerEvents="none">
         <View style={styles.headerPillWrapper}>
           <View style={styles.pillAvatar}>
+            <GlassView style={StyleSheet.absoluteFill} cornerRadius={20} tintColor="rgba(30, 120, 255, 0.45)" />
             <Text style={styles.pillAvatarText}>{initial}</Text>
           </View>
           <View style={styles.headerPill}>
@@ -119,7 +120,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#2196f3',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1,
