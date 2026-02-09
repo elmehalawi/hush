@@ -3,12 +3,12 @@ import AppKit
 @available(macOS 26.0, *)
 @objc(GlassEffectWrapperView) class GlassEffectWrapperView: RCTUIView {
   private let glassView = NSGlassEffectView()
-  private let contentClipView = NSView()
+  private var shadowLayer: CALayer?
 
   @objc var cornerRadius: CGFloat = 0 {
     didSet {
       glassView.cornerRadius = cornerRadius
-      contentClipView.layer?.cornerRadius = cornerRadius
+      updateShadowLayer()
     }
   }
 
@@ -23,9 +23,6 @@ import AppKit
   override init(frame: NSRect) {
     super.init(frame: frame)
     focusRingType = .none
-    wantsLayer = true
-
-    // Glass view behind everything
     glassView.translatesAutoresizingMaskIntoConstraints = false
     addSubview(glassView, positioned: .below, relativeTo: nil)
     NSLayoutConstraint.activate([
@@ -34,44 +31,48 @@ import AppKit
       glassView.topAnchor.constraint(equalTo: topAnchor),
       glassView.bottomAnchor.constraint(equalTo: bottomAnchor),
     ])
-
-    // Content clipping container — clips React children to rounded rect
-    contentClipView.wantsLayer = true
-    contentClipView.layer?.masksToBounds = true
-    contentClipView.layer?.cornerCurve = .continuous
-    contentClipView.translatesAutoresizingMaskIntoConstraints = false
-    addSubview(contentClipView)
-    NSLayoutConstraint.activate([
-      contentClipView.leadingAnchor.constraint(equalTo: leadingAnchor),
-      contentClipView.trailingAnchor.constraint(equalTo: trailingAnchor),
-      contentClipView.topAnchor.constraint(equalTo: topAnchor),
-      contentClipView.bottomAnchor.constraint(equalTo: bottomAnchor),
-    ])
-
-    // Native macOS shadow — soft, high-radius
-    let shadow = NSShadow()
-    shadow.shadowBlurRadius = 30
-    shadow.shadowColor = NSColor.black.withAlphaComponent(0.15)
-    shadow.shadowOffset = NSSize(width: 0, height: -2)
-    self.shadow = shadow
   }
 
-  override func insertReactSubview(_ subview: NSView!, at atIndex: Int) {
-    contentClipView.addSubview(subview)
-  }
-
-  override func removeReactSubview(_ subview: NSView!) {
-    subview.removeFromSuperview()
-  }
-
-  override func reactSubviews() -> [NSView]! {
-    return contentClipView.subviews
+  override func viewDidMoveToSuperview() {
+    super.viewDidMoveToSuperview()
+    if superview != nil {
+      updateShadowLayer()
+    } else {
+      shadowLayer?.removeFromSuperlayer()
+      shadowLayer = nil
+    }
   }
 
   override func layout() {
     super.layout()
-    layer?.masksToBounds = false
+    updateShadowLayer()
     disableFocusRings(self)
+  }
+
+  private func updateShadowLayer() {
+    guard let parentLayer = superview?.layer, let myLayer = self.layer else { return }
+
+    // Parent must not clip so the shadow is visible outside our bounds
+    parentLayer.masksToBounds = false
+
+    if shadowLayer == nil {
+      let sl = CALayer()
+      sl.shadowColor = NSColor.black.cgColor
+      sl.shadowOpacity = 0.15
+      sl.shadowRadius = 30
+      sl.shadowOffset = CGSize(width: 0, height: -2)
+      parentLayer.insertSublayer(sl, below: myLayer)
+      shadowLayer = sl
+    }
+
+    shadowLayer?.frame = myLayer.frame
+    shadowLayer?.cornerRadius = cornerRadius
+    shadowLayer?.shadowPath = CGPath(
+      roundedRect: CGRect(origin: .zero, size: myLayer.frame.size),
+      cornerWidth: cornerRadius,
+      cornerHeight: cornerRadius,
+      transform: nil
+    )
   }
 
   private func disableFocusRings(_ view: NSView) {

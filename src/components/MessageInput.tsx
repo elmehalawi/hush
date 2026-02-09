@@ -16,8 +16,8 @@ export function MessageInput({onSend, disabled}: MessageInputProps) {
     const trimmed = text.trim();
     if (trimmed.length > 0) {
       onSend(trimmed);
-      setText('');
     }
+    setText('');
   };
 
   const handleKeyPress = (e: any) => {
