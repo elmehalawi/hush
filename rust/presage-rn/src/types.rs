@@ -15,6 +15,10 @@ pub struct Channel {
     pub last_message: Option<String>,
     /// Timestamp of the last message in milliseconds since epoch
     pub last_message_timestamp: Option<u64>,
+    /// File path to the avatar image on disk (if available)
+    pub avatar_path: Option<String>,
+    /// Phone number in E.164 format (contacts only)
+    pub phone_number: Option<String>,
 }
 
 /// Represents a single message

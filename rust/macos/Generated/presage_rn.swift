@@ -497,6 +497,12 @@ private struct FfiConverterString: FfiConverter {
  */
 public protocol SignalClientProtocol: AnyObject {
     /**
+     * Fetch profile avatars for all contacts and group avatars from the network.
+     * Writes avatar images to disk so that get_channels() can return their paths.
+     */
+    func fetchAllAvatars() throws
+
+    /**
      * Get the list of all channels (contacts and groups)
      */
     func getChannels() throws -> [Channel]
@@ -603,6 +609,15 @@ open class SignalClient:
         }
 
         try! rustCall { uniffi_presage_rn_fn_free_signalclient(pointer, $0) }
+    }
+
+    /**
+     * Fetch profile avatars for all contacts and group avatars from the network.
+     * Writes avatar images to disk so that get_channels() can return their paths.
+     */
+    open func fetchAllAvatars() throws { try rustCallWithError(FfiConverterTypeSignalError.lift) {
+        uniffi_presage_rn_fn_method_signalclient_fetch_all_avatars(self.uniffiClonePointer(), $0)
+    }
     }
 
     /**
@@ -762,6 +777,14 @@ public struct Channel {
      * Timestamp of the last message in milliseconds since epoch
      */
     public var lastMessageTimestamp: UInt64?
+    /**
+     * File path to the avatar image on disk (if available)
+     */
+    public var avatarPath: String?
+    /**
+     * Phone number in E.164 format (contacts only)
+     */
+    public var phoneNumber: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -783,7 +806,13 @@ public struct Channel {
             */ lastMessage: String?,
         /**
             * Timestamp of the last message in milliseconds since epoch
-            */ lastMessageTimestamp: UInt64?
+            */ lastMessageTimestamp: UInt64?,
+        /**
+            * File path to the avatar image on disk (if available)
+            */ avatarPath: String?,
+        /**
+            * Phone number in E.164 format (contacts only)
+            */ phoneNumber: String?
     ) {
         self.id = id
         self.name = name
@@ -791,6 +820,8 @@ public struct Channel {
         self.unreadCount = unreadCount
         self.lastMessage = lastMessage
         self.lastMessageTimestamp = lastMessageTimestamp
+        self.avatarPath = avatarPath
+        self.phoneNumber = phoneNumber
     }
 }
 
@@ -814,6 +845,12 @@ extension Channel: Equatable, Hashable {
         if lhs.lastMessageTimestamp != rhs.lastMessageTimestamp {
             return false
         }
+        if lhs.avatarPath != rhs.avatarPath {
+            return false
+        }
+        if lhs.phoneNumber != rhs.phoneNumber {
+            return false
+        }
         return true
     }
 
@@ -824,6 +861,8 @@ extension Channel: Equatable, Hashable {
         hasher.combine(unreadCount)
         hasher.combine(lastMessage)
         hasher.combine(lastMessageTimestamp)
+        hasher.combine(avatarPath)
+        hasher.combine(phoneNumber)
     }
 }
 
@@ -839,7 +878,9 @@ public struct FfiConverterTypeChannel: FfiConverterRustBuffer {
                 isGroup: FfiConverterBool.read(from: &buf),
                 unreadCount: FfiConverterUInt32.read(from: &buf),
                 lastMessage: FfiConverterOptionString.read(from: &buf),
-                lastMessageTimestamp: FfiConverterOptionUInt64.read(from: &buf)
+                lastMessageTimestamp: FfiConverterOptionUInt64.read(from: &buf),
+                avatarPath: FfiConverterOptionString.read(from: &buf),
+                phoneNumber: FfiConverterOptionString.read(from: &buf)
             )
     }
 
@@ -850,6 +891,8 @@ public struct FfiConverterTypeChannel: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.unreadCount, into: &buf)
         FfiConverterOptionString.write(value.lastMessage, into: &buf)
         FfiConverterOptionUInt64.write(value.lastMessageTimestamp, into: &buf)
+        FfiConverterOptionString.write(value.avatarPath, into: &buf)
+        FfiConverterOptionString.write(value.phoneNumber, into: &buf)
     }
 }
 
@@ -1757,6 +1800,9 @@ private var initializationResult: InitializationResult = {
     let scaffolding_contract_version = ffi_presage_rn_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
+    }
+    if uniffi_presage_rn_checksum_method_signalclient_fetch_all_avatars() != 14777 {
+        return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_get_channels() != 33227 {
         return InitializationResult.apiChecksumMismatch

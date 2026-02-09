@@ -9,13 +9,14 @@ use futures_util::StreamExt;
 use parking_lot::RwLock;
 use presage::libsignal_service::configuration::SignalServers;
 use presage::libsignal_service::content::{Content, ContentBody};
-use presage::libsignal_service::protocol::Aci;
+use presage::libsignal_service::protocol::{Aci, ServiceId};
+use presage::libsignal_service::zkgroup::profiles::ProfileKey;
 use presage::manager::Registered;
 use presage::model::identity::OnNewIdentity;
 use presage::proto::{DataMessage, GroupContextV2};
 use presage::store::{ContentsStore, Thread};
 use presage_store_sqlite::SqliteStore;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::callbacks::{LinkingCallback, MessageListener};
@@ -31,6 +32,8 @@ pub struct SignalClient {
     manager: RwLock<Option<PresageManager>>,
     /// SQLite store path
     store_path: PathBuf,
+    /// Data directory (parent of store_path)
+    data_dir: PathBuf,
     /// The tokio runtime for async operations
     runtime: tokio::runtime::Runtime,
     /// Flag to stop receiving
@@ -93,9 +96,12 @@ impl SignalClient {
             }
         })?;
 
+        let data_dir = PathBuf::from(&data_dir);
+
         Ok(Arc::new(Self {
             manager: RwLock::new(manager),
             store_path,
+            data_dir,
             runtime,
             stop_flag: Arc::new(AtomicBool::new(false)),
             user_id: RwLock::new(user_id),
@@ -223,6 +229,8 @@ impl SignalClient {
     pub fn get_channels(&self) -> Result<Vec<Channel>, SignalError> {
         let manager_guard = self.manager.read();
         let manager = manager_guard.as_ref().ok_or(SignalError::NotLinked)?;
+        let avatars_dir = self.data_dir.join("avatars");
+        let _ = std::fs::create_dir_all(&avatars_dir);
 
         self.runtime.block_on(async {
             let mut channels = Vec::new();
@@ -234,13 +242,61 @@ impl SignalClient {
                         if contact.name.is_empty() {
                             continue;
                         }
+
+                        let channel_id = contact.uuid.to_string();
+                        let avatar_file = avatars_dir.join(&channel_id);
+
+                        // Check if avatar is already on disk
+                        let mut avatar_path = if avatar_file.exists() {
+                            Some(avatar_file.to_string_lossy().to_string())
+                        } else {
+                            None
+                        };
+
+                        // If not on disk, try reading from the store cache
+                        if avatar_path.is_none() {
+                            // Resolve profile key: try contact field first, then store
+                            let profile_key = if let Ok(key_bytes) =
+                                <Vec<u8> as TryInto<[u8; 32]>>::try_into(
+                                    contact.profile_key.clone(),
+                                ) {
+                                Some(ProfileKey::create(key_bytes))
+                            } else {
+                                let sid: ServiceId = Aci::from(contact.uuid).into();
+                                manager
+                                    .store()
+                                    .profile_key(&sid)
+                                    .await
+                                    .ok()
+                                    .flatten()
+                            };
+
+                            if let Some(profile_key) = profile_key {
+                                if let Ok(Some(avatar_bytes)) =
+                                    manager.store().profile_avatar(contact.uuid, profile_key).await
+                                {
+                                    if !avatar_bytes.is_empty() {
+                                        if std::fs::write(&avatar_file, &avatar_bytes).is_ok() {
+                                            avatar_path =
+                                                Some(avatar_file.to_string_lossy().to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         channels.push(Channel {
-                            id: contact.uuid.to_string(),
+                            id: channel_id,
                             name: contact.name.clone(),
                             is_group: false,
                             unread_count: 0,
                             last_message: None,
                             last_message_timestamp: None,
+                            avatar_path,
+                            phone_number: contact
+                                .phone_number
+                                .as_ref()
+                                .map(|p| p.to_string()),
                         });
                     }
                 }
@@ -254,6 +310,31 @@ impl SignalClient {
                         match group_result {
                             Ok((master_key_bytes, group)) => {
                                 let group_id = hex::encode(&master_key_bytes);
+                                let avatar_file = avatars_dir.join(&group_id);
+
+                                // Check if avatar is already on disk
+                                let mut avatar_path = if avatar_file.exists() {
+                                    Some(avatar_file.to_string_lossy().to_string())
+                                } else {
+                                    None
+                                };
+
+                                // If not on disk, try reading from the store cache
+                                if avatar_path.is_none() {
+                                    if let Ok(Some(avatar_bytes)) =
+                                        manager.store().group_avatar(master_key_bytes).await
+                                    {
+                                        if !avatar_bytes.is_empty() {
+                                            if std::fs::write(&avatar_file, &avatar_bytes).is_ok()
+                                            {
+                                                avatar_path = Some(
+                                                    avatar_file.to_string_lossy().to_string(),
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+
                                 info!("Found group: '{}' (id: {})", group.title, group_id);
                                 channels.push(Channel {
                                     id: group_id,
@@ -262,6 +343,8 @@ impl SignalClient {
                                     unread_count: 0,
                                     last_message: None,
                                     last_message_timestamp: None,
+                                    avatar_path,
+                                    phone_number: None,
                                 });
                                 group_count += 1;
                             }
@@ -440,6 +523,110 @@ impl SignalClient {
                 status: MessageStatus::Sent,
             })
         })
+        })
+    }
+
+    /// Fetch profile avatars for all contacts and group avatars from the network.
+    /// Writes avatar images to disk so that get_channels() can return their paths.
+    pub fn fetch_all_avatars(&self) -> Result<(), SignalError> {
+        let mut manager_guard = self.manager.write();
+        let manager = manager_guard.as_mut().ok_or(SignalError::NotLinked)?;
+        let avatars_dir = self.data_dir.join("avatars");
+        let _ = std::fs::create_dir_all(&avatars_dir);
+
+        self.runtime.block_on(async {
+            // Collect contacts with profile keys
+            let contacts: Vec<_> = match manager.store().contacts().await {
+                Ok(iter) => iter.filter_map(|r| r.ok()).collect(),
+                Err(e) => {
+                    warn!("Failed to load contacts for avatar fetch: {e}");
+                    vec![]
+                }
+            };
+
+            for contact in &contacts {
+                if contact.name.is_empty() {
+                    continue;
+                }
+                let avatar_file = avatars_dir.join(contact.uuid.to_string());
+                if avatar_file.exists() {
+                    continue;
+                }
+                // Resolve profile key: try contact field first, then store
+                let profile_key =
+                    if let Ok(key_bytes) = <Vec<u8> as TryInto<[u8; 32]>>::try_into(
+                        contact.profile_key.clone(),
+                    ) {
+                        Some(ProfileKey::create(key_bytes))
+                    } else {
+                        let sid: ServiceId = Aci::from(contact.uuid).into();
+                        manager
+                            .store()
+                            .profile_key(&sid)
+                            .await
+                            .ok()
+                            .flatten()
+                    };
+                let Some(profile_key) = profile_key else {
+                    continue;
+                };
+                match manager
+                    .retrieve_profile_avatar_by_uuid(contact.uuid, profile_key)
+                    .await
+                {
+                    Ok(Some(avatar_bytes)) if !avatar_bytes.is_empty() => {
+                        if let Err(e) = std::fs::write(&avatar_file, &avatar_bytes) {
+                            warn!("Failed to write avatar for {}: {e}", contact.uuid);
+                        } else {
+                            info!("Saved avatar for contact {}", contact.name);
+                        }
+                    }
+                    Ok(_) => {} // No avatar set
+                    Err(e) => {
+                        warn!("Failed to fetch avatar for {}: {e}", contact.name);
+                    }
+                }
+            }
+
+            // Collect groups
+            let groups: Vec<_> = match manager.store().groups().await {
+                Ok(iter) => iter.filter_map(|r| r.ok()).collect(),
+                Err(e) => {
+                    warn!("Failed to load groups for avatar fetch: {e}");
+                    vec![]
+                }
+            };
+
+            for (master_key_bytes, group) in &groups {
+                let group_id = hex::encode(master_key_bytes);
+                let avatar_file = avatars_dir.join(&group_id);
+                if avatar_file.exists() {
+                    continue;
+                }
+                if group.avatar.is_empty() {
+                    continue;
+                }
+                let context = GroupContextV2 {
+                    master_key: Some(master_key_bytes.to_vec()),
+                    revision: Some(group.revision),
+                    ..Default::default()
+                };
+                match manager.retrieve_group_avatar(context).await {
+                    Ok(Some(avatar_bytes)) if !avatar_bytes.is_empty() => {
+                        if let Err(e) = std::fs::write(&avatar_file, &avatar_bytes) {
+                            warn!("Failed to write group avatar for {}: {e}", group.title);
+                        } else {
+                            info!("Saved avatar for group {}", group.title);
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        warn!("Failed to fetch group avatar for {}: {e}", group.title);
+                    }
+                }
+            }
+
+            Ok(())
         })
     }
 
