@@ -77,6 +77,10 @@ import AppKit
 
   private func disableFocusRings(_ view: NSView) {
     view.focusRingType = .none
+    if let scrollView = view as? NSScrollView {
+      scrollView.hasVerticalScroller = false
+      scrollView.hasHorizontalScroller = false
+    }
     for subview in view.subviews {
       disableFocusRings(subview)
     }
