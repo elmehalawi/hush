@@ -9,7 +9,7 @@ require "#{ws_dir}/node_modules/react-native-macos/scripts/react_native_pods.rb"
 prepare_react_native_project!
 
 target 'signal-app-macOS' do
-  platform :macos, '14.0'
+  platform :macos, '26.0'
   use_native_modules!
 
   # Flags change depending on the env values.

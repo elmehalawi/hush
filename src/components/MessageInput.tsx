@@ -1,5 +1,7 @@
 import React, {useState} from 'react';
-import {View, TextInput, Pressable, Text, StyleSheet} from 'react-native';
+import {View, TextInput, StyleSheet} from 'react-native';
+import {GlassView} from './GlassView';
+import {GlassButton} from './GlassButton';
 
 interface MessageInputProps {
   onSend: (text: string) => void;
@@ -26,22 +28,25 @@ export function MessageInput({onSend, disabled}: MessageInputProps) {
 
   return (
     <View style={styles.container}>
-      <TextInput
-        style={styles.input}
-        value={text}
-        onChangeText={setText}
-        placeholder="Type a message..."
-        placeholderTextColor="#9e9e9e"
-        multiline
-        editable={!disabled}
-        onKeyPress={handleKeyPress}
-      />
-      <Pressable
-        style={[styles.button, disabled && styles.buttonDisabled]}
+      <GlassView style={styles.inputWrapper} cornerRadius={20}>
+        <TextInput
+          style={styles.input}
+          value={text}
+          onChangeText={setText}
+          placeholder="Type a message..."
+          placeholderTextColor="#9e9e9e"
+          multiline
+          editable={!disabled}
+          onKeyPress={handleKeyPress}
+        />
+      </GlassView>
+      <GlassButton
+        style={styles.button}
+        title="Send"
+        bezelColor="#007AFF"
         onPress={handleSend}
-        disabled={disabled || text.trim().length === 0}>
-        <Text style={styles.buttonText}>Send</Text>
-      </Pressable>
+        disabled={disabled || text.trim().length === 0}
+      />
     </View>
   );
 }
@@ -51,35 +56,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     padding: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    backgroundColor: '#ffffff',
   },
-  input: {
+  inputWrapper: {
     flex: 1,
     minHeight: 40,
     maxHeight: 120,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 20,
+    marginRight: 8,
+  },
+  input: {
+    flex: 1,
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 15,
-    marginRight: 8,
+    backgroundColor: 'transparent',
   },
   button: {
-    backgroundColor: '#2196f3',
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonDisabled: {
-    backgroundColor: '#bdbdbd',
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 15,
-    fontWeight: '600',
+    height: 40,
+    minWidth: 60,
   },
 });

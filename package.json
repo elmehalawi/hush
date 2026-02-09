@@ -7,7 +7,8 @@
     "macos": "react-native run-macos",
     "macos:dev": "npm run start & sleep 5 && open macos/build/Build/Products/Debug/signal-app.app",
     "macos:fresh": "rm -rf /tmp/signal-app-data && npm run macos:dev",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "postinstall": "npx patch-package"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

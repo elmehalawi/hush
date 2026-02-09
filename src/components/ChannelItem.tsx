@@ -1,6 +1,7 @@
 import React from 'react';
 import {View, Text, Pressable, StyleSheet} from 'react-native';
 import {Channel} from '../store/signalStore';
+import {colors} from '../theme/colors';
 
 interface ChannelItemProps {
   channel: Channel;
@@ -44,11 +45,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e0e0e0',
   },
   selected: {
-    backgroundColor: '#e3f2fd',
+    backgroundColor: 'rgba(0, 122, 255, 0.15)',
   },
   avatar: {
     width: 40,
@@ -75,7 +74,7 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 15,
     fontWeight: '500',
-    color: '#212121',
+    color: colors.label,
     flex: 1,
   },
   badge: {
@@ -95,7 +94,7 @@ const styles = StyleSheet.create({
   },
   preview: {
     fontSize: 13,
-    color: '#757575',
+    color: colors.secondaryLabel,
     marginTop: 2,
   },
 });

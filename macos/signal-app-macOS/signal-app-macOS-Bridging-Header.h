@@ -4,6 +4,10 @@
 
 #import <React/RCTBridgeModule.h>
 #import <React/RCTEventEmitter.h>
+#import <React/RCTViewManager.h>
+#import <React/RCTComponent.h>
+#import <React/RCTUIKit.h>
+#import <React/UIView+React.h>
 
 // UniFFI generated FFI header
 #import "presage_rnFFI.h"

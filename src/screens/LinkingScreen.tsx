@@ -19,14 +19,11 @@ function QRCodeView({value, size}: {value: string; size: number}) {
       margin: 1,
     })
       .then(() => {
-        // We just needed to verify it works, now get the actual matrix
-        // Use create() to get the raw QR data
         const qr = QRCodeLib.create(value, {errorCorrectionLevel: 'M'});
         const modules = qr.modules;
         const data = modules.data;
         const qrSize = modules.size;
 
-        // Convert to 2D boolean array
         const grid: boolean[][] = [];
         for (let row = 0; row < qrSize; row++) {
           const rowData: boolean[] = [];
@@ -39,7 +36,6 @@ function QRCodeView({value, size}: {value: string; size: number}) {
         setError(null);
       })
       .catch(err => {
-        // toDataURL failed (needs canvas), try create() directly
         try {
           const qr = QRCodeLib.create(value, {errorCorrectionLevel: 'M'});
           const modules = qr.modules;
@@ -99,7 +95,6 @@ function QRCodeView({value, size}: {value: string; size: number}) {
 }
 
 export function LinkingScreen({qrUrl, error, isLinking}: LinkingScreenProps) {
-  // Debug logging
   useEffect(() => {
     console.warn('LinkingScreen props - qrUrl:', qrUrl ? `(${qrUrl.length} chars)` : 'null', 'error:', error, 'isLinking:', isLinking);
   }, [qrUrl, error, isLinking]);

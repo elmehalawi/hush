@@ -13,7 +13,19 @@
   self.initialProps = @{};
   self.dependencyProvider = [RCTAppDependencyProvider new];
   
-  return [super applicationDidFinishLaunching:notification];
+  [super applicationDidFinishLaunching:notification];
+
+  // Configure window for liquid glass (macOS Tahoe)
+  NSWindow *window = [NSApp mainWindow];
+  if (!window) {
+    window = [[NSApp windows] firstObject];
+  }
+  if (window) {
+    window.titlebarAppearsTransparent = YES;
+    window.titleVisibility = NSWindowTitleHidden;
+    window.styleMask |= NSWindowStyleMaskFullSizeContentView;
+    window.backgroundColor = [NSColor windowBackgroundColor];
+  }
 }
 
 - (NSURL *)sourceURLForBridge:(RCTBridge *)bridge

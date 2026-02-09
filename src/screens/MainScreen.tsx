@@ -3,6 +3,9 @@ import {View, StyleSheet} from 'react-native';
 import {useSignalStore} from '../store/signalStore';
 import {ChannelList} from '../components/ChannelList';
 import {ChatView} from '../components/ChatView';
+import {MessageInput} from '../components/MessageInput';
+import {GlassView} from '../components/GlassView';
+import {GlassContainerView} from '../components/GlassContainerView';
 
 interface MainScreenProps {
   onSendMessage: (channelId: string, text: string) => void;
@@ -37,20 +40,29 @@ export function MainScreen({onSendMessage, onSelectChannel}: MainScreenProps) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.sidebar}>
+      {/* Chat area fills behind sidebar and input */}
+      <View style={styles.chatArea}>
+        <ChatView
+          channel={selectedChannel}
+          messages={channelMessages}
+        />
+      </View>
+
+      {/* Glass sidebar overlay */}
+      <GlassView style={styles.sidebar} cornerRadius={16}>
         <ChannelList
           channels={channels}
           selectedId={selectedChannelId}
           onSelect={handleSelectChannel}
         />
-      </View>
-      <View style={styles.main}>
-        <ChatView
-          channel={selectedChannel}
-          messages={channelMessages}
-          onSendMessage={handleSendMessage}
-        />
-      </View>
+      </GlassView>
+
+      {/* Glass input bar floating at bottom over chat area */}
+      {selectedChannel && (
+        <GlassContainerView style={styles.inputContainer}>
+          <MessageInput onSend={handleSendMessage} />
+        </GlassContainerView>
+      )}
     </View>
   );
 }
@@ -58,12 +70,27 @@ export function MainScreen({onSendMessage, onSelectChannel}: MainScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    flexDirection: 'row',
+  },
+  chatArea: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 292,
+    right: 0,
   },
   sidebar: {
-    width: 280,
+    position: 'absolute',
+    top: 12,
+    bottom: 12,
+    left: 12,
+    width: 268,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
-  main: {
-    flex: 1,
+  inputContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 292,
+    right: 0,
   },
 });

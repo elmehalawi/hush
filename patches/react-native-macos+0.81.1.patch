@@ -1,0 +1,35 @@
+diff --git a/node_modules/react-native-macos/Libraries/StyleSheet/PlatformColorValueTypes.macos.js b/node_modules/react-native-macos/Libraries/StyleSheet/PlatformColorValueTypes.macos.js
+index 29ae835..df23765 100644
+--- a/node_modules/react-native-macos/Libraries/StyleSheet/PlatformColorValueTypes.macos.js
++++ b/node_modules/react-native-macos/Libraries/StyleSheet/PlatformColorValueTypes.macos.js
+@@ -82,7 +82,7 @@ const _normalizeColorObject = (
+     // a macOS semantic color
+     return color;
+   } else if ('dynamic' in color && color.dynamic !== undefined) {
+-    const normalizeColor = require('./normalizeColor');
++    const normalizeColor = require('./normalizeColor').default;
+ 
+     // a dynamic, appearance aware color
+     const dynamic = color.dynamic;
+@@ -103,7 +103,7 @@ const _normalizeColorObject = (
+     'colorWithSystemEffect' in color &&
+     color.colorWithSystemEffect != null
+   ) {
+-    const normalizeColor = require('./normalizeColor');
++    const normalizeColor = require('./normalizeColor').default;
+     const colorWithSystemEffect = color.colorWithSystemEffect;
+     const colorObject: LocalNativeColorValue = {
+       colorWithSystemEffect: {
+diff --git a/node_modules/react-native-macos/React/Base/Surface/SurfaceHostingView/RCTSurfaceHostingView.mm b/node_modules/react-native-macos/React/Base/Surface/SurfaceHostingView/RCTSurfaceHostingView.mm
+index b2b984b..137dfcc 100644
+--- a/node_modules/react-native-macos/React/Base/Surface/SurfaceHostingView/RCTSurfaceHostingView.mm
++++ b/node_modules/react-native-macos/React/Base/Surface/SurfaceHostingView/RCTSurfaceHostingView.mm
+@@ -48,7 +48,7 @@ - (instancetype)initWithSurface:(id<RCTSurfaceProtocol>)surface
+     [self _updateViews];
+ 
+     // For backward compatibility with RCTRootView, set a color here instead of transparent (OS default).
+-    self.backgroundColor = [RCTUIColor whiteColor]; // [macOS]
++    self.backgroundColor = [RCTUIColor clearColor]; // [macOS] transparent for system dark/light mode
+   }
+ 
+   return self;
