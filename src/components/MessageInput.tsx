@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useState, useRef, useImperativeHandle, forwardRef} from 'react';
 import {View, TextInput, StyleSheet, useColorScheme} from 'react-native';
 import {GlassView} from './GlassView';
 import {GlassButton} from './GlassButton';
@@ -8,44 +8,63 @@ interface MessageInputProps {
   disabled?: boolean;
 }
 
-export function MessageInput({onSend, disabled}: MessageInputProps) {
-  const [text, setText] = useState('');
-  const isDark = useColorScheme() === 'dark';
-
-  const handleSend = () => {
-    const trimmed = text.trim();
-    if (trimmed.length > 0) {
-      onSend(trimmed);
-    }
-    setText('');
-  };
-
-  return (
-    <View style={styles.container}>
-      <GlassView style={styles.inputWrapper} cornerRadius={20}>
-        <TextInput
-          style={[styles.input, isDark && {color: '#FFFFFF'}]}
-          value={text}
-          onChangeText={setText}
-          placeholder="Signal Message"
-          placeholderTextColor="#9e9e9e"
-          multiline
-          submitBehavior="submit"
-          blurOnSubmit={false}
-          onSubmitEditing={handleSend}
-          editable={!disabled}
-        />
-      </GlassView>
-      <GlassButton
-        style={styles.sendButton}
-        symbolName="arrow.up"
-        bezelColor="#007AFF"
-        onPress={handleSend}
-        disabled={disabled || text.trim().length === 0}
-      />
-    </View>
-  );
+export interface MessageInputHandle {
+  focus: () => void;
+  insertText: (letter: string) => void;
 }
+
+export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
+  function MessageInput({onSend, disabled}, ref) {
+    const [text, setText] = useState('');
+    const isDark = useColorScheme() === 'dark';
+    const inputRef = useRef<TextInput>(null);
+
+    useImperativeHandle(ref, () => ({
+      focus: () => {
+        inputRef.current?.focus();
+      },
+      insertText: (letter: string) => {
+        setText(prev => prev + letter);
+        inputRef.current?.focus();
+      },
+    }));
+
+    const handleSend = () => {
+      const trimmed = text.trim();
+      if (trimmed.length > 0) {
+        onSend(trimmed);
+      }
+      setText('');
+    };
+
+    return (
+      <View style={styles.container}>
+        <GlassView style={styles.inputWrapper} cornerRadius={20}>
+          <TextInput
+            ref={inputRef}
+            style={[styles.input, isDark && {color: '#FFFFFF'}]}
+            value={text}
+            onChangeText={setText}
+            placeholder="Signal Message"
+            placeholderTextColor="#9e9e9e"
+            multiline
+            submitBehavior="submit"
+            blurOnSubmit={false}
+            onSubmitEditing={handleSend}
+            editable={!disabled}
+          />
+        </GlassView>
+        <GlassButton
+          style={styles.sendButton}
+          symbolName="arrow.up"
+          bezelColor="#007AFF"
+          onPress={handleSend}
+          disabled={disabled || text.trim().length === 0}
+        />
+      </View>
+    );
+  },
+);
 
 const styles = StyleSheet.create({
   container: {

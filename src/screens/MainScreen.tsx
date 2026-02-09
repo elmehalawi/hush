@@ -1,11 +1,16 @@
-import React, {useCallback, useRef, useState} from 'react';
-import {View, StyleSheet, PanResponder} from 'react-native';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
+import {View, StyleSheet, PanResponder, NativeModules, NativeEventEmitter} from 'react-native';
 import {useSignalStore} from '../store/signalStore';
 import {ChannelList} from '../components/ChannelList';
 import {ChatView} from '../components/ChatView';
-import {MessageInput} from '../components/MessageInput';
+import {MessageInput, MessageInputHandle} from '../components/MessageInput';
 import {GlassView} from '../components/GlassView';
 import {GlassContainerView} from '../components/GlassContainerView';
+
+const {CommandPaletteModule} = NativeModules;
+const emitter = CommandPaletteModule
+  ? new NativeEventEmitter(CommandPaletteModule)
+  : null;
 
 const SIDEBAR_DEFAULT = 268;
 const SIDEBAR_MIN = 100;
@@ -27,6 +32,7 @@ export function MainScreen({onSendMessage, onSelectChannel}: MainScreenProps) {
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
   const startWidthRef = useRef(SIDEBAR_DEFAULT);
   const currentWidthRef = useRef(SIDEBAR_DEFAULT);
+  const inputRef = useRef<MessageInputHandle>(null);
 
   const selectedChannel = channels.find(c => c.id === selectedChannelId) || null;
   const channelMessages = selectedChannelId ? messages[selectedChannelId] || [] : [];
@@ -69,6 +75,49 @@ export function MainScreen({onSendMessage, onSelectChannel}: MainScreenProps) {
     [selectedChannelId, onSendMessage],
   );
 
+  // Channel navigation shortcut handler
+  useEffect(() => {
+    if (!emitter) return;
+
+    const navSub = emitter.addListener(
+      'onNavigateChannel',
+      (event: {direction: string}) => {
+        const sorted = useSignalStore.getState().channels
+          .slice()
+          .sort((a, b) => (b.lastMessageTimestamp ?? 0) - (a.lastMessageTimestamp ?? 0));
+        if (sorted.length === 0) return;
+
+        const currentId = useSignalStore.getState().selectedChannelId;
+        const currentIndex = currentId ? sorted.findIndex(c => c.id === currentId) : -1;
+
+        let nextIndex: number;
+        if (currentIndex === -1) {
+          nextIndex = 0;
+        } else if (event.direction === 'next') {
+          nextIndex = Math.min(currentIndex + 1, sorted.length - 1);
+        } else {
+          nextIndex = Math.max(currentIndex - 1, 0);
+        }
+
+        const nextChannel = sorted[nextIndex];
+        setSelectedChannelId(nextChannel.id);
+        onSelectChannel(nextChannel.id);
+      },
+    );
+
+    const letterSub = emitter.addListener(
+      'onLetterTyped',
+      (event: {letter: string}) => {
+        inputRef.current?.insertText(event.letter);
+      },
+    );
+
+    return () => {
+      navSub.remove();
+      letterSub.remove();
+    };
+  }, [setSelectedChannelId, onSelectChannel]);
+
   return (
     <View style={styles.container}>
       {/* Chat area fills behind sidebar and input */}
@@ -100,7 +149,7 @@ export function MainScreen({onSendMessage, onSelectChannel}: MainScreenProps) {
       {/* Glass input bar floating at bottom over chat area */}
       {selectedChannel && (
         <GlassContainerView style={[styles.inputContainer, {left: chatLeft}]}>
-          <MessageInput onSend={handleSendMessage} />
+          <MessageInput ref={inputRef} onSend={handleSendMessage} />
         </GlassContainerView>
       )}
     </View>
