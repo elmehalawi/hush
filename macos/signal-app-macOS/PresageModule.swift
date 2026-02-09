@@ -3,6 +3,7 @@ import Contacts
 import AVFoundation
 import AppKit
 import Quartz
+import UserNotifications
 
 @objc(PresageModule)
 class PresageModule: RCTEventEmitter {
@@ -15,6 +16,12 @@ class PresageModule: RCTEventEmitter {
     private var currentQrCodeUrl: String?  // Always stores the current QR URL for polling
     private let queueLock = NSLock()
 
+    // Notifications
+    private var notificationsAuthorized = false
+    private var channelNameCache: [String: String] = [:]
+    private var channelAvatarCache: [String: String] = [:]
+    private let avatarCacheLock = NSLock()
+
     override init() {
         super.init()
     }
@@ -24,7 +31,7 @@ class PresageModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onMessage", "onChannelUpdated", "onLinkingQrCode", "onLinkingComplete", "onError"]
+        return ["onMessage", "onChannelUpdated", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked"]
     }
 
     override func startObserving() {
@@ -90,6 +97,17 @@ class PresageModule: RCTEventEmitter {
 
                 self.client = try SignalClient(dataDir: dataDir)
                 NSLog("PresageModule: SignalClient created successfully")
+
+                // Request notification permissions
+                let center = UNUserNotificationCenter.current()
+                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                    NSLog("PresageModule: Notification authorization granted: \(granted)")
+                    self.notificationsAuthorized = granted
+                }
+                let handler = NotificationDelegateHandler.shared
+                handler.presageModule = self
+                center.delegate = handler
+
                 resolver(nil)
             } catch {
                 NSLog("PresageModule: ERROR - \(error)")
@@ -186,10 +204,21 @@ class PresageModule: RCTEventEmitter {
                 let channels = try client.getChannels()
                 let channelDicts = channels.map { channel -> [String: Any?] in
                     var dict = self.channelToDict(channel)
+                    // Cache channel name and avatar for notifications
+                    self.avatarCacheLock.lock()
+                    self.channelNameCache[channel.id] = channel.name
+                    if let avatarPath = channel.avatarPath {
+                        self.channelAvatarCache[channel.id] = avatarPath
+                    }
+                    self.avatarCacheLock.unlock()
                     // For contacts without a Signal profile picture, try macOS Contacts
                     if channel.avatarPath == nil && !channel.isGroup {
                         if let path = self.findContactPhoto(phoneNumber: channel.phoneNumber, name: channel.name, channelId: channel.id) {
                             dict["avatarPath"] = path
+                            // Also cache the macOS Contacts avatar
+                            self.avatarCacheLock.lock()
+                            self.channelAvatarCache[channel.id] = path
+                            self.avatarCacheLock.unlock()
                         }
                     }
                     return dict
@@ -246,8 +275,15 @@ class PresageModule: RCTEventEmitter {
         let listener = MessageListenerImpl(
             onMessage: { [weak self] message in
                 self?.sendEventIfListening("onMessage", body: self?.messageToDict(message))
+                self?.postNotification(for: message)
             },
             onChannelUpdated: { [weak self] channel in
+                self?.avatarCacheLock.lock()
+                self?.channelNameCache[channel.id] = channel.name
+                if let avatarPath = channel.avatarPath {
+                    self?.channelAvatarCache[channel.id] = avatarPath
+                }
+                self?.avatarCacheLock.unlock()
                 self?.sendEventIfListening("onChannelUpdated", body: self?.channelToDict(channel))
             },
             onError: { [weak self] error in
@@ -457,6 +493,54 @@ class PresageModule: RCTEventEmitter {
         case .failed: return "failed"
         }
     }
+
+    // MARK: - Notifications
+
+    private func postNotification(for message: Message) {
+        guard !message.isOutgoing, notificationsAuthorized else { return }
+
+        let content = UNMutableNotificationContent()
+        avatarCacheLock.lock()
+        let channelName = channelNameCache[message.channelId]
+        avatarCacheLock.unlock()
+        content.title = message.senderName ?? channelName ?? "Unknown"
+        if let body = message.body, !body.isEmpty {
+            content.body = body
+        } else if !message.attachments.isEmpty {
+            content.body = "Sent an attachment"
+        }
+        content.sound = .default
+        content.userInfo = ["channelId": message.channelId]
+
+        // Attach avatar if available
+        avatarCacheLock.lock()
+        let avatarPath = channelAvatarCache[message.channelId]
+        avatarCacheLock.unlock()
+
+        if let avatarPath = avatarPath, FileManager.default.fileExists(atPath: avatarPath) {
+            let tempDir = NSTemporaryDirectory()
+            let tempPath = "\(tempDir)/notif-avatar-\(message.channelId).jpg"
+            try? FileManager.default.removeItem(atPath: tempPath)
+            try? FileManager.default.copyItem(atPath: avatarPath, toPath: tempPath)
+            if let attachment = try? UNNotificationAttachment(identifier: "avatar", url: URL(fileURLWithPath: tempPath), options: nil) {
+                content.attachments = [attachment]
+            }
+        }
+
+        let request = UNNotificationRequest(identifier: "msg-\(message.id)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                NSLog("PresageModule: Failed to post notification: \(error)")
+            }
+        }
+    }
+
+    func handleNotificationClick(channelId: String) {
+        sendEventIfListening("onNotificationClicked", body: ["channelId": channelId])
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
 }
 
 // MARK: - Callback Implementations
@@ -545,5 +629,26 @@ class QuickLookCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDe
 
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
         return fileURL
+    }
+}
+
+// MARK: - Notification Delegate
+
+class NotificationDelegateHandler: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = NotificationDelegateHandler()
+    weak var presageModule: PresageModule?
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        let userInfo = response.notification.request.content.userInfo
+        if let channelId = userInfo["channelId"] as? String {
+            DispatchQueue.main.async {
+                self.presageModule?.handleNotificationClick(channelId: channelId)
+            }
+        }
+        completionHandler()
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 }

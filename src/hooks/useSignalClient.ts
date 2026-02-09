@@ -308,6 +308,16 @@ export function useSignalClient() {
       presageEventEmitter.addListener('onChannelUpdated', (channel: NativeChannel) => {
         updateChannel(convertChannel(channel));
       }),
+      presageEventEmitter.addListener('onNotificationClicked', (event: {channelId: string}) => {
+        const {setSelectedChannelId} = useSignalStore.getState();
+        setSelectedChannelId(event.channelId);
+        if (PresageModule && isInitialized.current) {
+          PresageModule.getMessages(event.channelId, 50).then((msgs: NativeMessage[]) => {
+            const {setMessages} = useSignalStore.getState();
+            setMessages(event.channelId, msgs.map(convertMessage));
+          });
+        }
+      }),
       presageEventEmitter.addListener('onError', (event: {message: string}) => {
         console.error('Signal error:', event.message);
         // If we're in linking state, update to failed
