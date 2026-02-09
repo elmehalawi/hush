@@ -1,5 +1,5 @@
 import React, {useRef, useEffect} from 'react';
-import {View, ScrollView, Text, StyleSheet} from 'react-native';
+import {View, ScrollView, Text, StyleSheet, Image} from 'react-native';
 import {Message, Channel} from '../store/signalStore';
 import {MessageBubble} from './MessageBubble';
 import {GlassView} from './GlassView';
@@ -54,8 +54,17 @@ export function ChatView({channel, messages}: ChatViewProps) {
       <View style={styles.headerPillContainer} pointerEvents="none">
         <View style={styles.headerPillWrapper}>
           <View style={styles.pillAvatar}>
-            <GlassView style={StyleSheet.absoluteFill} cornerRadius={20} tintColor="rgba(30, 120, 255, 0.45)" />
-            <Text style={styles.pillAvatarText}>{initial}</Text>
+            {channel.avatarPath ? (
+              <Image
+                source={{uri: `file://${channel.avatarPath}`}}
+                style={styles.pillAvatarImage}
+              />
+            ) : (
+              <>
+                <GlassView style={StyleSheet.absoluteFill} cornerRadius={20} tintColor="rgba(30, 120, 255, 0.45)" />
+                <Text style={styles.pillAvatarText}>{initial}</Text>
+              </>
+            )}
           </View>
           <View style={styles.headerPill}>
             <GlassView style={StyleSheet.absoluteFill} cornerRadius={16} />
@@ -124,6 +133,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1,
+  },
+  pillAvatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   pillAvatarText: {
     color: 'white',

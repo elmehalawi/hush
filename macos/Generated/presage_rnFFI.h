@@ -328,6 +328,11 @@ void uniffi_presage_rn_fn_free_signalclient(void*_Nonnull ptr, RustCallStatus *_
 void*_Nonnull uniffi_presage_rn_fn_constructor_signalclient_new(RustBuffer data_dir, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_FETCH_ALL_AVATARS
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_FETCH_ALL_AVATARS
+void uniffi_presage_rn_fn_method_signalclient_fetch_all_avatars(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_GET_CHANNELS
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_GET_CHANNELS
 RustBuffer uniffi_presage_rn_fn_method_signalclient_get_channels(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -656,6 +661,12 @@ void ffi_presage_rn_rust_future_free_void(uint64_t handle
 #ifndef UNIFFI_FFIDEF_FFI_PRESAGE_RN_RUST_FUTURE_COMPLETE_VOID
 #define UNIFFI_FFIDEF_FFI_PRESAGE_RN_RUST_FUTURE_COMPLETE_VOID
 void ffi_presage_rn_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_FETCH_ALL_AVATARS
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_FETCH_ALL_AVATARS
+uint16_t uniffi_presage_rn_checksum_method_signalclient_fetch_all_avatars(void
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_GET_CHANNELS

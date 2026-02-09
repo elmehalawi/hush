@@ -39,4 +39,7 @@ RCT_EXTERN_METHOD(startReceiving:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(stopReceiving:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(fetchAllAvatars:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 @end

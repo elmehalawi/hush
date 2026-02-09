@@ -8,6 +8,7 @@ export interface Channel {
   unreadCount: number;
   lastMessage?: string;
   lastMessageTimestamp?: number;
+  avatarPath?: string;
 }
 
 export interface Message {

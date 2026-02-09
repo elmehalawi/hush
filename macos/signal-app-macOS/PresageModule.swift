@@ -1,4 +1,5 @@
 import Foundation
+import Contacts
 
 @objc(PresageModule)
 class PresageModule: RCTEventEmitter {
@@ -180,7 +181,16 @@ class PresageModule: RCTEventEmitter {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let channels = try client.getChannels()
-                let channelDicts = channels.map { self.channelToDict($0) }
+                let channelDicts = channels.map { channel -> [String: Any?] in
+                    var dict = self.channelToDict(channel)
+                    // For contacts without a Signal profile picture, try macOS Contacts
+                    if channel.avatarPath == nil && !channel.isGroup {
+                        if let path = self.findContactPhoto(phoneNumber: channel.phoneNumber, name: channel.name, channelId: channel.id) {
+                            dict["avatarPath"] = path
+                        }
+                    }
+                    return dict
+                }
                 resolver(channelDicts)
             } catch {
                 rejecter("GET_CHANNELS_ERROR", "Failed to get channels: \(error.localizedDescription)", error)
@@ -262,6 +272,93 @@ class PresageModule: RCTEventEmitter {
         resolver(nil)
     }
 
+    @objc(fetchAllAvatars:rejecter:)
+    func fetchAllAvatars(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let client = client else {
+            rejecter("NOT_INITIALIZED", "Client not initialized", nil)
+            return
+        }
+
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                try client.fetchAllAvatars()
+                resolver(nil)
+            } catch {
+                rejecter("AVATAR_ERROR", "Failed to fetch avatars: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
+    // MARK: - macOS Contacts Integration
+
+    private lazy var contactStore = CNContactStore()
+    private var contactsAccessGranted: Bool?
+
+    /// Look up a contact photo from macOS Contacts by phone number (preferred) or name (fallback).
+    /// Writes the image to the avatars directory and returns the file path.
+    private func findContactPhoto(phoneNumber: String?, name: String, channelId: String) -> String? {
+        // Check / request access on first call
+        if contactsAccessGranted == nil {
+            let semaphore = DispatchSemaphore(value: 0)
+            contactStore.requestAccess(for: .contacts) { granted, _ in
+                self.contactsAccessGranted = granted
+                semaphore.signal()
+            }
+            semaphore.wait()
+        }
+        guard contactsAccessGranted == true else { return nil }
+
+        let avatarsDir = "/tmp/signal-app-data/avatars"
+        let filePath = "\(avatarsDir)/\(channelId)"
+
+        // Already on disk from a previous lookup
+        if FileManager.default.fileExists(atPath: filePath) { return filePath }
+
+        let keysToFetch: [CNKeyDescriptor] = [
+            CNContactGivenNameKey as CNKeyDescriptor,
+            CNContactFamilyNameKey as CNKeyDescriptor,
+            CNContactPhoneNumbersKey as CNKeyDescriptor,
+            CNContactImageDataKey as CNKeyDescriptor,
+            CNContactImageDataAvailableKey as CNKeyDescriptor
+        ]
+
+        // Try phone number match first (most reliable)
+        if let phone = phoneNumber, !phone.isEmpty {
+            let phonePredicate = CNContact.predicateForContacts(matching: CNPhoneNumber(stringValue: phone))
+            if let contacts = try? contactStore.unifiedContacts(matching: phonePredicate, keysToFetch: keysToFetch) {
+                for contact in contacts {
+                    if contact.imageDataAvailable, let imageData = contact.imageData {
+                        try? FileManager.default.createDirectory(atPath: avatarsDir, withIntermediateDirectories: true)
+                        if FileManager.default.createFile(atPath: filePath, contents: imageData) {
+                            return filePath
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fall back to name-based search
+        let parts = name.split(separator: " ", maxSplits: 1)
+        let givenName = String(parts.first ?? "")
+        let familyName = parts.count > 1 ? String(parts[1]) : ""
+
+        let namePredicate = CNContact.predicateForContacts(matchingName: name)
+        if let contacts = try? contactStore.unifiedContacts(matching: namePredicate, keysToFetch: keysToFetch) {
+            for contact in contacts {
+                let nameMatches = (contact.givenName.lowercased() == givenName.lowercased()) &&
+                    (familyName.isEmpty || contact.familyName.lowercased() == familyName.lowercased())
+                if nameMatches, contact.imageDataAvailable, let imageData = contact.imageData {
+                    try? FileManager.default.createDirectory(atPath: avatarsDir, withIntermediateDirectories: true)
+                    if FileManager.default.createFile(atPath: filePath, contents: imageData) {
+                        return filePath
+                    }
+                }
+            }
+        }
+
+        return nil
+    }
+
     // MARK: - Helpers
 
     private func channelToDict(_ channel: Channel) -> [String: Any?] {
@@ -271,7 +368,9 @@ class PresageModule: RCTEventEmitter {
             "isGroup": channel.isGroup,
             "unreadCount": channel.unreadCount,
             "lastMessage": channel.lastMessage,
-            "lastMessageTimestamp": channel.lastMessageTimestamp.map { NSNumber(value: $0) }
+            "lastMessageTimestamp": channel.lastMessageTimestamp.map { NSNumber(value: $0) },
+            "avatarPath": channel.avatarPath,
+            "phoneNumber": channel.phoneNumber
         ]
     }
 

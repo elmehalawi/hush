@@ -21,6 +21,7 @@ interface NativeChannel {
   unreadCount: number;
   lastMessage: string | null;
   lastMessageTimestamp: number | null;
+  avatarPath: string | null;
 }
 
 interface NativeMessage {
@@ -43,6 +44,7 @@ function convertChannel(native: NativeChannel): Channel {
     unreadCount: native.unreadCount,
     lastMessage: native.lastMessage || undefined,
     lastMessageTimestamp: native.lastMessageTimestamp || undefined,
+    avatarPath: native.avatarPath || undefined,
   };
 }
 
@@ -111,9 +113,23 @@ export function useSignalClient() {
           // Ignore error getting user ID
         }
 
-        // Load channels
+        // Load channels (with any cached avatars already on disk)
         const channels = await PresageModule.getChannels();
         setChannels(channels.map(convertChannel));
+
+        // Fetch avatars from network in background, then refresh channels
+        PresageModule.fetchAllAvatars()
+          .then(async () => {
+            try {
+              const updated = await PresageModule.getChannels();
+              setChannels(updated.map(convertChannel));
+            } catch {
+              // Ignore refresh error
+            }
+          })
+          .catch(() => {
+            // Avatar fetch is best-effort
+          });
       }
     } catch (error) {
       console.error('Failed to initialize Signal client:', error);
@@ -255,8 +271,11 @@ export function useSignalClient() {
       presageEventEmitter.addListener('onLinkingComplete', () => {
         setIsLinked(true);
         setLinkingState({type: 'completed'});
-        // Refresh channels after linking
+        // Refresh channels after linking, then fetch avatars
         refreshChannels();
+        PresageModule.fetchAllAvatars()
+          .then(() => refreshChannels())
+          .catch(() => {});
       }),
       presageEventEmitter.addListener('onMessage', (message: NativeMessage) => {
         addMessage(convertMessage(message));

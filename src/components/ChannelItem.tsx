@@ -1,5 +1,5 @@
 import React from 'react';
-import {View, Text, Pressable, StyleSheet} from 'react-native';
+import {View, Text, Pressable, StyleSheet, Image} from 'react-native';
 import {Channel} from '../store/signalStore';
 import {GlassView} from './GlassView';
 import {colors} from '../theme/colors';
@@ -16,10 +16,19 @@ export function ChannelItem({channel, isSelected, onSelect}: ChannelItemProps) {
       style={[styles.container, isSelected && styles.selected]}
       onPress={() => onSelect(channel.id)}>
       <View style={styles.avatar}>
-        <GlassView style={StyleSheet.absoluteFill} cornerRadius={20} tintColor="rgba(30, 120, 255, 0.45)" />
-        <Text style={styles.avatarText}>
-          {channel.isGroup ? '#' : channel.name.charAt(0).toUpperCase()}
-        </Text>
+        {channel.avatarPath ? (
+          <Image
+            source={{uri: `file://${channel.avatarPath}`}}
+            style={styles.avatarImage}
+          />
+        ) : (
+          <>
+            <GlassView style={StyleSheet.absoluteFill} cornerRadius={20} tintColor="rgba(30, 120, 255, 0.45)" />
+            <Text style={styles.avatarText}>
+              {channel.isGroup ? '#' : channel.name.charAt(0).toUpperCase()}
+            </Text>
+          </>
+        )}
       </View>
       <View style={styles.content}>
         <View style={styles.header}>
@@ -60,6 +69,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+  },
+  avatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   avatarText: {
     color: 'white',
