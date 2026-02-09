@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A1B2C3D4E5F60718DEADBEEF /* SpaceKeyFix.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718BEEFDEAD /* SpaceKeyFix.m */; };
 		26FB31DB1E1FD03E4D185C99 /* PresageModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 95D825E99A0FD645C00F00C1 /* PresageModule.m */; };
 		42A2C1803AEA92B14FAD318A /* libPods-signal-app-macOS.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 618A2A6ABF8E27A8E3312058 /* libPods-signal-app-macOS.a */; };
 		5142014D2437B4B30078DB4F /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5142014C2437B4B30078DB4F /* AppDelegate.mm */; };
@@ -17,8 +16,15 @@
 		5F4D61A2DAE035D60F5B5669 /* PresageModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88072ED278358CE35CDB1B3B /* PresageModule.swift */; };
 		61A07EBCE7FD3C2C3080354A /* presage_rn.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF4F3294F0B388BC62D496B0 /* presage_rn.swift */; };
 		6E1AE3D49BD4788FD7AD7321 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4E9B0F71EAE6838AB6756B60 /* PrivacyInfo.xcprivacy */; };
+		A1B2C3D4E5F60718DEADBEEF /* SpaceKeyFix.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718BEEFDEAD /* SpaceKeyFix.m */; };
 		CF281B0187CE890B79CD7141 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4E9B0F71EAE6838AB6756B60 /* PrivacyInfo.xcprivacy */; };
 		F3C9B14F6A74289C100C59FD /* libpresage_rn.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 136E792A8A613D523E99B308 /* libpresage_rn.a */; };
+		GLASS001A00000000000001 /* GlassEffectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000001 /* GlassEffectView.swift */; };
+		GLASS001A00000000000002 /* GlassEffectViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000002 /* GlassEffectViewManager.m */; };
+		GLASS001A00000000000003 /* GlassContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000003 /* GlassContainerView.swift */; };
+		GLASS001A00000000000004 /* GlassContainerViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000004 /* GlassContainerViewManager.m */; };
+		GLASS001A00000000000005 /* GlassButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000005 /* GlassButton.swift */; };
+		GLASS001A00000000000006 /* GlassButtonManager.m in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000006 /* GlassButtonManager.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +49,12 @@
 		D07DEBCB56BA0C05D6686F13 /* Pods-signal-app-macOS.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-signal-app-macOS.debug.xcconfig"; path = "Target Support Files/Pods-signal-app-macOS/Pods-signal-app-macOS.debug.xcconfig"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		FF4F3294F0B388BC62D496B0 /* presage_rn.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = presage_rn.swift; sourceTree = "<group>"; };
+		GLASS001F00000000000001 /* GlassEffectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassEffectView.swift; sourceTree = "<group>"; };
+		GLASS001F00000000000002 /* GlassEffectViewManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GlassEffectViewManager.m; sourceTree = "<group>"; };
+		GLASS001F00000000000003 /* GlassContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassContainerView.swift; sourceTree = "<group>"; };
+		GLASS001F00000000000004 /* GlassContainerViewManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GlassContainerViewManager.m; sourceTree = "<group>"; };
+		GLASS001F00000000000005 /* GlassButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassButton.swift; sourceTree = "<group>"; };
+		GLASS001F00000000000006 /* GlassButtonManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GlassButtonManager.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -98,6 +110,12 @@
 				88072ED278358CE35CDB1B3B /* PresageModule.swift */,
 				95D825E99A0FD645C00F00C1 /* PresageModule.m */,
 				A1B2C3D4E5F60718BEEFDEAD /* SpaceKeyFix.m */,
+				GLASS001F00000000000001 /* GlassEffectView.swift */,
+				GLASS001F00000000000002 /* GlassEffectViewManager.m */,
+				GLASS001F00000000000003 /* GlassContainerView.swift */,
+				GLASS001F00000000000004 /* GlassContainerViewManager.m */,
+				GLASS001F00000000000005 /* GlassButton.swift */,
+				GLASS001F00000000000006 /* GlassButtonManager.m */,
 			);
 			path = "signal-app-macOS";
 			sourceTree = "<group>";
@@ -365,6 +383,12 @@
 				26FB31DB1E1FD03E4D185C99 /* PresageModule.m in Sources */,
 				A1B2C3D4E5F60718DEADBEEF /* SpaceKeyFix.m in Sources */,
 				61A07EBCE7FD3C2C3080354A /* presage_rn.swift in Sources */,
+				GLASS001A00000000000001 /* GlassEffectView.swift in Sources */,
+				GLASS001A00000000000002 /* GlassEffectViewManager.m in Sources */,
+				GLASS001A00000000000003 /* GlassContainerView.swift in Sources */,
+				GLASS001A00000000000004 /* GlassContainerViewManager.m in Sources */,
+				GLASS001A00000000000005 /* GlassButton.swift in Sources */,
+				GLASS001A00000000000006 /* GlassButtonManager.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -443,7 +467,7 @@
 					"$(inherited)",
 					"$(SRCROOT)/Generated",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -477,7 +501,7 @@
 					"$(inherited)",
 					"$(SRCROOT)/Generated",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

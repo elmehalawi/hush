@@ -1,5 +1,5 @@
 import React, {useEffect, useState, useRef} from 'react';
-import {SafeAreaView, StyleSheet, View, Text, Pressable} from 'react-native';
+import {View, StyleSheet, Text, Pressable} from 'react-native';
 import {useSignalStore} from './store/signalStore';
 import {useSignalClient} from './hooks/useSignalClient';
 import {LinkingScreen} from './screens/LinkingScreen';
@@ -73,11 +73,11 @@ function App(): React.JSX.Element {
   // Loading state
   if (isInitializing) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <View style={styles.loading}>
           <Text style={styles.loadingText}>Initializing...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -92,7 +92,7 @@ function App(): React.JSX.Element {
       linkingState.type === 'notStarted';
 
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <LinkingScreen qrUrl={qrUrl} error={error} isLinking={isLinking} />
         {error && (
           <Pressable
@@ -101,22 +101,22 @@ function App(): React.JSX.Element {
             <Text style={styles.retryButtonText}>Retry</Text>
           </Pressable>
         )}
-      </SafeAreaView>
+      </View>
     );
   }
 
   // Linked - show main screen
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <MainScreen onSendMessage={sendMessage} onSelectChannel={loadMessages} />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'transparent',
   },
   loading: {
     flex: 1,

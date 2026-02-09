@@ -2,6 +2,7 @@ import React from 'react';
 import {View, ScrollView, Text, StyleSheet} from 'react-native';
 import {Channel} from '../store/signalStore';
 import {ChannelItem} from './ChannelItem';
+import {colors} from '../theme/colors';
 
 interface ChannelListProps {
   channels: Channel[];
@@ -38,20 +39,17 @@ export function ChannelList({channels, selectedId, onSelect}: ChannelListProps) 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fafafa',
-    borderRightWidth: 1,
-    borderRightColor: '#e0e0e0',
   },
   header: {
     padding: 16,
+    paddingTop: 52,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    backgroundColor: '#ffffff',
+    borderBottomColor: colors.separator,
   },
   title: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#212121',
+    color: colors.label,
   },
   list: {
     flex: 1,
@@ -64,6 +62,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    color: '#757575',
+    color: colors.secondaryLabel,
   },
 });

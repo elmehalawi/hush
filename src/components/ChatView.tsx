@@ -2,15 +2,14 @@ import React, {useRef, useEffect} from 'react';
 import {View, ScrollView, Text, StyleSheet} from 'react-native';
 import {Message, Channel} from '../store/signalStore';
 import {MessageBubble} from './MessageBubble';
-import {MessageInput} from './MessageInput';
+import {colors} from '../theme/colors';
 
 interface ChatViewProps {
   channel: Channel | null;
   messages: Message[];
-  onSendMessage: (text: string) => void;
 }
 
-export function ChatView({channel, messages, onSendMessage}: ChatViewProps) {
+export function ChatView({channel, messages}: ChatViewProps) {
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -58,8 +57,6 @@ export function ChatView({channel, messages, onSendMessage}: ChatViewProps) {
           ))
         )}
       </ScrollView>
-
-      <MessageInput onSend={onSendMessage} />
     </View>
   );
 }
@@ -67,25 +64,24 @@ export function ChatView({channel, messages, onSendMessage}: ChatViewProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'transparent',
   },
   empty: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fafafa',
+    backgroundColor: 'transparent',
   },
   emptyText: {
     fontSize: 16,
-    color: '#757575',
+    color: colors.secondaryLabel,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    backgroundColor: '#ffffff',
+    paddingTop: 52,
+    backgroundColor: 'transparent',
   },
   avatar: {
     width: 36,
@@ -107,18 +103,19 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#212121',
+    color: colors.label,
   },
   headerSubtitle: {
     fontSize: 12,
-    color: '#757575',
+    color: colors.secondaryLabel,
   },
   messages: {
     flex: 1,
-    backgroundColor: '#fafafa',
+    backgroundColor: 'transparent',
   },
   messagesContent: {
     paddingVertical: 8,
+    paddingBottom: 80,
   },
   noMessages: {
     flex: 1,
@@ -128,11 +125,11 @@ const styles = StyleSheet.create({
   },
   noMessagesText: {
     fontSize: 15,
-    color: '#757575',
+    color: colors.secondaryLabel,
   },
   noMessagesHint: {
     fontSize: 13,
-    color: '#9e9e9e',
+    color: colors.tertiaryLabel,
     marginTop: 4,
   },
 });

@@ -1,6 +1,7 @@
 import React from 'react';
 import {View, Text, StyleSheet} from 'react-native';
 import {Message} from '../store/signalStore';
+import {colors} from '../theme/colors';
 
 interface MessageBubbleProps {
   message: Message;
@@ -95,12 +96,12 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 4,
   },
   bubbleIncoming: {
-    backgroundColor: '#e0e0e0',
+    backgroundColor: colors.incomingBubble,
     borderBottomLeftRadius: 4,
   },
   body: {
     fontSize: 15,
-    color: '#212121',
+    color: colors.incomingBody,
   },
   bodyOutgoing: {
     color: 'white',
