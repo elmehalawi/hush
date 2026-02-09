@@ -1,0 +1,42 @@
+{
+  "fill" : {
+    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "hush-foreground.svg",
+          "name" : "hush-foreground",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0,
+              49.40625
+            ]
+          }
+        },
+        {
+          "blend-mode" : "normal",
+          "glass" : true,
+          "image-name" : "hush-background.svg",
+          "name" : "hush-background"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}

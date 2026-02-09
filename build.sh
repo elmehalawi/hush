@@ -190,6 +190,29 @@ if [ ! -d "$APP_PATH" ]; then
     exit 1
 fi
 
+# Step 4.5: Compile app icon (.icon -> Assets.car + .icns)
+ICON_FILE="$MACOS_DIR/signal-app-macOS/HushIcon.icon"
+if [ -d "$ICON_FILE" ]; then
+    log_step "Compiling app icon..."
+    ICON_OUT=$(mktemp -d)
+    xcrun actool "$ICON_FILE" \
+        --compile "$ICON_OUT" \
+        --output-format human-readable-text --notices --warnings --errors \
+        --output-partial-info-plist "$ICON_OUT/partial.plist" \
+        --app-icon HushIcon --include-all-app-icons \
+        --enable-on-demand-resources NO \
+        --development-region en \
+        --target-device mac \
+        --minimum-deployment-target 26.0 \
+        --platform macosx
+    cp "$ICON_OUT/Assets.car" "$APP_PATH/Contents/Resources/Assets.car" 2>/dev/null || true
+    cp "$ICON_OUT/HushIcon.icns" "$APP_PATH/Contents/Resources/HushIcon.icns" 2>/dev/null || true
+    rm -rf "$ICON_OUT"
+    # Remove the raw .icon folder if it was copied by the build
+    rm -rf "$APP_PATH/Contents/Resources/HushIcon.icon" 2>/dev/null || true
+    echo "  App icon compiled and installed"
+fi
+
 echo ""
 echo -e "${GREEN}=========================================="
 echo "  Build Successful!"
