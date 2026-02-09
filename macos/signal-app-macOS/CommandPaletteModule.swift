@@ -60,6 +60,10 @@ class CommandPaletteModule: RCTEventEmitter {
                     self.panel?.hidePanel()
                     return nil
                 }
+                if event.keyCode == 53 { // Escape
+                    self.panel?.hidePanel()
+                    return nil
+                }
                 if event.keyCode == 36 { // Return/Enter
                     self.panel?.confirmSelection()
                     return nil

@@ -35,7 +35,7 @@ class ChannelRowView: NSView {
         avatarLabel.font = NSFont.systemFont(ofSize: 14, weight: .medium)
         avatarLabel.textColor = .white
         avatarLabel.alignment = .center
-        avatarLabel.frame = NSRect(x: 0, y: 0, width: 32, height: 32)
+        avatarLabel.translatesAutoresizingMaskIntoConstraints = false
 
         nameLabel = NSTextField(labelWithString: channel.name)
         nameLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
@@ -54,7 +54,13 @@ class ChannelRowView: NSView {
         addSubview(avatarView)
         avatarView.addSubview(avatarLabel)
 
-        // Load avatar image or show initial
+        NSLayoutConstraint.activate([
+            avatarLabel.centerXAnchor.constraint(equalTo: avatarView.centerXAnchor),
+            avatarLabel.centerYAnchor.constraint(equalTo: avatarView.centerYAnchor),
+            avatarLabel.widthAnchor.constraint(equalTo: avatarView.widthAnchor),
+        ])
+
+        // Load avatar image or show glass initial (matching channel list)
         if let path = channel.avatarPath, FileManager.default.fileExists(atPath: path),
            let image = NSImage(contentsOfFile: path) {
             avatarView.layer?.backgroundColor = NSColor.clear.cgColor
@@ -68,16 +74,18 @@ class ChannelRowView: NSView {
             avatarView.layer?.addSublayer(imgLayer)
             avatarImageLayer = imgLayer
         } else {
-            let colors: [NSColor] = [
-                NSColor(red: 0.35, green: 0.55, blue: 0.85, alpha: 1),
-                NSColor(red: 0.80, green: 0.45, blue: 0.45, alpha: 1),
-                NSColor(red: 0.45, green: 0.72, blue: 0.55, alpha: 1),
-                NSColor(red: 0.70, green: 0.55, blue: 0.80, alpha: 1),
-                NSColor(red: 0.85, green: 0.65, blue: 0.35, alpha: 1),
-            ]
-            let colorIndex = abs(channel.id.hashValue) % colors.count
-            avatarView.layer?.backgroundColor = colors[colorIndex].cgColor
-            let initial = String(channel.name.prefix(1)).uppercased()
+            let initial = channel.isGroup ? "#" : String(channel.name.prefix(1)).uppercased()
+            if #available(macOS 26.0, *) {
+                avatarView.layer?.backgroundColor = NSColor.clear.cgColor
+                let glass = NSGlassEffectView()
+                glass.cornerRadius = 16
+                glass.tintColor = NSColor(red: 0.118, green: 0.471, blue: 1.0, alpha: 0.45)
+                glass.frame = CGRect(x: 0, y: 0, width: 32, height: 32)
+                glass.autoresizingMask = [.width, .height]
+                avatarView.addSubview(glass, positioned: .below, relativeTo: avatarLabel)
+            } else {
+                avatarView.layer?.backgroundColor = NSColor(red: 0.118, green: 0.471, blue: 1.0, alpha: 0.45).cgColor
+            }
             avatarLabel.stringValue = initial
         }
 
