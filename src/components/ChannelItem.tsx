@@ -23,7 +23,7 @@ export function ChannelItem({channel, isSelected, onSelect}: ChannelItemProps) {
       </View>
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.name} numberOfLines={1}>
+          <Text style={[styles.name, isSelected && styles.nameSelected]} numberOfLines={1}>
             {channel.name}
           </Text>
           {channel.unreadCount > 0 && (
@@ -33,7 +33,7 @@ export function ChannelItem({channel, isSelected, onSelect}: ChannelItemProps) {
           )}
         </View>
         {channel.lastMessage && (
-          <Text style={styles.preview} numberOfLines={1}>
+          <Text style={[styles.preview, isSelected && styles.previewSelected]} numberOfLines={1}>
             {channel.lastMessage}
           </Text>
         )}
@@ -99,5 +99,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.secondaryLabel,
     marginTop: 2,
+  },
+  nameSelected: {
+    color: '#FFFFFF',
+  },
+  previewSelected: {
+    color: 'rgba(255, 255, 255, 0.75)',
   },
 });
