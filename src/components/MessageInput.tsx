@@ -20,13 +20,6 @@ export function MessageInput({onSend, disabled}: MessageInputProps) {
     setText('');
   };
 
-  const handleKeyPress = (e: any) => {
-    if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
   return (
     <View style={styles.container}>
       <GlassView style={styles.inputWrapper} cornerRadius={20}>
@@ -37,8 +30,10 @@ export function MessageInput({onSend, disabled}: MessageInputProps) {
           placeholder="Signal Message"
           placeholderTextColor="#9e9e9e"
           multiline
+          submitBehavior="submit"
+          blurOnSubmit={false}
+          onSubmitEditing={handleSend}
           editable={!disabled}
-          onKeyPress={handleKeyPress}
         />
       </GlassView>
       <GlassButton
