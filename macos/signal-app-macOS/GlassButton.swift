@@ -10,11 +10,30 @@ import AppKit
     }
   }
 
+  @objc var symbolName: String = "" {
+    didSet {
+      if !symbolName.isEmpty,
+         let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) {
+        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
+        button.image = image.withSymbolConfiguration(config)
+        button.imagePosition = title.isEmpty ? .imageOnly : .imageLeading
+      } else {
+        button.image = nil
+      }
+    }
+  }
+
   @objc var bezelColor: NSColor? {
     didSet {
       if let color = bezelColor {
         button.bezelColor = color
       }
+    }
+  }
+
+  @objc var enabled: Bool = true {
+    didSet {
+      button.isEnabled = enabled
     }
   }
 
@@ -27,6 +46,8 @@ import AppKit
     button.translatesAutoresizingMaskIntoConstraints = false
     button.target = self
     button.action = #selector(buttonPressed)
+    wantsLayer = true
+    layer?.masksToBounds = true
     addSubview(button)
     NSLayoutConstraint.activate([
       button.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -34,6 +55,11 @@ import AppKit
       button.topAnchor.constraint(equalTo: topAnchor),
       button.bottomAnchor.constraint(equalTo: bottomAnchor),
     ])
+  }
+
+  override func layout() {
+    super.layout()
+    layer?.cornerRadius = min(bounds.width, bounds.height) / 2
   }
 
   required init?(coder: NSCoder) {
