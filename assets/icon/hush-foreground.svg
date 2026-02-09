@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Foreground layer: Speech bubble with centered diminishing sound wave = "hush" -->
+
+  <!-- Speech bubble shape -->
+  <path d="
+    M 512 155
+    C 320 155 165 288 165 455
+    C 165 555 220 645 305 702
+    L 285 830
+    L 405 745
+    C 435 755 472 760 512 760
+    C 704 760 859 627 859 455
+    C 859 288 704 155 512 155
+    Z
+  " fill="white"/>
+
+  <!-- Sound wave bars - centered at y=455, decreasing height = "hushing" -->
+  <!-- Tallest bar -->
+  <rect x="335" y="345" width="44" height="220" rx="22" fill="#3A76F0"/>
+  <!-- Medium-tall bar -->
+  <rect x="415" y="375" width="44" height="160" rx="22" fill="#3A76F0"/>
+  <!-- Medium bar -->
+  <rect x="495" y="400" width="44" height="110" rx="22" fill="#3A76F0"/>
+  <!-- Short bar -->
+  <rect x="575" y="418" width="44" height="74" rx="22" fill="#3A76F0"/>
+  <!-- Dot bar -->
+  <rect x="655" y="433" width="44" height="44" rx="22" fill="#3A76F0"/>
+</svg>
