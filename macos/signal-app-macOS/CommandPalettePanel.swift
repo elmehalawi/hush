@@ -147,8 +147,10 @@ class ChannelRowView: NSView {
 // MARK: - Command Palette Panel
 
 class CommandPalettePanel: NSPanel, NSSearchFieldDelegate {
-    private let blurView: NSVisualEffectView
+    private let containerView: NSView
+    private var glassView: NSView? // NSGlassEffectView on macOS 26+
     private let searchField: NSSearchField
+    private let separatorView: NSView
     private let scrollView: NSScrollView
     private let stackView: NSStackView
     private var allChannels: [CommandPaletteChannelData] = []
@@ -160,8 +162,9 @@ class CommandPalettePanel: NSPanel, NSSearchFieldDelegate {
     var onDismissed: (() -> Void)?
 
     init() {
-        blurView = NSVisualEffectView()
+        containerView = NSView()
         searchField = NSSearchField()
+        separatorView = NSView()
         scrollView = NSScrollView()
         stackView = NSStackView()
 
@@ -188,25 +191,46 @@ class CommandPalettePanel: NSPanel, NSSearchFieldDelegate {
 
         setupBlurView()
         setupSearchField()
+        setupSeparator()
         setupScrollView()
     }
 
     private func setupBlurView() {
-        blurView.material = .headerView
-        blurView.blendingMode = .behindWindow
-        blurView.state = .active
-        blurView.wantsLayer = true
-        blurView.layer?.cornerRadius = 12
-        blurView.layer?.masksToBounds = true
+        containerView.wantsLayer = true
+        containerView.layer?.cornerRadius = 12
+        containerView.layer?.masksToBounds = true
 
-        // Subtle border
-        blurView.layer?.borderWidth = 0.5
-        blurView.layer?.borderColor = NSColor.white.withAlphaComponent(0.15).cgColor
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.cornerRadius = 12
+            glass.translatesAutoresizingMaskIntoConstraints = false
+            containerView.addSubview(glass, positioned: .below, relativeTo: nil)
+            NSLayoutConstraint.activate([
+                glass.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+                glass.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+                glass.topAnchor.constraint(equalTo: containerView.topAnchor),
+                glass.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            ])
+            glassView = glass
+        } else {
+            let blur = NSVisualEffectView()
+            blur.material = .headerView
+            blur.blendingMode = .behindWindow
+            blur.state = .active
+            blur.translatesAutoresizingMaskIntoConstraints = false
+            containerView.addSubview(blur, positioned: .below, relativeTo: nil)
+            NSLayoutConstraint.activate([
+                blur.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+                blur.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+                blur.topAnchor.constraint(equalTo: containerView.topAnchor),
+                blur.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            ])
+        }
 
         // Shadow on the panel itself
         hasShadow = true
 
-        contentView = blurView
+        contentView = containerView
     }
 
     private func setupSearchField() {
@@ -215,15 +239,50 @@ class CommandPalettePanel: NSPanel, NSSearchFieldDelegate {
         searchField.focusRingType = .none
         searchField.font = NSFont.systemFont(ofSize: 15)
         searchField.translatesAutoresizingMaskIntoConstraints = false
-        searchField.bezelStyle = .roundedBezel
+        searchField.isBordered = false
+        searchField.drawsBackground = false
+        searchField.backgroundColor = .clear
 
-        blurView.addSubview(searchField)
+        // Remove the built-in magnifying glass from the left
+        if let searchCell = searchField.cell as? NSSearchFieldCell {
+            searchCell.searchButtonCell = nil
+            searchCell.cancelButtonCell = nil
+        }
+
+        // Add a magnifying glass icon on the right
+        let magIcon = NSImageView()
+        magIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
+        magIcon.contentTintColor = .tertiaryLabelColor
+        magIcon.imageScaling = .scaleProportionallyDown
+        magIcon.translatesAutoresizingMaskIntoConstraints = false
+
+        containerView.addSubview(searchField)
+        containerView.addSubview(magIcon)
 
         NSLayoutConstraint.activate([
-            searchField.topAnchor.constraint(equalTo: blurView.topAnchor, constant: 12),
-            searchField.leadingAnchor.constraint(equalTo: blurView.leadingAnchor, constant: 12),
-            searchField.trailingAnchor.constraint(equalTo: blurView.trailingAnchor, constant: -12),
+            searchField.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
+            searchField.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
+            searchField.trailingAnchor.constraint(equalTo: magIcon.leadingAnchor, constant: -4),
             searchField.heightAnchor.constraint(equalToConstant: 28),
+
+            magIcon.centerYAnchor.constraint(equalTo: searchField.centerYAnchor),
+            magIcon.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -14),
+            magIcon.widthAnchor.constraint(equalToConstant: 16),
+            magIcon.heightAnchor.constraint(equalToConstant: 16),
+        ])
+    }
+
+    private func setupSeparator() {
+        separatorView.wantsLayer = true
+        separatorView.layer?.backgroundColor = NSColor.separatorColor.withAlphaComponent(0.3).cgColor
+        separatorView.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(separatorView)
+
+        NSLayoutConstraint.activate([
+            separatorView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 8),
+            separatorView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
+            separatorView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
+            separatorView.heightAnchor.constraint(equalToConstant: 0.5),
         ])
     }
 
@@ -246,13 +305,13 @@ class CommandPalettePanel: NSPanel, NSSearchFieldDelegate {
         clipView.documentView = stackView
         scrollView.contentView = clipView
 
-        blurView.addSubview(scrollView)
+        containerView.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 8),
-            scrollView.leadingAnchor.constraint(equalTo: blurView.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: blurView.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: blurView.bottomAnchor, constant: -8),
+            scrollView.topAnchor.constraint(equalTo: separatorView.bottomAnchor, constant: 4),
+            scrollView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8),
 
             stackView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
             stackView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
