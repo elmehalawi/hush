@@ -41,8 +41,8 @@ export function MessageInput({onSend, disabled}: MessageInputProps) {
         />
       </GlassView>
       <GlassButton
-        style={styles.button}
-        title="Send"
+        style={styles.sendButton}
+        symbolName="arrow.up"
         bezelColor="#007AFF"
         onPress={handleSend}
         disabled={disabled || text.trim().length === 0}
@@ -70,8 +70,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     backgroundColor: 'transparent',
   },
-  button: {
+  sendButton: {
+    width: 40,
     height: 40,
-    minWidth: 60,
   },
 });

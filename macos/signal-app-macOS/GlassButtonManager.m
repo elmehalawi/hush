@@ -19,7 +19,9 @@ RCT_EXPORT_MODULE(GlassButton)
 }
 
 RCT_EXPORT_VIEW_PROPERTY(title, NSString)
+RCT_EXPORT_VIEW_PROPERTY(symbolName, NSString)
 RCT_EXPORT_VIEW_PROPERTY(bezelColor, NSColor)
+RCT_EXPORT_VIEW_PROPERTY(enabled, BOOL)
 RCT_EXPORT_VIEW_PROPERTY(onPressCallback, RCTBubblingEventBlock)
 
 @end
