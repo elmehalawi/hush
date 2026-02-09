@@ -102,7 +102,7 @@ export function LinkingScreen({qrUrl, error, isLinking}: LinkingScreenProps) {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.title}>Link to Signal</Text>
+        <Text style={styles.title}>Link to Hush</Text>
         <Text style={styles.subtitle}>
           Scan this QR code with your Signal app to link this device
         </Text>

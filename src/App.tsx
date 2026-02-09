@@ -69,7 +69,7 @@ function App(): React.JSX.Element {
     if (!isInitializing && listenersReady && !isLinked && linkingState.type === 'notStarted' && !linkingStarted.current) {
       linkingStarted.current = true;
       console.warn('Starting linking process...');
-      startLinking('Signal Desktop Clone');
+      startLinking('Hush Desktop');
     }
   }, [isInitializing, listenersReady, isLinked, linkingState.type, startLinking]);
 
@@ -109,7 +109,7 @@ function App(): React.JSX.Element {
         {error && (
           <Pressable
             style={styles.retryButton}
-            onPress={() => startLinking('Signal Desktop Clone')}>
+            onPress={() => startLinking('Hush Desktop')}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </Pressable>
         )}

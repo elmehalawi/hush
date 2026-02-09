@@ -44,7 +44,7 @@
 	<key>NSSupportsSuddenTermination</key>
 	<true/>
 	<key>NSContactsUsageDescription</key>
-	<string>Signal uses your contacts to display profile pictures for your conversations.</string>
+	<string>Hush uses your contacts to display profile pictures for your conversations.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 </dict>

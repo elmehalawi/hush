@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Build script for signal-app
+# Build script for Hush
 # Ensures Rust library, Swift bindings, and Xcode build are all in sync
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,7 +78,7 @@ DYLIB_PATH="$RUST_DIR/target/$RUST_TARGET/$RUST_PROFILE/libpresage_rn.dylib"
 
 echo ""
 echo "=========================================="
-echo "  Signal App Build Script"
+echo "  Hush App Build Script"
 echo "=========================================="
 echo ""
 
@@ -178,11 +178,11 @@ xcodebuild \
 
 # Check if build succeeded
 BUILD_DIR="$HOME/Library/Developer/Xcode/DerivedData"
-APP_PATH=$(find "$BUILD_DIR" -name "signal-app.app" -path "*signal-app-*" -path "*$XCODE_CONFIG*" 2>/dev/null | head -1)
+APP_PATH=$(find "$BUILD_DIR" -name "Hush.app" -path "*signal-app-*" -path "*$XCODE_CONFIG*" 2>/dev/null | head -1)
 
 if [ -z "$APP_PATH" ]; then
     # Try the local build directory
-    APP_PATH="$MACOS_DIR/build/Build/Products/$XCODE_CONFIG/signal-app.app"
+    APP_PATH="$MACOS_DIR/build/Build/Products/$XCODE_CONFIG/Hush.app"
 fi
 
 if [ ! -d "$APP_PATH" ]; then
@@ -203,7 +203,7 @@ if [ "$RUN" = true ]; then
     log_step "Launching app..."
 
     # Kill any existing instance
-    pkill -f "signal-app.app" 2>/dev/null || true
+    pkill -f "Hush.app" 2>/dev/null || true
     sleep 1
 
     # Start Metro bundler in background if not running
@@ -220,5 +220,5 @@ if [ "$RUN" = true ]; then
 
     echo ""
     echo -e "${GREEN}App launched!${NC}"
-    echo "Check Console.app for logs (filter by 'signal-app')"
+    echo "Check Console.app for logs (filter by 'Hush')"
 fi
