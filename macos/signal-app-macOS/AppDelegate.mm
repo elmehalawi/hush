@@ -3,7 +3,10 @@
 #import <React/RCTBundleURLProvider.h>
 #import <ReactAppDependencyProvider/RCTAppDependencyProvider.h>
 
-@implementation AppDelegate
+@implementation AppDelegate {
+  BOOL _trafficLightOffsetsRecorded;
+  CGFloat _closeOrigX, _miniOrigX, _zoomOrigX, _origY;
+}
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification
 {
@@ -25,7 +28,43 @@
     window.titleVisibility = NSWindowTitleHidden;
     window.styleMask |= NSWindowStyleMaskFullSizeContentView;
     window.backgroundColor = [NSColor windowBackgroundColor];
+
+    // Move traffic light buttons inside the conversation panel
+    // Sidebar panel is at left:12, top:12 with borderRadius:16
+    [self repositionTrafficLights:window];
+    [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidResizeNotification
+                                                      object:window
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(NSNotification *note) {
+      [self repositionTrafficLights:note.object];
+    }];
   }
+}
+
+- (void)repositionTrafficLights:(NSWindow *)window
+{
+  NSButton *closeButton = [window standardWindowButton:NSWindowCloseButton];
+  NSButton *miniButton = [window standardWindowButton:NSWindowMiniaturizeButton];
+  NSButton *zoomButton = [window standardWindowButton:NSWindowZoomButton];
+
+  if (!closeButton.superview) return;
+
+  // Record original x positions once (they don't change with resize)
+  if (!_trafficLightOffsetsRecorded) {
+    _closeOrigX = closeButton.frame.origin.x;
+    _miniOrigX = miniButton.frame.origin.x;
+    _zoomOrigX = zoomButton.frame.origin.x;
+    _origY = closeButton.frame.origin.y;
+    _trafficLightOffsetsRecorded = YES;
+  }
+
+  CGFloat xOffset = 15;
+  CGFloat yOffset = -11;
+  NSSize size = closeButton.frame.size;
+
+  closeButton.frame = NSMakeRect(_closeOrigX + xOffset, _origY + yOffset, size.width, size.height);
+  miniButton.frame = NSMakeRect(_miniOrigX + xOffset, _origY + yOffset, size.width, size.height);
+  zoomButton.frame = NSMakeRect(_zoomOrigX + xOffset, _origY + yOffset, size.width, size.height);
 }
 
 - (NSURL *)sourceURLForBridge:(RCTBridge *)bridge

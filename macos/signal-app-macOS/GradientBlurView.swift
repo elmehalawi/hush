@@ -5,6 +5,18 @@ import CoreImage
 @objc(GradientBlurWrapperView) class GradientBlurWrapperView: RCTUIView {
   private var didSetup = false
 
+  @objc var blurRadius: CGFloat = 4.0 {
+    didSet {
+      if didSetup {
+        didSetup = false
+        layer?.sublayers?.forEach { $0.removeFromSuperlayer() }
+        subviews.forEach { $0.removeFromSuperview() }
+        setupVariableBlur()
+        didSetup = true
+      }
+    }
+  }
+
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
@@ -71,7 +83,7 @@ import CoreImage
       return
     }
 
-    variableBlur.setValue(4.0, forKey: "inputRadius")
+    variableBlur.setValue(blurRadius, forKey: "inputRadius")
     variableBlur.setValue(maskImage, forKey: "inputMaskImage")
     variableBlur.setValue(true, forKey: "inputNormalizeEdges")
 

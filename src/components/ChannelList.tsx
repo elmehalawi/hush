@@ -2,6 +2,7 @@ import React, {useMemo} from 'react';
 import {View, FlatList, Text, StyleSheet} from 'react-native';
 import {Channel} from '../store/signalStore';
 import {ChannelItem} from './ChannelItem';
+import {GradientBlurView} from './GradientBlurView';
 import {colors} from '../theme/colors';
 
 interface ChannelListProps {
@@ -18,11 +19,9 @@ export function ChannelList({channels, selectedId, onSelect}: ChannelListProps) 
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Conversations</Text>
-      </View>
       <FlatList
         style={styles.list}
+        contentContainerStyle={styles.listContent}
         data={sorted}
         keyExtractor={item => item.id}
         showsHorizontalScrollIndicator={false}
@@ -39,6 +38,7 @@ export function ChannelList({channels, selectedId, onSelect}: ChannelListProps) 
           </View>
         }
       />
+      <GradientBlurView style={styles.topBlur} blurRadius={2} />
     </View>
   );
 }
@@ -47,19 +47,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    padding: 16,
-    paddingTop: 52,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.separator,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.label,
-  },
   list: {
     flex: 1,
+  },
+  listContent: {
+    paddingTop: 20,
+    paddingHorizontal: 8,
+  },
+  topBlur: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 32,
   },
   empty: {
     flex: 1,
