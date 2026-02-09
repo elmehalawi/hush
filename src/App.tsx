@@ -2,6 +2,7 @@ import React, {useEffect, useState, useRef} from 'react';
 import {View, StyleSheet, Text, Pressable} from 'react-native';
 import {useSignalStore} from './store/signalStore';
 import {useSignalClient} from './hooks/useSignalClient';
+import {useCommandPalette} from './hooks/useCommandPalette';
 import {LinkingScreen} from './screens/LinkingScreen';
 import {MainScreen} from './screens/MainScreen';
 
@@ -28,6 +29,8 @@ function App(): React.JSX.Element {
     sendMessage,
     startReceiving,
   } = useSignalClient();
+
+  useCommandPalette(loadMessages);
 
   // Mark listeners as ready after first render cycle completes
   // This ensures the useEffect in useSignalClient has run

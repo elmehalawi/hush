@@ -28,6 +28,9 @@
 		GLASS001A00000000000004 /* GlassContainerViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000004 /* GlassContainerViewManager.m */; };
 		GLASS001A00000000000005 /* GlassButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000005 /* GlassButton.swift */; };
 		GLASS001A00000000000006 /* GlassButtonManager.m in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000006 /* GlassButtonManager.m */; };
+		CMDP001A00000000000001 /* CommandPalettePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMDP001F00000000000001 /* CommandPalettePanel.swift */; };
+		CMDP001A00000000000002 /* CommandPaletteModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMDP001F00000000000002 /* CommandPaletteModule.swift */; };
+		CMDP001A00000000000003 /* CommandPaletteModule.m in Sources */ = {isa = PBXBuildFile; fileRef = CMDP001F00000000000003 /* CommandPaletteModule.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -61,6 +64,9 @@
 		GLASS001F00000000000004 /* GlassContainerViewManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GlassContainerViewManager.m; sourceTree = "<group>"; };
 		GLASS001F00000000000005 /* GlassButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassButton.swift; sourceTree = "<group>"; };
 		GLASS001F00000000000006 /* GlassButtonManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GlassButtonManager.m; sourceTree = "<group>"; };
+		CMDP001F00000000000001 /* CommandPalettePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPalettePanel.swift; sourceTree = "<group>"; };
+		CMDP001F00000000000002 /* CommandPaletteModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteModule.swift; sourceTree = "<group>"; };
+		CMDP001F00000000000003 /* CommandPaletteModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CommandPaletteModule.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -125,6 +131,9 @@
 				GLASS001F00000000000006 /* GlassButtonManager.m */,
 				BLUR001F00000000000001 /* GradientBlurView.swift */,
 				BLUR001F00000000000002 /* GradientBlurViewManager.m */,
+				CMDP001F00000000000001 /* CommandPalettePanel.swift */,
+				CMDP001F00000000000002 /* CommandPaletteModule.swift */,
+				CMDP001F00000000000003 /* CommandPaletteModule.m */,
 			);
 			path = "signal-app-macOS";
 			sourceTree = "<group>";
@@ -401,6 +410,9 @@
 				GLASS001A00000000000006 /* GlassButtonManager.m in Sources */,
 				BLUR001A00000000000001 /* GradientBlurView.swift in Sources */,
 				BLUR001A00000000000002 /* GradientBlurViewManager.m in Sources */,
+				CMDP001A00000000000001 /* CommandPalettePanel.swift in Sources */,
+				CMDP001A00000000000002 /* CommandPaletteModule.swift in Sources */,
+				CMDP001A00000000000003 /* CommandPaletteModule.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
