@@ -356,26 +356,49 @@ class CommandPalettePanel: NSPanel, NSSearchFieldDelegate {
     // MARK: - Key handling
 
     override func keyDown(with event: NSEvent) {
+        let hasControl = event.modifierFlags.contains(.control)
+        let char = event.charactersIgnoringModifiers
+
         switch Int(event.keyCode) {
         case 125: // Down arrow
-            if !filteredChannels.isEmpty {
-                selectedIndex = min(selectedIndex + 1, filteredChannels.count - 1)
-                updateSelection()
-            }
+            selectNext()
         case 126: // Up arrow
-            if !filteredChannels.isEmpty {
-                selectedIndex = max(selectedIndex - 1, 0)
-                updateSelection()
-            }
+            selectPrevious()
         case 36: // Enter/Return
-            if selectedIndex >= 0 && selectedIndex < filteredChannels.count {
-                onChannelSelected?(filteredChannels[selectedIndex].id)
-                hidePanel()
-            }
+            confirmSelection()
         case 53: // Escape
             hidePanel()
         default:
-            super.keyDown(with: event)
+            if hasControl && char == "n" {
+                selectNext()
+            } else if hasControl && char == "p" {
+                selectPrevious()
+            } else if hasControl && char == "c" {
+                hidePanel()
+            } else {
+                super.keyDown(with: event)
+            }
+        }
+    }
+
+    func confirmSelection() {
+        if selectedIndex >= 0 && selectedIndex < filteredChannels.count {
+            onChannelSelected?(filteredChannels[selectedIndex].id)
+            hidePanel()
+        }
+    }
+
+    func selectNext() {
+        if !filteredChannels.isEmpty {
+            selectedIndex = min(selectedIndex + 1, filteredChannels.count - 1)
+            updateSelection()
+        }
+    }
+
+    func selectPrevious() {
+        if !filteredChannels.isEmpty {
+            selectedIndex = max(selectedIndex - 1, 0)
+            updateSelection()
         }
     }
 

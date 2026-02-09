@@ -17,7 +17,7 @@ class CommandPaletteModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onChannelSelected", "onShow", "onDismiss"]
+        return ["onChannelSelected", "onShow", "onDismiss", "onNavigateChannel", "onLetterTyped"]
     }
 
     override func startObserving() {
@@ -32,15 +32,91 @@ class CommandPaletteModule: RCTEventEmitter {
 
     private func setupKeyMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            // Cmd+K
-            if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "k" {
+            guard let self = self else { return event }
+
+            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let char = event.charactersIgnoringModifiers
+
+            // Cmd+K → toggle command palette
+            if mods == [.command] && char == "k" {
                 DispatchQueue.main.async {
-                    self?.togglePanel()
+                    self.togglePanel()
                 }
-                return nil // consume the event
+                return nil
             }
+
+            // If command palette is visible, handle its shortcuts here
+            // (the search field's NSTextView eats Ctrl+N/P/C and Return)
+            if self.panel?.isVisible == true {
+                if mods == [.control] && char == "n" {
+                    self.panel?.selectNext()
+                    return nil
+                }
+                if mods == [.control] && char == "p" {
+                    self.panel?.selectPrevious()
+                    return nil
+                }
+                if mods == [.control] && char == "c" {
+                    self.panel?.hidePanel()
+                    return nil
+                }
+                if event.keyCode == 36 { // Return/Enter
+                    self.panel?.confirmSelection()
+                    return nil
+                }
+                return event
+            }
+
+            // Cmd+Shift+[ → previous channel (keyCode 33 = [ key)
+            if event.modifierFlags.contains(.command) && event.modifierFlags.contains(.shift) && event.keyCode == 33 {
+                self.emitNavigate(direction: "previous")
+                return nil
+            }
+
+            // Cmd+Shift+] → next channel (keyCode 30 = ] key)
+            if event.modifierFlags.contains(.command) && event.modifierFlags.contains(.shift) && event.keyCode == 30 {
+                self.emitNavigate(direction: "next")
+                return nil
+            }
+
+            // Ctrl+J → next channel
+            if mods == [.control] && char == "j" {
+                self.emitNavigate(direction: "next")
+                return nil
+            }
+
+            // Ctrl+K → previous channel
+            if mods == [.control] && char == "k" {
+                self.emitNavigate(direction: "previous")
+                return nil
+            }
+
+            // Letter key (no Cmd/Ctrl/Option) → focus input and type
+            if (mods.isEmpty || mods == [.shift]),
+               let chars = event.characters, chars.count == 1,
+               let scalar = chars.unicodeScalars.first,
+               CharacterSet.letters.contains(scalar) {
+                // Don't intercept if a text field is focused
+                if let responder = NSApp.keyWindow?.firstResponder,
+                   responder is NSTextView {
+                    return event
+                }
+                self.emitLetterTyped(letter: chars)
+                return nil
+            }
+
             return event
         }
+    }
+
+    private func emitNavigate(direction: String) {
+        guard hasListeners else { return }
+        sendEvent(withName: "onNavigateChannel", body: ["direction": direction])
+    }
+
+    private func emitLetterTyped(letter: String) {
+        guard hasListeners else { return }
+        sendEvent(withName: "onLetterTyped", body: ["letter": letter])
     }
 
     private func togglePanel() {
