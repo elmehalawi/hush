@@ -58,8 +58,8 @@
     _trafficLightOffsetsRecorded = YES;
   }
 
-  CGFloat xOffset = 15;
-  CGFloat yOffset = -11;
+  CGFloat xOffset = 20;
+  CGFloat yOffset = -16;
   NSSize size = closeButton.frame.size;
 
   closeButton.frame = NSMakeRect(_closeOrigX + xOffset, _origY + yOffset, size.width, size.height);
