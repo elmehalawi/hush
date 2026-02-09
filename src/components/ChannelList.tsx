@@ -9,9 +9,10 @@ interface ChannelListProps {
   channels: Channel[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  collapsed?: boolean;
 }
 
-export function ChannelList({channels, selectedId, onSelect}: ChannelListProps) {
+export function ChannelList({channels, selectedId, onSelect, collapsed}: ChannelListProps) {
   const sorted = useMemo(
     () => [...channels].sort((a, b) => (b.lastMessageTimestamp ?? 0) - (a.lastMessageTimestamp ?? 0)),
     [channels],
@@ -21,7 +22,10 @@ export function ChannelList({channels, selectedId, onSelect}: ChannelListProps) 
     <View style={styles.container}>
       <FlatList
         style={styles.list}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          collapsed && styles.listContentCollapsed,
+        ]}
         data={sorted}
         keyExtractor={item => item.id}
         showsHorizontalScrollIndicator={false}
@@ -30,11 +34,14 @@ export function ChannelList({channels, selectedId, onSelect}: ChannelListProps) 
             channel={item}
             isSelected={selectedId === item.id}
             onSelect={onSelect}
+            collapsed={collapsed}
           />
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>No conversations yet</Text>
+            {!collapsed && (
+              <Text style={styles.emptyText}>No conversations yet</Text>
+            )}
           </View>
         }
       />
@@ -55,6 +62,10 @@ const styles = StyleSheet.create({
   listContent: {
     paddingTop: 20,
     paddingHorizontal: 8,
+  },
+  listContentCollapsed: {
+    paddingHorizontal: 4,
+    alignItems: 'center',
   },
   topBlur: {
     position: 'absolute',
