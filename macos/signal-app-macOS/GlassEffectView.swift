@@ -20,6 +20,7 @@ import AppKit
 
   override init(frame: NSRect) {
     super.init(frame: frame)
+    focusRingType = .none
     glassView.translatesAutoresizingMaskIntoConstraints = false
     addSubview(glassView, positioned: .below, relativeTo: nil)
     NSLayoutConstraint.activate([
@@ -28,6 +29,18 @@ import AppKit
       glassView.topAnchor.constraint(equalTo: topAnchor),
       glassView.bottomAnchor.constraint(equalTo: bottomAnchor),
     ])
+  }
+
+  override func layout() {
+    super.layout()
+    disableFocusRings(self)
+  }
+
+  private func disableFocusRings(_ view: NSView) {
+    view.focusRingType = .none
+    for subview in view.subviews {
+      disableFocusRings(subview)
+    }
   }
 
   required init?(coder: NSCoder) {
