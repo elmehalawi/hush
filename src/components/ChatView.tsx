@@ -2,6 +2,8 @@ import React, {useRef, useEffect} from 'react';
 import {View, ScrollView, Text, StyleSheet} from 'react-native';
 import {Message, Channel} from '../store/signalStore';
 import {MessageBubble} from './MessageBubble';
+import {GlassView} from './GlassView';
+import {GradientBlurView} from './GradientBlurView';
 import {colors} from '../theme/colors';
 
 interface ChatViewProps {
@@ -13,7 +15,6 @@ export function ChatView({channel, messages}: ChatViewProps) {
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
-    // Scroll to bottom when new messages arrive
     scrollViewRef.current?.scrollToEnd({animated: true});
   }, [messages.length]);
 
@@ -25,27 +26,15 @@ export function ChatView({channel, messages}: ChatViewProps) {
     );
   }
 
+  const initial = channel.isGroup ? '#' : channel.name.charAt(0).toUpperCase();
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {channel.isGroup ? '#' : channel.name.charAt(0).toUpperCase()}
-          </Text>
-        </View>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>{channel.name}</Text>
-          <Text style={styles.headerSubtitle}>
-            {channel.isGroup ? 'Group' : 'Direct Message'}
-          </Text>
-        </View>
-      </View>
-
       <ScrollView
         ref={scrollViewRef}
         style={styles.messages}
         contentContainerStyle={styles.messagesContent}
->
+      >
         {messages.length === 0 ? (
           <View style={styles.noMessages}>
             <Text style={styles.noMessagesText}>No messages yet</Text>
@@ -57,6 +46,21 @@ export function ChatView({channel, messages}: ChatViewProps) {
           ))
         )}
       </ScrollView>
+
+      {/* Gradient blur overlay at top - mimics Tahoe Messages */}
+      <GradientBlurView style={styles.topBlur} />
+
+      {/* Small glass pill header */}
+      <View style={styles.headerPillContainer} pointerEvents="none">
+        <GlassView style={styles.headerPill} cornerRadius={16}>
+          <View style={styles.pillAvatar}>
+            <Text style={styles.pillAvatarText}>{initial}</Text>
+          </View>
+          <Text style={styles.pillName} numberOfLines={1}>
+            {channel.name}
+          </Text>
+        </GlassView>
+      </View>
     </View>
   );
 }
@@ -76,46 +80,52 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.secondaryLabel,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    paddingTop: 52,
-    backgroundColor: 'transparent',
-  },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#2196f3',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  avatarText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  headerContent: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.label,
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: colors.secondaryLabel,
-  },
   messages: {
     flex: 1,
     backgroundColor: 'transparent',
   },
   messagesContent: {
-    paddingVertical: 8,
+    paddingTop: 110,
     paddingBottom: 80,
+  },
+  topBlur: {
+    position: 'absolute',
+    top: 0,
+    left: -292,
+    right: 0,
+    height: 110,
+  },
+  headerPillContainer: {
+    position: 'absolute',
+    top: 12,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  headerPill: {
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+  },
+  pillAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#2196f3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  pillAvatarText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  pillName: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.label,
   },
   noMessages: {
     flex: 1,

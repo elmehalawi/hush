@@ -71,7 +71,7 @@ export function MessageBubble({message}: MessageBubbleProps) {
 const styles = StyleSheet.create({
   container: {
     marginVertical: 2,
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
   },
   outgoing: {
     alignItems: 'flex-end',
