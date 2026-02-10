@@ -1,5 +1,5 @@
-import React, {useEffect, useState} from 'react';
-import {View, Text, ActivityIndicator, StyleSheet} from 'react-native';
+import React, {useEffect, useMemo, useState} from 'react';
+import {View, Text, ActivityIndicator, StyleSheet, useColorScheme} from 'react-native';
 import QRCodeLib from 'qrcode';
 
 interface LinkingScreenProps {
@@ -94,7 +94,87 @@ function QRCodeView({value, size}: {value: string; size: number}) {
   );
 }
 
+function makeStyles(isDark: boolean) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? '#1C1C1E' : '#f5f5f5',
+      padding: 20,
+    },
+    card: {
+      backgroundColor: isDark ? '#2C2C2E' : '#ffffff',
+      borderRadius: 12,
+      padding: 32,
+      maxWidth: 400,
+      width: '100%',
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: {width: 0, height: 2},
+      shadowOpacity: isDark ? 0.3 : 0.1,
+      shadowRadius: isDark ? 8 : 4,
+    },
+    title: {
+      fontSize: 24,
+      fontWeight: '600',
+      color: isDark ? '#EBEBF0' : '#212121',
+      marginBottom: 8,
+    },
+    subtitle: {
+      fontSize: 14,
+      color: isDark ? '#EBEBF099' : '#757575',
+      textAlign: 'center',
+      marginBottom: 24,
+    },
+    qrContainer: {
+      width: 220,
+      height: 220,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#ffffff',
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#e0e0e0',
+    },
+    loading: {
+      alignItems: 'center',
+    },
+    loadingText: {
+      marginTop: 16,
+      fontSize: 14,
+      color: isDark ? '#EBEBF099' : '#757575',
+    },
+    error: {
+      padding: 16,
+    },
+    errorText: {
+      color: isDark ? '#FF6B6B' : '#f44336',
+      textAlign: 'center',
+    },
+    waitingContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 24,
+    },
+    waitingText: {
+      marginLeft: 8,
+      fontSize: 14,
+      color: isDark ? '#EBEBF099' : '#757575',
+    },
+    instruction: {
+      fontSize: 12,
+      color: isDark ? '#EBEBF04D' : '#9e9e9e',
+      textAlign: 'center',
+      marginTop: 20,
+    },
+  });
+}
+
 export function LinkingScreen({qrUrl, error, isLinking}: LinkingScreenProps) {
+  const isDark = useColorScheme() === 'dark';
+  const styles = useMemo(() => makeStyles(isDark), [isDark]);
+
   useEffect(() => {
     console.warn('LinkingScreen props - qrUrl:', qrUrl ? `(${qrUrl.length} chars)` : 'null', 'error:', error, 'isLinking:', isLinking);
   }, [qrUrl, error, isLinking]);
@@ -144,78 +224,3 @@ export function LinkingScreen({qrUrl, error, isLinking}: LinkingScreenProps) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f5f5f5',
-    padding: 20,
-  },
-  card: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 32,
-    maxWidth: 400,
-    width: '100%',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#212121',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#757575',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  qrContainer: {
-    width: 220,
-    height: 220,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'white',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  loading: {
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-    color: '#757575',
-  },
-  error: {
-    padding: 16,
-  },
-  errorText: {
-    color: '#f44336',
-    textAlign: 'center',
-  },
-  waitingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  waitingText: {
-    marginLeft: 8,
-    fontSize: 14,
-    color: '#757575',
-  },
-  instruction: {
-    fontSize: 12,
-    color: '#9e9e9e',
-    textAlign: 'center',
-    marginTop: 20,
-  },
-});
