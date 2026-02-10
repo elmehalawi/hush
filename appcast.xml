@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Hush</title>
+        <item>
+            <title>1.0.0</title>
+            <pubDate>Mon, 09 Feb 2026 20:05:39 -0600</pubDate>
+            <sparkle:version>3</sparkle:version>
+            <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/elmehalawi/hush/releases/download/v1.0.0/Hush-1.0.0.dmg" length="19633477" type="application/octet-stream" sparkle:edSignature="aDD0oYIal33PKcvGlAJ/ifbt/K6Ec+YnnPkxSfHQ7LK60bNpgaVC9uDKhc6AvBVmC7bRmJvgBDCNXIRt0K1GCg=="/>
+        </item>
+    </channel>
+</rss>

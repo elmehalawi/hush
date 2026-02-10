@@ -578,9 +578,11 @@ class PresageModule: RCTEventEmitter {
             sender: sender,
             attachments: nil
         )
+        #if canImport(UIKit)
         if isGroup, let senderImage = senderImage {
             intent.setImage(senderImage, forParameterNamed: \.speakableGroupName)
         }
+        #endif
 
         let interaction = INInteraction(intent: intent, response: nil)
         interaction.direction = .incoming

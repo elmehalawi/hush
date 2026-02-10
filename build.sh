@@ -173,6 +173,8 @@ xcodebuild \
     -scheme signal-app-macOS \
     -configuration "$XCODE_CONFIG" \
     -destination "platform=macOS" \
+    ARCHS=arm64 \
+    ONLY_ACTIVE_ARCH=NO \
     build \
     | grep -E "^(Build|Compile|Link|error:|warning:.*error|===)" || true
 
@@ -211,6 +213,10 @@ if [ -d "$ICON_FILE" ]; then
     # Remove the raw .icon folder if it was copied by the build
     rm -rf "$APP_PATH/Contents/Resources/HushIcon.icon" 2>/dev/null || true
     echo "  App icon compiled and installed"
+
+    # Re-sign after modifying the bundle (ad-hoc)
+    codesign --force --deep --sign - "$APP_PATH"
+    echo "  Re-signed app bundle"
 fi
 
 echo ""

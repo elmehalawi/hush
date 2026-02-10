@@ -42,6 +42,12 @@ src/generated/
 .env.local
 .env.*.local
 
+# Sparkle tools (downloaded separately)
+sparkle-tools/
+
+# Release artifacts
+releases/
+
 # IDE
 .idea/
 .vscode/
