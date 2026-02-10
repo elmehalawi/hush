@@ -1,5 +1,5 @@
 import React from 'react';
-import {View, Text, Image, StyleSheet, Dimensions, Pressable, NativeModules, useColorScheme} from 'react-native';
+import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme} from 'react-native';
 import {Message, Attachment} from '../store/signalStore';
 import {colors} from '../theme/colors';
 
@@ -31,6 +31,35 @@ function getImageDimensions(attachment: Attachment) {
   }
 
   return {width: displayWidth, height: displayHeight};
+}
+
+const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
+
+function LinkifiedText({text, isOutgoing}: {text: string; isOutgoing: boolean}) {
+  const parts = text.split(URL_REGEX);
+  if (parts.length === 1) {
+    return (
+      <Text style={[styles.body, isOutgoing && styles.bodyOutgoing]}>
+        {text}
+      </Text>
+    );
+  }
+  return (
+    <Text style={[styles.body, isOutgoing && styles.bodyOutgoing]}>
+      {parts.map((part, i) =>
+        URL_REGEX.test(part) ? (
+          <Text
+            key={i}
+            style={styles.link}
+            onPress={() => Linking.openURL(part)}>
+            {part}
+          </Text>
+        ) : (
+          part
+        ),
+      )}
+    </Text>
+  );
 }
 
 function isImageType(contentType: string) {
@@ -173,9 +202,7 @@ export function MessageBubble({message}: MessageBubbleProps) {
         {/* Render body text if present */}
         {hasBody && (
           <View style={hasMedia ? styles.bodyBelowMedia : undefined}>
-            <Text style={[styles.body, isOutgoing && styles.bodyOutgoing]}>
-              {message.body}
-            </Text>
+            <LinkifiedText text={message.body!} isOutgoing={isOutgoing} />
           </View>
         )}
 
@@ -325,6 +352,9 @@ const styles = StyleSheet.create({
   },
   bodyOutgoing: {
     color: 'white',
+  },
+  link: {
+    textDecorationLine: 'underline',
   },
   meta: {
     flexDirection: 'row',
