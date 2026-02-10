@@ -2312,6 +2312,7 @@ PODS:
     - SocketRocket
     - Yoga
   - SocketRocket (0.7.1)
+  - Sparkle (2.8.1)
   - Yoga (0.0.0)
 
 DEPENDENCIES:
@@ -2388,11 +2389,13 @@ DEPENDENCIES:
   - ReactCommon/turbomodule/core (from `../node_modules/react-native-macos/ReactCommon`)
   - RNSVG (from `../node_modules/react-native-svg`)
   - SocketRocket (~> 0.7.1)
+  - Sparkle (~> 2.7)
   - Yoga (from `../node_modules/react-native-macos/ReactCommon/yoga`)
 
 SPEC REPOS:
   trunk:
     - SocketRocket
+    - Sparkle
 
 EXTERNAL SOURCES:
   boost:
@@ -2614,8 +2617,9 @@ SPEC CHECKSUMS:
   ReactCommon: f8076449c9d401dd97dbce7405c5fee1ff61ef1d
   RNSVG: fefd34e29f59fa7a73753d584b0d845fcc7558c3
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
+  Sparkle: a346a4341537c625955751ed3ae4b340b68551fa
   Yoga: b9d6f057671b0ab86481057b33f1127f170dddf2
 
-PODFILE CHECKSUM: db87c695ae14b7f9725e4a4304e3fa3714aa7a39
+PODFILE CHECKSUM: 225ccaf2d187d170292f4bf3312e3e0500da463e
 
 COCOAPODS: 1.16.2
