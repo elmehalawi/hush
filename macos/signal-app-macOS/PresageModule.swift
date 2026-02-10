@@ -4,6 +4,7 @@ import AVFoundation
 import AppKit
 import Quartz
 import UserNotifications
+import Intents
 
 @objc(PresageModule)
 class PresageModule: RCTEventEmitter {
@@ -19,6 +20,7 @@ class PresageModule: RCTEventEmitter {
     // Notifications
     private var notificationsAuthorized = false
     private var channelNameCache: [String: String] = [:]
+    private var channelIsGroupCache: [String: Bool] = [:]
     private var channelAvatarCache: [String: String] = [:]
     private let avatarCacheLock = NSLock()
 
@@ -207,6 +209,7 @@ class PresageModule: RCTEventEmitter {
                     // Cache channel name and avatar for notifications
                     self.avatarCacheLock.lock()
                     self.channelNameCache[channel.id] = channel.name
+                    self.channelIsGroupCache[channel.id] = channel.isGroup
                     if let avatarPath = channel.avatarPath {
                         self.channelAvatarCache[channel.id] = avatarPath
                     }
@@ -280,6 +283,7 @@ class PresageModule: RCTEventEmitter {
             onChannelUpdated: { [weak self] channel in
                 self?.avatarCacheLock.lock()
                 self?.channelNameCache[channel.id] = channel.name
+                self?.channelIsGroupCache[channel.id] = channel.isGroup
                 if let avatarPath = channel.avatarPath {
                     self?.channelAvatarCache[channel.id] = avatarPath
                 }
@@ -531,8 +535,15 @@ class PresageModule: RCTEventEmitter {
         let content = UNMutableNotificationContent()
         avatarCacheLock.lock()
         let channelName = channelNameCache[message.channelId]
+        let isGroup = channelIsGroupCache[message.channelId] ?? false
+        let avatarPath = channelAvatarCache[message.channelId]
         avatarCacheLock.unlock()
-        content.title = message.senderName ?? channelName ?? "Unknown"
+
+        let displayName = channelName ?? message.senderName ?? "Unknown"
+        content.title = displayName
+        if isGroup, let senderName = message.senderName {
+            content.subtitle = senderName
+        }
         if let body = message.body, !body.isEmpty {
             content.body = body
         } else if !message.attachments.isEmpty {
@@ -541,26 +552,52 @@ class PresageModule: RCTEventEmitter {
         content.sound = .default
         content.userInfo = ["channelId": message.channelId]
 
-        // Attach avatar if available
-        avatarCacheLock.lock()
-        let avatarPath = channelAvatarCache[message.channelId]
-        avatarCacheLock.unlock()
-
+        // Build Communication Notification via INSendMessageIntent
+        // This replaces the app name in the notification header with the sender/channel name
+        let senderHandle = INPersonHandle(value: message.senderId, type: .unknown)
+        var senderImage: INImage? = nil
         if let avatarPath = avatarPath, FileManager.default.fileExists(atPath: avatarPath) {
-            let tempDir = NSTemporaryDirectory()
-            let tempPath = "\(tempDir)/notif-avatar-\(message.channelId).jpg"
-            try? FileManager.default.removeItem(atPath: tempPath)
-            try? FileManager.default.copyItem(atPath: avatarPath, toPath: tempPath)
-            if let attachment = try? UNNotificationAttachment(identifier: "avatar", url: URL(fileURLWithPath: tempPath), options: nil) {
-                content.attachments = [attachment]
-            }
+            senderImage = INImage(url: URL(fileURLWithPath: avatarPath))
+        }
+        let sender = INPerson(
+            personHandle: senderHandle,
+            nameComponents: nil,
+            displayName: message.senderName ?? displayName,
+            image: senderImage,
+            contactIdentifier: nil,
+            customIdentifier: message.senderId
+        )
+
+        let intent = INSendMessageIntent(
+            recipients: nil,
+            outgoingMessageType: .outgoingMessageText,
+            content: content.body,
+            speakableGroupName: isGroup ? INSpeakableString(spokenPhrase: displayName) : nil,
+            conversationIdentifier: message.channelId,
+            serviceName: nil,
+            sender: sender,
+            attachments: nil
+        )
+        if isGroup, let senderImage = senderImage {
+            intent.setImage(senderImage, forParameterNamed: \.speakableGroupName)
         }
 
-        let request = UNNotificationRequest(identifier: "msg-\(message.id)", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                NSLog("PresageModule: Failed to post notification: \(error)")
+        let interaction = INInteraction(intent: intent, response: nil)
+        interaction.direction = .incoming
+        interaction.donate(completion: nil)
+
+        do {
+            let updatedContent = try content.updating(from: intent)
+            let request = UNNotificationRequest(identifier: "msg-\(message.id)", content: updatedContent, trigger: nil)
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error = error {
+                    NSLog("PresageModule: Failed to post notification: \(error)")
+                }
             }
+        } catch {
+            NSLog("PresageModule: Failed to create communication notification: \(error), falling back")
+            let request = UNNotificationRequest(identifier: "msg-\(message.id)", content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
         }
     }
 
