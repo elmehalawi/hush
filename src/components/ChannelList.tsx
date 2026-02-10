@@ -1,5 +1,5 @@
 import React, {useMemo} from 'react';
-import {View, FlatList, Text, StyleSheet} from 'react-native';
+import {View, FlatList, Text, StyleSheet, useColorScheme} from 'react-native';
 import {Channel} from '../store/signalStore';
 import {ChannelItem} from './ChannelItem';
 import {GradientBlurView} from './GradientBlurView';
@@ -13,6 +13,7 @@ interface ChannelListProps {
 }
 
 export function ChannelList({channels, selectedId, onSelect, collapsed}: ChannelListProps) {
+  useColorScheme(); // subscribe to appearance changes so DynamicColorMacOS values update
   const sorted = useMemo(
     () => [...channels].sort((a, b) => (b.lastMessageTimestamp ?? 0) - (a.lastMessageTimestamp ?? 0)),
     [channels],
