@@ -98,25 +98,15 @@ log_step "Signing DMG with Sparkle EdDSA key..."
 SIGNATURE=$("$SPARKLE_TOOLS/bin/sign_update" "$DMG_PATH")
 echo "  Signature: $SIGNATURE"
 
-# Step 5: Generate appcast
-log_step "Generating appcast..."
-"$SPARKLE_TOOLS/bin/generate_appcast" "$RELEASES_DIR"
-
-# Copy appcast.xml to repo root for GitHub raw serving
-if [ -f "$RELEASES_DIR/appcast.xml" ]; then
-    cp "$RELEASES_DIR/appcast.xml" "$SCRIPT_DIR/appcast.xml"
-    echo "  Updated appcast.xml in repo root"
-else
-    log_warn "generate_appcast did not produce appcast.xml"
-fi
-
-# Step 6: Create draft GitHub release
+# Step 5: Create GitHub release (so we know the download URL for appcast)
 log_step "Creating GitHub release..."
 TAG="v${VERSION}"
+GITHUB_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/${TAG}/${DMG_NAME}"
+
 gh release create "$TAG" \
     "$DMG_PATH" \
     --title "${APP_NAME} ${VERSION}" \
-    --draft \
     --notes "## ${APP_NAME} v${VERSION}
 
 ### Changes
@@ -125,13 +115,32 @@ gh release create "$TAG" \
 ### Install
 Download **${DMG_NAME}**, open it, and drag ${APP_NAME} to Applications."
 
+echo "  Release: https://github.com/${GITHUB_REPO}/releases/tag/${TAG}"
+
+# Step 6: Generate appcast and fix download URL
+log_step "Generating appcast..."
+"$SPARKLE_TOOLS/bin/generate_appcast" "$RELEASES_DIR"
+
+if [ -f "$RELEASES_DIR/appcast.xml" ]; then
+    cp "$RELEASES_DIR/appcast.xml" "$SCRIPT_DIR/appcast.xml"
+    # Replace local file URLs with GitHub release download URLs
+    sed -i '' "s|url=\"[^\"]*${DMG_NAME}\"|url=\"${DOWNLOAD_URL}\"|g" "$SCRIPT_DIR/appcast.xml"
+    echo "  Updated appcast.xml with download URL: $DOWNLOAD_URL"
+else
+    log_warn "generate_appcast did not produce appcast.xml"
+fi
+
+# Step 7: Commit and push appcast
+log_step "Pushing appcast.xml..."
+cd "$SCRIPT_DIR"
+git add appcast.xml
+git commit -m "Update appcast.xml for v${VERSION}" || true
+git push
+
 echo ""
 echo -e "${GREEN}=========================================="
-echo "  Release v${VERSION} created (draft)"
+echo "  Release v${VERSION} published!"
 echo "==========================================${NC}"
 echo ""
-echo "Next steps:"
-echo "  1. Review the draft release on GitHub"
-echo "  2. Update appcast.xml download URL to point to the GitHub release asset"
-echo "  3. Commit appcast.xml and push"
-echo "  4. Publish the GitHub release"
+echo "  GitHub: https://github.com/${GITHUB_REPO}/releases/tag/${TAG}"
+echo "  Feed:   https://raw.githubusercontent.com/${GITHUB_REPO}/main/appcast.xml"
