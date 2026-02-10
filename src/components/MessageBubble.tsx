@@ -1,5 +1,5 @@
 import React from 'react';
-import {View, Text, Image, StyleSheet, Dimensions, Pressable, NativeModules} from 'react-native';
+import {View, Text, Image, StyleSheet, Dimensions, Pressable, NativeModules, useColorScheme} from 'react-native';
 import {Message, Attachment} from '../store/signalStore';
 import {colors} from '../theme/colors';
 
@@ -110,6 +110,8 @@ function AttachmentView({
 }
 
 export function MessageBubble({message}: MessageBubbleProps) {
+  const colorScheme = useColorScheme();
+  const incomingBubbleBg = colorScheme === 'dark' ? '#2A2A2C' : '#e0e0e0';
   const isOutgoing = message.isOutgoing;
   const hasAttachments = message.attachments.length > 0;
   const hasBody = !!message.body;
@@ -152,7 +154,7 @@ export function MessageBubble({message}: MessageBubbleProps) {
       <View
         style={[
           styles.bubble,
-          isOutgoing ? styles.bubbleOutgoing : styles.bubbleIncoming,
+          isOutgoing ? styles.bubbleOutgoing : [styles.bubbleIncoming, {backgroundColor: incomingBubbleBg}],
           hasMedia && styles.bubbleWithMedia,
         ]}>
         {/* Render attachments */}

@@ -1,5 +1,5 @@
 import React, {useRef, useEffect} from 'react';
-import {View, ScrollView, Text, StyleSheet, Image} from 'react-native';
+import {View, ScrollView, Text, StyleSheet, Image, useColorScheme} from 'react-native';
 import {Message, Channel} from '../store/signalStore';
 import {MessageBubble} from './MessageBubble';
 import {GlassView} from './GlassView';
@@ -12,6 +12,7 @@ interface ChatViewProps {
 }
 
 export function ChatView({channel, messages}: ChatViewProps) {
+  useColorScheme(); // subscribe to appearance changes so DynamicColorMacOS values update
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
