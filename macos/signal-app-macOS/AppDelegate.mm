@@ -2,6 +2,7 @@
 
 #import <React/RCTBundleURLProvider.h>
 #import <ReactAppDependencyProvider/RCTAppDependencyProvider.h>
+#import <Sparkle/Sparkle.h>
 
 @implementation AppDelegate {
   BOOL _trafficLightOffsetsRecorded;
@@ -45,6 +46,31 @@
                                                   usingBlock:^(NSNotification *note) {
       [self repositionTrafficLights:note.object];
     }];
+  }
+
+  // Initialize Sparkle updater
+  self.updaterController = [[SPUStandardUpdaterController alloc]
+                             initWithStartingUpdater:YES
+                             updaterDelegate:nil
+                             userDriverDelegate:nil];
+
+  // Add "Check for Updates..." to the app menu
+  NSMenu *appMenu = [[NSApp mainMenu] itemAtIndex:0].submenu;
+  if (appMenu) {
+    NSMenuItem *checkForUpdatesItem =
+      [[NSMenuItem alloc] initWithTitle:@"Check for Updates..."
+                                 action:@selector(checkForUpdates:)
+                          keyEquivalent:@""];
+    checkForUpdatesItem.target = self.updaterController;
+    // Insert after the first separator (or at index 1 if no separator)
+    NSInteger insertIndex = 1;
+    for (NSInteger i = 0; i < appMenu.numberOfItems; i++) {
+      if ([appMenu itemAtIndex:i].isSeparatorItem) {
+        insertIndex = i + 1;
+        break;
+      }
+    }
+    [appMenu insertItem:checkForUpdatesItem atIndex:insertIndex];
   }
 }
 
