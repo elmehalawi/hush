@@ -391,7 +391,8 @@ class PresageModule: RCTEventEmitter {
         }
         guard contactsAccessGranted == true else { return nil }
 
-        let avatarsDir = "/tmp/signal-app-data/avatars"
+        let home = NSHomeDirectory()
+        let avatarsDir = "\(home)/Library/Application Support/hush/avatars"
         let filePath = "\(avatarsDir)/\(channelId)"
 
         // Already on disk from a previous lookup
