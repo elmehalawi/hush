@@ -104,16 +104,18 @@ TAG="v${VERSION}"
 GITHUB_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/${TAG}/${DMG_NAME}"
 
-gh release create "$TAG" \
-    "$DMG_PATH" \
-    --title "${APP_NAME} ${VERSION}" \
-    --notes "## ${APP_NAME} v${VERSION}
+RELEASE_NOTES="${RELEASE_NOTES:-"## ${APP_NAME} v${VERSION}
 
 ### Changes
 - (fill in release notes)
 
 ### Install
-Download **${DMG_NAME}**, open it, and drag ${APP_NAME} to Applications."
+Download **${DMG_NAME}**, open it, and drag ${APP_NAME} to Applications."}"
+
+gh release create "$TAG" \
+    "$DMG_PATH" \
+    --title "${APP_NAME} ${VERSION}" \
+    --notes "$RELEASE_NOTES"
 
 echo "  Release: https://github.com/${GITHUB_REPO}/releases/tag/${TAG}"
 
