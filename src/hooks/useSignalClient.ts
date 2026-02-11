@@ -89,8 +89,8 @@ function convertMessage(native: NativeMessage): Message {
 
 // Get the data directory for storing Signal data
 function getDataDir(): string {
-  // Use a simple path in tmp for now to avoid directory creation issues
-  return '/tmp/signal-app-data';
+  const home = process.env.HOME || '/tmp';
+  return `${home}/Library/Application Support/hush`;
 }
 
 // Hook for using the Signal client
