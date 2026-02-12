@@ -544,7 +544,7 @@ class PresageModule: RCTEventEmitter {
         let avatarPath = channelAvatarCache[message.channelId]
         avatarCacheLock.unlock()
 
-        let displayName = channelName ?? message.senderName ?? "Unknown"
+        let displayName = channelName ?? message.senderName ?? "Hush"
         content.title = displayName
         if isGroup, let senderName = message.senderName {
             content.subtitle = senderName
