@@ -43,7 +43,7 @@ export function ChatView({channel, messages}: ChatViewProps) {
           </View>
         ) : (
           messages.map(message => (
-            <MessageBubble key={message.id} message={message} />
+            <MessageBubble key={message.id} message={message} isGroup={channel.isGroup} />
           ))
         )}
       </ScrollView>

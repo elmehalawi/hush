@@ -1,6 +1,6 @@
 import React from 'react';
 import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme} from 'react-native';
-import {Message, Attachment} from '../store/signalStore';
+import {Message, Attachment, useSignalStore} from '../store/signalStore';
 import {colors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
@@ -11,6 +11,7 @@ function openQuickLook(filePath: string) {
 
 interface MessageBubbleProps {
   message: Message;
+  isGroup?: boolean;
 }
 
 const MAX_BUBBLE_WIDTH = Dimensions.get('window').width * 0.75;
@@ -138,10 +139,18 @@ function AttachmentView({
   );
 }
 
-export function MessageBubble({message}: MessageBubbleProps) {
+export function MessageBubble({message, isGroup}: MessageBubbleProps) {
   const colorScheme = useColorScheme();
   const incomingBubbleBg = colorScheme === 'dark' ? '#2A2A2C' : '#e0e0e0';
   const isOutgoing = message.isOutgoing;
+  const showSenderInfo = !!isGroup && !isOutgoing;
+
+  // Look up sender's avatar from their DM channel
+  const senderChannel = useSignalStore(state =>
+    showSenderInfo ? state.channels.find(c => c.id === message.senderId) : undefined,
+  );
+  const senderAvatar = senderChannel?.avatarPath;
+  const senderInitial = message.senderName?.charAt(0).toUpperCase() || '?';
   const hasAttachments = message.attachments.length > 0;
   const hasBody = !!message.body;
   const mediaAttachments = message.attachments.filter(
@@ -171,70 +180,89 @@ export function MessageBubble({message}: MessageBubbleProps) {
     }
   };
 
+  const bubbleStyle = [
+    styles.bubble,
+    isOutgoing ? styles.bubbleOutgoing : [styles.bubbleIncoming, {backgroundColor: incomingBubbleBg}],
+    hasMedia && styles.bubbleWithMedia,
+    showSenderInfo && styles.bubbleInGroup,
+  ];
+
+  const bubbleContent = (
+    <>
+      {hasAttachments && (
+        <View style={styles.attachmentsContainer}>
+          {message.attachments.map((attachment, index) => (
+            <AttachmentView
+              key={index}
+              attachment={attachment}
+              isOutgoing={isOutgoing}
+            />
+          ))}
+        </View>
+      )}
+      {hasBody && (
+        <View style={hasMedia ? styles.bodyBelowMedia : undefined}>
+          <LinkifiedText text={message.body!} isOutgoing={isOutgoing} />
+        </View>
+      )}
+      {!hasBody && !hasAttachments && (
+        <Text style={[styles.body, isOutgoing && styles.bodyOutgoing]}>
+          [No content]
+        </Text>
+      )}
+      <View style={[styles.meta, hasMedia && !hasBody && styles.metaOverMedia]}>
+        <Text
+          style={[
+            styles.time,
+            isOutgoing && styles.timeOutgoing,
+            hasMedia && !hasBody && styles.timeOverMedia,
+          ]}>
+          {formatTime(message.timestamp)}
+        </Text>
+        {isOutgoing && (
+          <Text
+            style={[
+              styles.status,
+              message.status === 'read' && styles.statusRead,
+              hasMedia && !hasBody && styles.statusOverMedia,
+            ]}>
+            {getStatusIcon()}
+          </Text>
+        )}
+      </View>
+    </>
+  );
+
   return (
     <View
       style={[
         styles.container,
         isOutgoing ? styles.outgoing : styles.incoming,
       ]}>
-      {!isOutgoing && message.senderName && (
-        <Text style={styles.senderName}>{message.senderName}</Text>
-      )}
-      <View
-        style={[
-          styles.bubble,
-          isOutgoing ? styles.bubbleOutgoing : [styles.bubbleIncoming, {backgroundColor: incomingBubbleBg}],
-          hasMedia && styles.bubbleWithMedia,
-        ]}>
-        {/* Render attachments */}
-        {hasAttachments && (
-          <View style={styles.attachmentsContainer}>
-            {message.attachments.map((attachment, index) => (
-              <AttachmentView
-                key={index}
-                attachment={attachment}
-                isOutgoing={isOutgoing}
+      {showSenderInfo ? (
+        <View style={styles.groupRow}>
+          <View style={styles.senderAvatarContainer}>
+            {senderAvatar ? (
+              <Image
+                source={{uri: `file://${senderAvatar}`}}
+                style={styles.senderAvatarImage}
               />
-            ))}
+            ) : (
+              <View style={styles.senderAvatarFallback}>
+                <Text style={styles.senderAvatarText}>{senderInitial}</Text>
+              </View>
+            )}
           </View>
-        )}
-
-        {/* Render body text if present */}
-        {hasBody && (
-          <View style={hasMedia ? styles.bodyBelowMedia : undefined}>
-            <LinkifiedText text={message.body!} isOutgoing={isOutgoing} />
+          <View style={styles.groupBubbleColumn}>
+            {message.senderName && (
+              <Text style={styles.senderName}>{message.senderName}</Text>
+            )}
+            <View style={bubbleStyle}>{bubbleContent}</View>
           </View>
-        )}
-
-        {/* Show fallback only if no body AND no attachments */}
-        {!hasBody && !hasAttachments && (
-          <Text style={[styles.body, isOutgoing && styles.bodyOutgoing]}>
-            [No content]
-          </Text>
-        )}
-
-        {/* Timestamp and status */}
-        <View style={[styles.meta, hasMedia && !hasBody && styles.metaOverMedia]}>
-          <Text
-            style={[
-              styles.time,
-              isOutgoing && styles.timeOutgoing,
-              hasMedia && !hasBody && styles.timeOverMedia,
-            ]}>
-            {formatTime(message.timestamp)}
-          </Text>
-          {isOutgoing && (
-            <Text
-              style={[
-                styles.status,
-                message.status === 'read' && styles.statusRead,
-                hasMedia && !hasBody && styles.statusOverMedia,
-              ]}>
-              {getStatusIcon()}
-            </Text>
-          )}
         </View>
-      </View>
+      ) : (
+        <View style={bubbleStyle}>{bubbleContent}</View>
+      )}
     </View>
   );
 }
@@ -250,12 +278,46 @@ const styles = StyleSheet.create({
   incoming: {
     alignItems: 'flex-start',
   },
+  groupRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    maxWidth: '80%',
+  },
+  senderAvatarContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginRight: 6,
+    marginBottom: 2,
+    overflow: 'hidden',
+  },
+  senderAvatarImage: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+  senderAvatarFallback: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#7B8794',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  senderAvatarText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  groupBubbleColumn: {
+    flexShrink: 1,
+  },
   senderName: {
     fontSize: 12,
     color: '#2196f3',
     fontWeight: '500',
     marginBottom: 2,
-    marginLeft: 12,
+    marginLeft: 4,
   },
   bubble: {
     maxWidth: '75%',
@@ -269,6 +331,9 @@ const styles = StyleSheet.create({
   bubbleIncoming: {
     backgroundColor: colors.incomingBubble,
     borderBottomLeftRadius: 4,
+  },
+  bubbleInGroup: {
+    maxWidth: undefined,
   },
   bubbleWithMedia: {
     padding: 3,
