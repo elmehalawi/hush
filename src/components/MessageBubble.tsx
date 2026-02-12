@@ -1,6 +1,6 @@
 import React from 'react';
 import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme} from 'react-native';
-import {Message, Attachment, useSignalStore} from '../store/signalStore';
+import {Message, Attachment, Reaction, useSignalStore} from '../store/signalStore';
 import {colors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
@@ -139,6 +139,32 @@ function AttachmentView({
   );
 }
 
+function ReactionsView({reactions, isOutgoing}: {reactions: Reaction[]; isOutgoing: boolean}) {
+  const colorScheme = useColorScheme();
+  if (reactions.length === 0) return null;
+
+  // Group reactions by emoji and count them
+  const grouped = new Map<string, number>();
+  for (const r of reactions) {
+    grouped.set(r.emoji, (grouped.get(r.emoji) || 0) + 1);
+  }
+
+  const pillBg = colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.06)';
+  const pillBorder = colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)';
+  const countColor = colorScheme === 'dark' ? '#aaa' : '#666';
+
+  return (
+    <View style={[styles.reactionsContainer, isOutgoing ? styles.reactionsOutgoing : styles.reactionsIncoming]}>
+      {Array.from(grouped.entries()).map(([emoji, count]) => (
+        <View key={emoji} style={[styles.reactionPill, {backgroundColor: pillBg, borderColor: pillBorder}]}>
+          <Text style={styles.reactionEmoji}>{emoji}</Text>
+          {count > 1 && <Text style={[styles.reactionCount, {color: countColor}]}>{count}</Text>}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export function MessageBubble({message, isGroup}: MessageBubbleProps) {
   const colorScheme = useColorScheme();
   const incomingBubbleBg = colorScheme === 'dark' ? '#2A2A2C' : '#e0e0e0';
@@ -233,11 +259,14 @@ export function MessageBubble({message, isGroup}: MessageBubbleProps) {
     </>
   );
 
+  const hasReactions = message.reactions.length > 0;
+
   return (
     <View
       style={[
         styles.container,
         isOutgoing ? styles.outgoing : styles.incoming,
+        hasReactions && styles.containerWithReactions,
       ]}>
       {showSenderInfo ? (
         <View style={styles.groupRow}>
@@ -258,10 +287,14 @@ export function MessageBubble({message, isGroup}: MessageBubbleProps) {
               <Text style={styles.senderName}>{message.senderName}</Text>
             )}
             <View style={bubbleStyle}>{bubbleContent}</View>
+            <ReactionsView reactions={message.reactions} isOutgoing={isOutgoing} />
           </View>
         </View>
       ) : (
-        <View style={bubbleStyle}>{bubbleContent}</View>
+        <>
+          <View style={bubbleStyle}>{bubbleContent}</View>
+          <ReactionsView reactions={message.reactions} isOutgoing={isOutgoing} />
+        </>
       )}
     </View>
   );
@@ -271,6 +304,9 @@ const styles = StyleSheet.create({
   container: {
     marginVertical: 2,
     paddingHorizontal: 8,
+  },
+  containerWithReactions: {
+    marginBottom: 4,
   },
   outgoing: {
     alignItems: 'flex-end',
@@ -458,5 +494,34 @@ const styles = StyleSheet.create({
   },
   statusOverMedia: {
     color: 'rgba(255, 255, 255, 0.9)',
+  },
+  reactionsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: -8,
+    gap: 4,
+  },
+  reactionsOutgoing: {
+    justifyContent: 'flex-end',
+    paddingRight: 4,
+  },
+  reactionsIncoming: {
+    justifyContent: 'flex-start',
+    paddingLeft: 4,
+  },
+  reactionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  reactionEmoji: {
+    fontSize: 16,
+  },
+  reactionCount: {
+    fontSize: 12,
+    marginLeft: 2,
   },
 });

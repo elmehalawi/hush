@@ -1,6 +1,6 @@
 import {useEffect, useRef, useCallback} from 'react';
 import {NativeModules, NativeEventEmitter, Platform} from 'react-native';
-import {useSignalStore, Message, Channel, Attachment} from '../store/signalStore';
+import {useSignalStore, Message, Channel, Attachment, Reaction, ReactionEvent} from '../store/signalStore';
 
 // Get the native module
 const {PresageModule} = NativeModules;
@@ -34,6 +34,20 @@ interface NativeAttachment {
   thumbnailPath: string | null;
 }
 
+interface NativeReaction {
+  emoji: string;
+  senderId: string;
+  targetTimestamp: number;
+}
+
+interface NativeReactionEvent {
+  channelId: string;
+  emoji: string;
+  senderId: string;
+  targetTimestamp: number;
+  remove: boolean;
+}
+
 interface NativeMessage {
   id: string;
   channelId: string;
@@ -44,6 +58,7 @@ interface NativeMessage {
   isOutgoing: boolean;
   status: string;
   attachments: NativeAttachment[] | null;
+  reactions: NativeReaction[] | null;
 }
 
 // Convert native channel to store channel
@@ -72,6 +87,15 @@ function convertAttachment(native: NativeAttachment): Attachment {
   };
 }
 
+// Convert native reaction to store reaction
+function convertReaction(native: NativeReaction): Reaction {
+  return {
+    emoji: native.emoji,
+    senderId: native.senderId,
+    targetTimestamp: native.targetTimestamp,
+  };
+}
+
 // Convert native message to store message
 function convertMessage(native: NativeMessage): Message {
   return {
@@ -84,6 +108,7 @@ function convertMessage(native: NativeMessage): Message {
     isOutgoing: native.isOutgoing,
     status: native.status as Message['status'],
     attachments: (native.attachments || []).map(convertAttachment),
+    reactions: (native.reactions || []).map(convertReaction),
   };
 }
 
@@ -97,6 +122,7 @@ export function useSignalClient() {
   const setUserId = useSignalStore(state => state.setUserId);
   const setChannels = useSignalStore(state => state.setChannels);
   const addMessage = useSignalStore(state => state.addMessage);
+  const addReaction = useSignalStore(state => state.addReaction);
   const updateChannel = useSignalStore(state => state.updateChannel);
   const markChannelAsRead = useSignalStore(state => state.markChannelAsRead);
 
@@ -349,6 +375,15 @@ export function useSignalClient() {
             useSignalStore.getState().markChannelAsRead(converted.channelId);
           }
         }
+      }),
+      presageEventEmitter.addListener('onReaction', (event: NativeReactionEvent) => {
+        addReaction({
+          channelId: event.channelId,
+          emoji: event.emoji,
+          senderId: event.senderId,
+          targetTimestamp: event.targetTimestamp,
+          remove: event.remove,
+        });
       }),
       presageEventEmitter.addListener('onChannelUpdated', (channel: NativeChannel) => {
         updateChannel(convertChannel(channel));

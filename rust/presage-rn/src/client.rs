@@ -23,7 +23,7 @@ use uuid::Uuid;
 
 use crate::callbacks::{LinkingCallback, MessageListener};
 use crate::error::SignalError;
-use crate::types::{Attachment, Channel, Message, MessageStatus};
+use crate::types::{Attachment, Channel, Message, MessageStatus, Reaction, ReactionEvent};
 
 type PresageManager = presage::Manager<SqliteStore, Registered>;
 
@@ -401,16 +401,25 @@ impl SignalClient {
                             let is_outgoing = my_user_id.map_or(false, |me| sender_uuid == me);
 
                             // Skip protocol-level messages (profile key updates, etc.)
-                            let dominated_by_flags = match &content.body {
+                            // and reaction messages (they aren't visible as standalone messages)
+                            let should_skip = match &content.body {
                                 ContentBody::DataMessage(dm) => {
-                                    let flags = dm.flags.unwrap_or(0);
-                                    flags != 0 && dm.body.is_none() && dm.attachments.is_empty()
+                                    if dm.reaction.is_some() {
+                                        true
+                                    } else {
+                                        let flags = dm.flags.unwrap_or(0);
+                                        flags != 0 && dm.body.is_none() && dm.attachments.is_empty()
+                                    }
                                 }
                                 ContentBody::SynchronizeMessage(sync) => {
                                     if let Some(sent) = &sync.sent {
                                         if let Some(dm) = &sent.message {
-                                            let flags = dm.flags.unwrap_or(0);
-                                            flags != 0 && dm.body.is_none() && dm.attachments.is_empty()
+                                            if dm.reaction.is_some() {
+                                                true
+                                            } else {
+                                                let flags = dm.flags.unwrap_or(0);
+                                                flags != 0 && dm.body.is_none() && dm.attachments.is_empty()
+                                            }
                                         } else {
                                             false
                                         }
@@ -420,7 +429,7 @@ impl SignalClient {
                                 }
                                 _ => false,
                             };
-                            if dominated_by_flags {
+                            if should_skip {
                                 continue;
                             }
 
@@ -501,11 +510,19 @@ impl SignalClient {
             };
 
             let mut messages_with_pointers = Vec::new();
+            let mut reaction_events = Vec::new();
+
             if let Ok(iter) = manager.store().messages(&thread, ..).await {
                 for result in iter {
                     if let Ok(content) = result {
-                        if let Some((msg, pointers)) = process_content(&content, my_user_id) {
-                            messages_with_pointers.push((msg, pointers));
+                        match process_content(&content, my_user_id) {
+                            Some(ProcessedContent::Message(msg, pointers)) => {
+                                messages_with_pointers.push((msg, pointers));
+                            }
+                            Some(ProcessedContent::Reaction(reaction)) => {
+                                reaction_events.push(reaction);
+                            }
+                            None => {}
                         }
                     }
                 }
@@ -522,6 +539,35 @@ impl SignalClient {
                     }
                 }
                 messages.push(msg);
+            }
+
+            // Aggregate reactions onto their target messages.
+            // A reaction with remove=true cancels a previous reaction from the same sender.
+            // We process reactions in order (newest first from DB) and build per-message state.
+            // Key: (target_timestamp) -> HashMap<sender_id, emoji>
+            let mut reaction_map: HashMap<u64, HashMap<String, String>> = HashMap::new();
+            for evt in &reaction_events {
+                let entry = reaction_map
+                    .entry(evt.target_timestamp)
+                    .or_default();
+                if evt.remove {
+                    entry.remove(&evt.sender_id);
+                } else {
+                    entry.insert(evt.sender_id.clone(), evt.emoji.clone());
+                }
+            }
+
+            // Attach reactions to their target messages
+            for msg in &mut messages {
+                if let Some(sender_emoji_map) = reaction_map.remove(&msg.timestamp) {
+                    for (sender_id, emoji) in sender_emoji_map {
+                        msg.reactions.push(Reaction {
+                            emoji,
+                            sender_id,
+                            target_timestamp: msg.timestamp,
+                        });
+                    }
+                }
             }
 
             // messages() returns DESC order; reverse to chronological
@@ -604,6 +650,7 @@ impl SignalClient {
                 is_outgoing: true,
                 status: MessageStatus::Sent,
                 attachments: vec![],
+                reactions: vec![],
             })
         })
         })
@@ -801,8 +848,19 @@ impl SignalClient {
                                             }
                                         });
 
+                                        // Handle reaction events
+                                        if let Some(ProcessedContent::Reaction(reaction_event)) = &result {
+                                            listener.on_reaction(reaction_event.clone());
+                                            continue;
+                                        }
+
                                         // Download attachments outside stacker (async I/O)
-                                        if let Some((mut message, pointers)) = result {
+                                        let (mut message, pointers) = match result {
+                                            Some(ProcessedContent::Message(msg, ptrs)) => (msg, ptrs),
+                                            _ => continue,
+                                        };
+
+                                        {
                                             for pointer in &pointers {
                                                 let attachment = download_and_save_attachment(
                                                     &manager_for_attachments,
@@ -972,12 +1030,28 @@ impl SignalClient {
     }
 }
 
-/// Process incoming content and convert to our Message type.
-/// Returns the Message along with any raw AttachmentPointers that need downloading.
+/// Result of processing a Content message
+enum ProcessedContent {
+    /// A regular user-visible message (with attachment pointers to download)
+    Message(Message, Vec<AttachmentPointer>),
+    /// A reaction on an existing message
+    Reaction(ReactionEvent),
+}
+
+/// Extract channel_id from a DataMessage (group context or sender UUID)
+fn channel_id_from_dm(dm: &DataMessage, fallback_uuid: Uuid) -> Option<String> {
+    if let Some(group_v2) = &dm.group_v2 {
+        group_v2.master_key.as_ref().map(hex::encode)
+    } else {
+        Some(fallback_uuid.to_string())
+    }
+}
+
+/// Process incoming content and convert to our Message type or a reaction event.
 fn process_content(
     content: &Content,
     my_user_id: Uuid,
-) -> Option<(Message, Vec<AttachmentPointer>)> {
+) -> Option<ProcessedContent> {
     let sender_service_id = content.metadata.sender;
     let sender_uuid = sender_service_id.raw_uuid();
     let timestamp = content.metadata.timestamp;
@@ -985,6 +1059,20 @@ fn process_content(
 
     match &content.body {
         ContentBody::DataMessage(dm) => {
+            // Check if this is a reaction
+            if let Some(reaction) = &dm.reaction {
+                if let Some(emoji) = &reaction.emoji {
+                    let channel_id = channel_id_from_dm(dm, sender_uuid)?;
+                    return Some(ProcessedContent::Reaction(ReactionEvent {
+                        channel_id,
+                        emoji: emoji.clone(),
+                        sender_id: sender_uuid.to_string(),
+                        target_timestamp: reaction.target_sent_timestamp.unwrap_or(0),
+                        remove: reaction.remove.unwrap_or(false),
+                    }));
+                }
+            }
+
             // Skip protocol-level messages that aren't user-visible
             // (profile key updates, expiration timer changes, end-session)
             let flags = dm.flags.unwrap_or(0);
@@ -994,17 +1082,9 @@ fn process_content(
 
             let body = dm.body.clone();
             let pointers = dm.attachments.clone();
-            let channel_id = if let Some(group_v2) = &dm.group_v2 {
-                if let Some(master_key) = &group_v2.master_key {
-                    hex::encode(master_key)
-                } else {
-                    return None;
-                }
-            } else {
-                sender_uuid.to_string()
-            };
+            let channel_id = channel_id_from_dm(dm, sender_uuid)?;
 
-            Some((
+            Some(ProcessedContent::Message(
                 Message {
                     id: timestamp.to_string(),
                     channel_id,
@@ -1015,6 +1095,7 @@ fn process_content(
                     is_outgoing,
                     status: MessageStatus::Delivered,
                     attachments: vec![],
+                    reactions: vec![],
                 },
                 pointers,
             ))
@@ -1022,6 +1103,26 @@ fn process_content(
         ContentBody::SynchronizeMessage(sync) => {
             if let Some(sent) = &sync.sent {
                 if let Some(dm) = &sent.message {
+                    // Check if this is a reaction we sent from another device
+                    if let Some(reaction) = &dm.reaction {
+                        if let Some(emoji) = &reaction.emoji {
+                            let channel_id = if let Some(group_v2) = &dm.group_v2 {
+                                group_v2.master_key.as_ref().map(hex::encode)?
+                            } else if let Some(dest) = &sent.destination_service_id {
+                                dest.clone()
+                            } else {
+                                return None;
+                            };
+                            return Some(ProcessedContent::Reaction(ReactionEvent {
+                                channel_id,
+                                emoji: emoji.clone(),
+                                sender_id: my_user_id.to_string(),
+                                target_timestamp: reaction.target_sent_timestamp.unwrap_or(0),
+                                remove: reaction.remove.unwrap_or(false),
+                            }));
+                        }
+                    }
+
                     let flags = dm.flags.unwrap_or(0);
                     if flags != 0 && dm.body.is_none() && dm.attachments.is_empty() {
                         return None;
@@ -1031,18 +1132,14 @@ fn process_content(
                     let pointers = dm.attachments.clone();
 
                     let channel_id = if let Some(group_v2) = &dm.group_v2 {
-                        if let Some(master_key) = &group_v2.master_key {
-                            hex::encode(master_key)
-                        } else {
-                            return None;
-                        }
+                        group_v2.master_key.as_ref().map(hex::encode)?
                     } else if let Some(dest) = &sent.destination_service_id {
                         dest.clone()
                     } else {
                         return None;
                     };
 
-                    return Some((
+                    return Some(ProcessedContent::Message(
                         Message {
                             id: timestamp.to_string(),
                             channel_id,
@@ -1053,6 +1150,7 @@ fn process_content(
                             is_outgoing: true,
                             status: MessageStatus::Sent,
                             attachments: vec![],
+                            reactions: vec![],
                         },
                         pointers,
                     ));

@@ -1117,6 +1117,10 @@ public struct Message {
      * Attachments (images, videos, files)
      */
     public var attachments: [Attachment]
+    /**
+     * Emoji reactions on this message
+     */
+    public var reactions: [Reaction]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1147,7 +1151,10 @@ public struct Message {
             */ status: MessageStatus,
         /**
             * Attachments (images, videos, files)
-            */ attachments: [Attachment]
+            */ attachments: [Attachment],
+        /**
+            * Emoji reactions on this message
+            */ reactions: [Reaction]
     ) {
         self.id = id
         self.channelId = channelId
@@ -1158,6 +1165,7 @@ public struct Message {
         self.isOutgoing = isOutgoing
         self.status = status
         self.attachments = attachments
+        self.reactions = reactions
     }
 }
 
@@ -1190,6 +1198,9 @@ extension Message: Equatable, Hashable {
         if lhs.attachments != rhs.attachments {
             return false
         }
+        if lhs.reactions != rhs.reactions {
+            return false
+        }
         return true
     }
 
@@ -1203,6 +1214,7 @@ extension Message: Equatable, Hashable {
         hasher.combine(isOutgoing)
         hasher.combine(status)
         hasher.combine(attachments)
+        hasher.combine(reactions)
     }
 }
 
@@ -1221,7 +1233,8 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
                 timestamp: FfiConverterUInt64.read(from: &buf),
                 isOutgoing: FfiConverterBool.read(from: &buf),
                 status: FfiConverterTypeMessageStatus.read(from: &buf),
-                attachments: FfiConverterSequenceTypeAttachment.read(from: &buf)
+                attachments: FfiConverterSequenceTypeAttachment.read(from: &buf),
+                reactions: FfiConverterSequenceTypeReaction.read(from: &buf)
             )
     }
 
@@ -1235,6 +1248,7 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
         FfiConverterBool.write(value.isOutgoing, into: &buf)
         FfiConverterTypeMessageStatus.write(value.status, into: &buf)
         FfiConverterSequenceTypeAttachment.write(value.attachments, into: &buf)
+        FfiConverterSequenceTypeReaction.write(value.reactions, into: &buf)
     }
 }
 
@@ -1250,6 +1264,216 @@ public func FfiConverterTypeMessage_lift(_ buf: RustBuffer) throws -> Message {
 #endif
 public func FfiConverterTypeMessage_lower(_ value: Message) -> RustBuffer {
     return FfiConverterTypeMessage.lower(value)
+}
+
+/**
+ * A single emoji reaction on a message
+ */
+public struct Reaction {
+    /**
+     * The emoji (e.g. "👍")
+     */
+    public var emoji: String
+    /**
+     * UUID of the person who reacted
+     */
+    public var senderId: String
+    /**
+     * Timestamp of the target message this reaction applies to
+     */
+    public var targetTimestamp: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The emoji (e.g. "👍")
+         */ emoji: String,
+        /**
+            * UUID of the person who reacted
+            */ senderId: String,
+        /**
+            * Timestamp of the target message this reaction applies to
+            */ targetTimestamp: UInt64
+    ) {
+        self.emoji = emoji
+        self.senderId = senderId
+        self.targetTimestamp = targetTimestamp
+    }
+}
+
+extension Reaction: Equatable, Hashable {
+    public static func == (lhs: Reaction, rhs: Reaction) -> Bool {
+        if lhs.emoji != rhs.emoji {
+            return false
+        }
+        if lhs.senderId != rhs.senderId {
+            return false
+        }
+        if lhs.targetTimestamp != rhs.targetTimestamp {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(emoji)
+        hasher.combine(senderId)
+        hasher.combine(targetTimestamp)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Reaction {
+        return
+            try Reaction(
+                emoji: FfiConverterString.read(from: &buf),
+                senderId: FfiConverterString.read(from: &buf),
+                targetTimestamp: FfiConverterUInt64.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: Reaction, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.emoji, into: &buf)
+        FfiConverterString.write(value.senderId, into: &buf)
+        FfiConverterUInt64.write(value.targetTimestamp, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaction_lift(_ buf: RustBuffer) throws -> Reaction {
+    return try FfiConverterTypeReaction.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaction_lower(_ value: Reaction) -> RustBuffer {
+    return FfiConverterTypeReaction.lower(value)
+}
+
+/**
+ * An incoming reaction event (for real-time updates)
+ */
+public struct ReactionEvent {
+    /**
+     * The channel this reaction belongs to
+     */
+    public var channelId: String
+    /**
+     * The emoji (e.g. "👍")
+     */
+    public var emoji: String
+    /**
+     * UUID of the person who reacted
+     */
+    public var senderId: String
+    /**
+     * Timestamp of the target message this reaction applies to
+     */
+    public var targetTimestamp: UInt64
+    /**
+     * Whether this removes a previous reaction
+     */
+    public var remove: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The channel this reaction belongs to
+         */ channelId: String,
+        /**
+            * The emoji (e.g. "👍")
+            */ emoji: String,
+        /**
+            * UUID of the person who reacted
+            */ senderId: String,
+        /**
+            * Timestamp of the target message this reaction applies to
+            */ targetTimestamp: UInt64,
+        /**
+            * Whether this removes a previous reaction
+            */ remove: Bool
+    ) {
+        self.channelId = channelId
+        self.emoji = emoji
+        self.senderId = senderId
+        self.targetTimestamp = targetTimestamp
+        self.remove = remove
+    }
+}
+
+extension ReactionEvent: Equatable, Hashable {
+    public static func == (lhs: ReactionEvent, rhs: ReactionEvent) -> Bool {
+        if lhs.channelId != rhs.channelId {
+            return false
+        }
+        if lhs.emoji != rhs.emoji {
+            return false
+        }
+        if lhs.senderId != rhs.senderId {
+            return false
+        }
+        if lhs.targetTimestamp != rhs.targetTimestamp {
+            return false
+        }
+        if lhs.remove != rhs.remove {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(channelId)
+        hasher.combine(emoji)
+        hasher.combine(senderId)
+        hasher.combine(targetTimestamp)
+        hasher.combine(remove)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReactionEvent: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReactionEvent {
+        return
+            try ReactionEvent(
+                channelId: FfiConverterString.read(from: &buf),
+                emoji: FfiConverterString.read(from: &buf),
+                senderId: FfiConverterString.read(from: &buf),
+                targetTimestamp: FfiConverterUInt64.read(from: &buf),
+                remove: FfiConverterBool.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: ReactionEvent, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.channelId, into: &buf)
+        FfiConverterString.write(value.emoji, into: &buf)
+        FfiConverterString.write(value.senderId, into: &buf)
+        FfiConverterUInt64.write(value.targetTimestamp, into: &buf)
+        FfiConverterBool.write(value.remove, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReactionEvent_lift(_ buf: RustBuffer) throws -> ReactionEvent {
+    return try FfiConverterTypeReactionEvent.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReactionEvent_lower(_ value: ReactionEvent) -> RustBuffer {
+    return FfiConverterTypeReactionEvent.lower(value)
 }
 
 // Note that we don't yet support `indirect` for enums.
@@ -1726,6 +1950,11 @@ public protocol MessageListener: AnyObject {
     func onMessage(message: Message)
 
     /**
+     * Called when a reaction is received on an existing message
+     */
+    func onReaction(reaction: ReactionEvent)
+
+    /**
      * Called when a channel's metadata is updated (new message, name change, etc.)
      */
     func onChannelUpdated(channel: Channel)
@@ -1754,6 +1983,29 @@ private enum UniffiCallbackInterfaceMessageListener {
                 }
                 return try uniffiObj.onMessage(
                     message: FfiConverterTypeMessage.lift(message)
+                )
+            }
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onReaction: { (
+            uniffiHandle: UInt64,
+            reaction: RustBuffer,
+            _: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMessageListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.onReaction(
+                    reaction: FfiConverterTypeReactionEvent.lift(reaction)
                 )
             }
 
@@ -2040,6 +2292,31 @@ private struct FfiConverterSequenceTypeMessage: FfiConverterRustBuffer {
     }
 }
 
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private struct FfiConverterSequenceTypeReaction: FfiConverterRustBuffer {
+    typealias SwiftType = [Reaction]
+
+    public static func write(_ value: [Reaction], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeReaction.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Reaction] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Reaction]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            try seq.append(FfiConverterTypeReaction.read(from: &buf))
+        }
+        return seq
+    }
+}
+
 private enum InitializationResult {
     case ok
     case contractVersionMismatch
@@ -2104,10 +2381,13 @@ private var initializationResult: InitializationResult = {
     if uniffi_presage_rn_checksum_method_messagelistener_on_message() != 15474 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_presage_rn_checksum_method_messagelistener_on_channel_updated() != 31106 {
+    if uniffi_presage_rn_checksum_method_messagelistener_on_reaction() != 25587 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_presage_rn_checksum_method_messagelistener_on_error() != 21384 {
+    if uniffi_presage_rn_checksum_method_messagelistener_on_channel_updated() != 13262 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_messagelistener_on_error() != 18718 {
         return InitializationResult.apiChecksumMismatch
     }
 
