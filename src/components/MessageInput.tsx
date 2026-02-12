@@ -48,7 +48,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
 
     return (
       <View style={styles.container}>
-        <GlassView style={styles.inputWrapper} cornerRadius={20}>
+        <GlassView style={styles.inputWrapper} cornerRadius={24}>
           <TextInput
             ref={inputRef}
             style={[styles.input, isDark && {color: '#FFFFFF'}]}

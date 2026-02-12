@@ -67,6 +67,7 @@ import AppKit
 
     shadowLayer?.frame = myLayer.frame
     shadowLayer?.cornerRadius = cornerRadius
+    shadowLayer?.cornerCurve = .continuous
     shadowLayer?.shadowPath = CGPath(
       roundedRect: CGRect(origin: .zero, size: myLayer.frame.size),
       cornerWidth: cornerRadius,

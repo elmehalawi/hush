@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
   },
   selected: {
     backgroundColor: '#0058D0',
-    borderRadius: 10,
+    borderRadius: 14,
   },
   avatar: {
     width: 40,

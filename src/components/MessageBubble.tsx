@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
   bubble: {
     maxWidth: '75%',
     padding: 10,
-    borderRadius: 16,
+    borderRadius: 20,
   },
   bubbleOutgoing: {
     backgroundColor: '#2196f3',
@@ -340,14 +340,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   attachmentsContainer: {
-    borderRadius: 13,
+    borderRadius: 17,
     overflow: 'hidden',
   },
   attachmentImage: {
-    borderRadius: 13,
+    borderRadius: 17,
   },
   videoContainer: {
-    borderRadius: 13,
+    borderRadius: 17,
     overflow: 'hidden',
   },
   playButtonOverlay: {
@@ -369,13 +369,13 @@ const styles = StyleSheet.create({
     marginLeft: 3,
   },
   videoPlaceholder: {
-    borderRadius: 13,
+    borderRadius: 17,
     backgroundColor: 'rgba(0, 0, 0, 0.15)',
   },
   failedAttachment: {
     width: MAX_IMAGE_WIDTH,
     height: 80,
-    borderRadius: 13,
+    borderRadius: 17,
     backgroundColor: 'rgba(0, 0, 0, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 8,
-    borderRadius: 8,
+    borderRadius: 12,
     backgroundColor: 'rgba(0, 0, 0, 0.05)',
     margin: 4,
   },
@@ -433,7 +433,7 @@ const styles = StyleSheet.create({
     bottom: 6,
     right: 8,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
     marginTop: 0,

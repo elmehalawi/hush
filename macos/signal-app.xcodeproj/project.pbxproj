@@ -31,6 +31,7 @@
 		GLASS001A00000000000005 /* GlassButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000005 /* GlassButton.swift */; };
 		GLASS001A00000000000006 /* GlassButtonManager.m in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000006 /* GlassButtonManager.m */; };
 		SCRL001A00000000000001 /* ScrollFix.m in Sources */ = {isa = PBXBuildFile; fileRef = SCRL001F00000000000001 /* ScrollFix.m */; };
+		CCRN001A00000000000001 /* ContinuousCorners.m in Sources */ = {isa = PBXBuildFile; fileRef = CCRN001F00000000000001 /* ContinuousCorners.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -68,6 +69,7 @@
 		GLASS001F00000000000006 /* GlassButtonManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GlassButtonManager.m; sourceTree = "<group>"; };
 		ICON001F00000000000001 /* HushIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder; path = HushIcon.icon; sourceTree = "<group>"; };
 		SCRL001F00000000000001 /* ScrollFix.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ScrollFix.m; sourceTree = "<group>"; };
+		CCRN001F00000000000001 /* ContinuousCorners.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ContinuousCorners.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -124,6 +126,7 @@
 				95D825E99A0FD645C00F00C1 /* PresageModule.m */,
 				A1B2C3D4E5F60718BEEFDEAD /* SpaceKeyFix.m */,
 				SCRL001F00000000000001 /* ScrollFix.m */,
+				CCRN001F00000000000001 /* ContinuousCorners.m */,
 				GLASS001F00000000000001 /* GlassEffectView.swift */,
 				GLASS001F00000000000002 /* GlassEffectViewManager.m */,
 				GLASS001F00000000000003 /* GlassContainerView.swift */,
@@ -405,6 +408,7 @@
 				26FB31DB1E1FD03E4D185C99 /* PresageModule.m in Sources */,
 				A1B2C3D4E5F60718DEADBEEF /* SpaceKeyFix.m in Sources */,
 				SCRL001A00000000000001 /* ScrollFix.m in Sources */,
+				CCRN001A00000000000001 /* ContinuousCorners.m in Sources */,
 				61A07EBCE7FD3C2C3080354A /* presage_rn.swift in Sources */,
 				GLASS001A00000000000001 /* GlassEffectView.swift in Sources */,
 				GLASS001A00000000000002 /* GlassEffectViewManager.m in Sources */,

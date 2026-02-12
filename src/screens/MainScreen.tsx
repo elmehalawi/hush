@@ -15,7 +15,7 @@ const emitter = CommandPaletteModule
 const SIDEBAR_DEFAULT = 268;
 const SIDEBAR_MIN = 100;
 const SIDEBAR_MAX = 500;
-const SIDEBAR_MARGIN = 12;
+const SIDEBAR_MARGIN = 4;
 const COLLAPSE_THRESHOLD = 120;
 
 interface MainScreenProps {
@@ -131,7 +131,7 @@ export function MainScreen({onSendMessage, onSelectChannel}: MainScreenProps) {
       {/* Glass sidebar overlay */}
       <GlassView
         style={[styles.sidebar, {width: sidebarWidth}]}
-        cornerRadius={26}>
+        cornerRadius={20}>
         <ChannelList
           channels={channels}
           selectedId={selectedChannelId}
@@ -168,14 +168,14 @@ const styles = StyleSheet.create({
   },
   sidebar: {
     position: 'absolute',
-    top: 12,
-    bottom: 12,
-    left: 12,
+    top: 4,
+    bottom: 4,
+    left: 4,
   },
   resizeHandle: {
     position: 'absolute',
-    top: 12,
-    bottom: 12,
+    top: 4,
+    bottom: 4,
     width: 8,
     cursor: 'col-resize',
     zIndex: 10,
