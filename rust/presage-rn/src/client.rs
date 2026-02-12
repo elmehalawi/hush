@@ -813,44 +813,49 @@ impl SignalClient {
                                                 message.attachments.push(attachment);
                                             }
 
-                                            // For incoming messages, emit channel update with real name/avatar
+                                            // For incoming messages, look up sender name and emit channel update
                                             if !message.is_outgoing {
                                                 let channel_id = message.channel_id.clone();
+                                                let is_group = message.channel_id.len() == 64;
+
+                                                // Look up real name and avatar from the store
+                                                let (name, avatar_path, phone_number) = if is_group {
+                                                    // Group: look up by master key
+                                                    let name = if let Ok(key_bytes) = hex::decode(&channel_id) {
+                                                        if let Ok(key) = <[u8; 32]>::try_from(key_bytes.as_slice()) {
+                                                            manager_for_attachments.store().group(key).await
+                                                                .ok().flatten().map(|g| g.title).unwrap_or_default()
+                                                        } else { String::new() }
+                                                    } else { String::new() };
+                                                    let avatar_file = avatars_dir.join(&channel_id);
+                                                    let avatar = if avatar_file.exists() {
+                                                        Some(avatar_file.to_string_lossy().to_string())
+                                                    } else { None };
+                                                    (name, avatar, None)
+                                                } else {
+                                                    // Contact: look up by UUID
+                                                    let (name, phone) = if let Ok(uuid) = channel_id.parse::<Uuid>() {
+                                                        match manager_for_attachments.store().contact_by_id(&uuid).await {
+                                                            Ok(Some(c)) => (c.name.clone(), c.phone_number.as_ref().map(|p| p.to_string())),
+                                                            _ => (String::new(), None),
+                                                        }
+                                                    } else { (String::new(), None) };
+                                                    let avatar_file = avatars_dir.join(&channel_id);
+                                                    let avatar = if avatar_file.exists() {
+                                                        Some(avatar_file.to_string_lossy().to_string())
+                                                    } else { None };
+                                                    (name, avatar, phone)
+                                                };
+
+                                                // Set sender_name on the message for notifications
+                                                if !name.is_empty() {
+                                                    message.sender_name = Some(name.clone());
+                                                }
+
                                                 let state = read_state.read();
                                                 let last_read = state.get(&channel_id).copied().unwrap_or(0);
                                                 if message.timestamp > last_read {
                                                     drop(state);
-                                                    let is_group = message.channel_id.len() == 64;
-
-                                                    // Look up real name and avatar from the store
-                                                    let (name, avatar_path, phone_number) = if is_group {
-                                                        // Group: look up by master key
-                                                        let name = if let Ok(key_bytes) = hex::decode(&channel_id) {
-                                                            if let Ok(key) = <[u8; 32]>::try_from(key_bytes.as_slice()) {
-                                                                manager_for_attachments.store().group(key).await
-                                                                    .ok().flatten().map(|g| g.title).unwrap_or_default()
-                                                            } else { String::new() }
-                                                        } else { String::new() };
-                                                        let avatar_file = avatars_dir.join(&channel_id);
-                                                        let avatar = if avatar_file.exists() {
-                                                            Some(avatar_file.to_string_lossy().to_string())
-                                                        } else { None };
-                                                        (name, avatar, None)
-                                                    } else {
-                                                        // Contact: look up by UUID
-                                                        let (name, phone) = if let Ok(uuid) = channel_id.parse::<Uuid>() {
-                                                            match manager_for_attachments.store().contact_by_id(&uuid).await {
-                                                                Ok(Some(c)) => (c.name.clone(), c.phone_number.as_ref().map(|p| p.to_string())),
-                                                                _ => (String::new(), None),
-                                                            }
-                                                        } else { (String::new(), None) };
-                                                        let avatar_file = avatars_dir.join(&channel_id);
-                                                        let avatar = if avatar_file.exists() {
-                                                            Some(avatar_file.to_string_lossy().to_string())
-                                                        } else { None };
-                                                        (name, avatar, phone)
-                                                    };
-
                                                     listener.on_channel_updated(Channel {
                                                         id: channel_id,
                                                         name,
