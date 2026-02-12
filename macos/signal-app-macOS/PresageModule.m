@@ -3,8 +3,7 @@
 
 @interface RCT_EXTERN_MODULE(PresageModule, RCTEventEmitter)
 
-RCT_EXTERN_METHOD(initialize:(NSString *)dataDir
-                  resolver:(RCTPromiseResolveBlock)resolve
+RCT_EXTERN_METHOD(initialize:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
 RCT_EXTERN_METHOD(isLinked:(RCTPromiseResolveBlock)resolve

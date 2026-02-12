@@ -87,12 +87,6 @@ function convertMessage(native: NativeMessage): Message {
   };
 }
 
-// Get the data directory for storing Signal data
-function getDataDir(): string {
-  const home = process.env.HOME || '/tmp';
-  return `${home}/Library/Application Support/hush`;
-}
-
 // Hook for using the Signal client
 export function useSignalClient() {
   const isInitialized = useRef(false);
@@ -122,9 +116,8 @@ export function useSignalClient() {
     }
 
     try {
-      const dataDir = getDataDir();
-      console.log('Initializing with dataDir:', dataDir);
-      await PresageModule.initialize(dataDir);
+      console.log('Initializing PresageModule...');
+      await PresageModule.initialize();
       console.log('Initialize succeeded');
       isInitialized.current = true;
 
