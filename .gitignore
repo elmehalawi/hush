@@ -33,6 +33,9 @@ yarn-error.log
 rust/presage-rn/target/
 rust/test-provisioning/target/
 
+# Build artifacts (static libraries)
+*.a
+
 # Generated
 src/generated/
 

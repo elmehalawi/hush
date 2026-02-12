@@ -76,10 +76,12 @@ class PresageModule: RCTEventEmitter {
 
     // MARK: - Exported Methods
 
-    @objc(initialize:resolver:rejecter:)
-    func initialize(_ dataDir: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+    @objc(initialize:rejecter:)
+    func initialize(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
+                let home = NSHomeDirectory()
+                let dataDir = "\(home)/Library/Application Support/hush"
                 NSLog("PresageModule: initializing with dataDir: \(dataDir)")
 
                 // Create the directory if it doesn't exist
@@ -282,7 +284,9 @@ class PresageModule: RCTEventEmitter {
             },
             onChannelUpdated: { [weak self] channel in
                 self?.avatarCacheLock.lock()
-                self?.channelNameCache[channel.id] = channel.name
+                if !channel.name.isEmpty {
+                    self?.channelNameCache[channel.id] = channel.name
+                }
                 self?.channelIsGroupCache[channel.id] = channel.isGroup
                 if let avatarPath = channel.avatarPath {
                     self?.channelAvatarCache[channel.id] = avatarPath
