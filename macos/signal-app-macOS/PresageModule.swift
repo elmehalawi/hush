@@ -33,7 +33,7 @@ class PresageModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onMessage", "onChannelUpdated", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked"]
+        return ["onMessage", "onReaction", "onChannelUpdated", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked"]
     }
 
     override func startObserving() {
@@ -282,6 +282,9 @@ class PresageModule: RCTEventEmitter {
                 self?.sendEventIfListening("onMessage", body: self?.messageToDict(message))
                 self?.postNotification(for: message)
             },
+            onReaction: { [weak self] reaction in
+                self?.sendEventIfListening("onReaction", body: self?.reactionEventToDict(reaction))
+            },
             onChannelUpdated: { [weak self] channel in
                 self?.avatarCacheLock.lock()
                 if !channel.name.isEmpty {
@@ -507,6 +510,24 @@ class PresageModule: RCTEventEmitter {
         }
     }
 
+    private func reactionToDict(_ reaction: Reaction) -> [String: Any] {
+        return [
+            "emoji": reaction.emoji,
+            "senderId": reaction.senderId,
+            "targetTimestamp": NSNumber(value: reaction.targetTimestamp),
+        ]
+    }
+
+    private func reactionEventToDict(_ event: ReactionEvent) -> [String: Any] {
+        return [
+            "channelId": event.channelId,
+            "emoji": event.emoji,
+            "senderId": event.senderId,
+            "targetTimestamp": NSNumber(value: event.targetTimestamp),
+            "remove": event.remove,
+        ]
+    }
+
     private func messageToDict(_ message: Message) -> [String: Any?] {
         var dict: [String: Any?] = [
             "id": message.id,
@@ -519,6 +540,7 @@ class PresageModule: RCTEventEmitter {
         ]
         dict["timestamp"] = NSNumber(value: message.timestamp)
         dict["attachments"] = message.attachments.map { attachmentToDict($0) }
+        dict["reactions"] = message.reactions.map { reactionToDict($0) }
         return dict
     }
 
@@ -650,11 +672,13 @@ class LinkingCallbackImpl: LinkingCallback {
 
 class MessageListenerImpl: MessageListener {
     private let onMessageHandler: (Message) -> Void
+    private let onReactionHandler: (ReactionEvent) -> Void
     private let onChannelUpdatedHandler: (Channel) -> Void
     private let onErrorHandler: (String) -> Void
 
-    init(onMessage: @escaping (Message) -> Void, onChannelUpdated: @escaping (Channel) -> Void, onError: @escaping (String) -> Void) {
+    init(onMessage: @escaping (Message) -> Void, onReaction: @escaping (ReactionEvent) -> Void, onChannelUpdated: @escaping (Channel) -> Void, onError: @escaping (String) -> Void) {
         self.onMessageHandler = onMessage
+        self.onReactionHandler = onReaction
         self.onChannelUpdatedHandler = onChannelUpdated
         self.onErrorHandler = onError
     }
@@ -662,6 +686,12 @@ class MessageListenerImpl: MessageListener {
     func onMessage(message: Message) {
         DispatchQueue.main.async {
             self.onMessageHandler(message)
+        }
+    }
+
+    func onReaction(reaction: ReactionEvent) {
+        DispatchQueue.main.async {
+            self.onReactionHandler(reaction)
         }
     }
 

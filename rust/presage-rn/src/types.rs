@@ -38,6 +38,32 @@ pub struct Attachment {
     pub size: Option<u32>,
 }
 
+/// An incoming reaction event (for real-time updates)
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ReactionEvent {
+    /// The channel this reaction belongs to
+    pub channel_id: String,
+    /// The emoji (e.g. "👍")
+    pub emoji: String,
+    /// UUID of the person who reacted
+    pub sender_id: String,
+    /// Timestamp of the target message this reaction applies to
+    pub target_timestamp: u64,
+    /// Whether this removes a previous reaction
+    pub remove: bool,
+}
+
+/// A single emoji reaction on a message
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct Reaction {
+    /// The emoji (e.g. "👍")
+    pub emoji: String,
+    /// UUID of the person who reacted
+    pub sender_id: String,
+    /// Timestamp of the target message this reaction applies to
+    pub target_timestamp: u64,
+}
+
 /// Represents a single message
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Message {
@@ -59,6 +85,8 @@ pub struct Message {
     pub status: MessageStatus,
     /// Attachments (images, videos, files)
     pub attachments: Vec<Attachment>,
+    /// Emoji reactions on this message
+    pub reactions: Vec<Reaction>,
 }
 
 /// Message delivery status

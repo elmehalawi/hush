@@ -21,6 +21,12 @@ export interface Attachment {
   thumbnailPath?: string;
 }
 
+export interface Reaction {
+  emoji: string;
+  senderId: string;
+  targetTimestamp: number;
+}
+
 export interface Message {
   id: string;
   channelId: string;
@@ -31,6 +37,7 @@ export interface Message {
   isOutgoing: boolean;
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   attachments: Attachment[];
+  reactions: Reaction[];
 }
 
 export type LinkingState =
@@ -38,6 +45,14 @@ export type LinkingState =
   | {type: 'waitingForScan'; qrUrl: string}
   | {type: 'completed'}
   | {type: 'failed'; message: string};
+
+export interface ReactionEvent {
+  channelId: string;
+  emoji: string;
+  senderId: string;
+  targetTimestamp: number;
+  remove: boolean;
+}
 
 interface SignalStore {
   // State
@@ -57,6 +72,7 @@ interface SignalStore {
 
   // Message actions
   addMessage: (message: Message) => void;
+  addReaction: (event: ReactionEvent) => void;
   setMessages: (channelId: string, messages: Message[]) => void;
   updateChannel: (channel: Channel) => void;
   markChannelAsRead: (channelId: string) => void;
@@ -82,6 +98,44 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
   setSelectedChannelId: (id: string | null) => set({selectedChannelId: id}),
 
   setUserId: (id: string | null) => set({userId: id}),
+
+  addReaction: (event: ReactionEvent) => {
+    const {messages} = get();
+    const channelMessages = messages[event.channelId];
+    if (!channelMessages) return;
+
+    const msgIndex = channelMessages.findIndex(
+      m => m.timestamp === event.targetTimestamp,
+    );
+    if (msgIndex < 0) return;
+
+    const msg = channelMessages[msgIndex];
+    let newReactions: Reaction[];
+    if (event.remove) {
+      newReactions = msg.reactions.filter(
+        r => !(r.senderId === event.senderId && r.emoji === event.emoji),
+      );
+    } else {
+      // Replace any existing reaction from this sender, then add new one
+      newReactions = msg.reactions.filter(
+        r => r.senderId !== event.senderId,
+      );
+      newReactions.push({
+        emoji: event.emoji,
+        senderId: event.senderId,
+        targetTimestamp: event.targetTimestamp,
+      });
+    }
+
+    const updatedMessages = [...channelMessages];
+    updatedMessages[msgIndex] = {...msg, reactions: newReactions};
+    set({
+      messages: {
+        ...messages,
+        [event.channelId]: updatedMessages,
+      },
+    });
+  },
 
   addMessage: (message: Message) => {
     const {messages, channels, selectedChannelId} = get();

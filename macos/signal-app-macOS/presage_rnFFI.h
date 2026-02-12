@@ -293,6 +293,13 @@ typedef void (*UniffiCallbackInterfaceMessageListenerMethod2)(uint64_t, RustBuff
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD3
+typedef void (*UniffiCallbackInterfaceMessageListenerMethod3)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LINKING_CALLBACK
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LINKING_CALLBACK
 typedef struct UniffiVTableCallbackInterfaceLinkingCallback {
@@ -307,8 +314,9 @@ typedef struct UniffiVTableCallbackInterfaceLinkingCallback {
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_MESSAGE_LISTENER
 typedef struct UniffiVTableCallbackInterfaceMessageListener {
     UniffiCallbackInterfaceMessageListenerMethod0 _Nonnull onMessage;
-    UniffiCallbackInterfaceMessageListenerMethod1 _Nonnull onChannelUpdated;
-    UniffiCallbackInterfaceMessageListenerMethod2 _Nonnull onError;
+    UniffiCallbackInterfaceMessageListenerMethod1 _Nonnull onReaction;
+    UniffiCallbackInterfaceMessageListenerMethod2 _Nonnull onChannelUpdated;
+    UniffiCallbackInterfaceMessageListenerMethod3 _Nonnull onError;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceMessageListener;
 
@@ -766,6 +774,12 @@ uint16_t uniffi_presage_rn_checksum_method_linkingcallback_on_linking_error(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_MESSAGE
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_MESSAGE
 uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_message(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_REACTION
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_REACTION
+uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_reaction(void
     
 );
 #endif
