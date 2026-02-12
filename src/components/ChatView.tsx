@@ -68,7 +68,7 @@ export function ChatView({channel, messages}: ChatViewProps) {
             )}
           </View>
           <View style={styles.headerPill}>
-            <GlassView style={StyleSheet.absoluteFill} cornerRadius={16} />
+            <GlassView style={StyleSheet.absoluteFill} cornerRadius={20} />
             <Text style={styles.pillName} numberOfLines={1}>
               {channel.name}
             </Text>

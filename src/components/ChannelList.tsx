@@ -54,7 +54,7 @@ export function ChannelList({channels, selectedId, onSelect, collapsed}: Channel
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    borderRadius: 26,
+    borderRadius: 20,
     overflow: 'hidden',
   },
   list: {
