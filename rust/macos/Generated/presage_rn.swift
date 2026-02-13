@@ -534,6 +534,11 @@ public protocol SignalClientProtocol: AnyObject {
     func sendMessage(channelId: String, text: String) throws -> Message
 
     /**
+     * Send a message with file attachments to a channel
+     */
+    func sendMessageWithAttachments(channelId: String, text: String?, attachmentPaths: [String]) throws -> Message
+
+    /**
      * Send an emoji reaction to a message
      */
     func sendReaction(channelId: String, emoji: String, targetTimestamp: UInt64, remove: Bool) throws
@@ -694,6 +699,18 @@ open class SignalClient:
             uniffi_presage_rn_fn_method_signalclient_send_message(self.uniffiClonePointer(),
                                                                   FfiConverterString.lower(channelId),
                                                                   FfiConverterString.lower(text), $0)
+        })
+    }
+
+    /**
+     * Send a message with file attachments to a channel
+     */
+    open func sendMessageWithAttachments(channelId: String, text: String?, attachmentPaths: [String]) throws -> Message {
+        return try FfiConverterTypeMessage.lift(rustCallWithError(FfiConverterTypeSignalError.lift) {
+            uniffi_presage_rn_fn_method_signalclient_send_message_with_attachments(self.uniffiClonePointer(),
+                                                                                   FfiConverterString.lower(channelId),
+                                                                                   FfiConverterOptionString.lower(text),
+                                                                                   FfiConverterSequenceString.lower(attachmentPaths), $0)
         })
     }
 
@@ -2237,6 +2254,31 @@ private struct FfiConverterSequenceUInt64: FfiConverterRustBuffer {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
+private struct FfiConverterSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]
+
+    public static func write(_ value: [String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [String]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            try seq.append(FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
 private struct FfiConverterSequenceTypeAttachment: FfiConverterRustBuffer {
     typealias SwiftType = [Attachment]
 
@@ -2369,6 +2411,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_send_message() != 4543 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_signalclient_send_message_with_attachments() != 27088 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_send_reaction() != 17691 {

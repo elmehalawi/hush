@@ -6,6 +6,7 @@ import {ChatView} from '../components/ChatView';
 import {MessageInput, MessageInputHandle} from '../components/MessageInput';
 import {GlassView} from '../components/GlassView';
 import {GlassContainerView} from '../components/GlassContainerView';
+import {DropTargetView} from '../components/DropTargetView';
 
 const {CommandPaletteModule} = NativeModules;
 const emitter = CommandPaletteModule
@@ -19,7 +20,7 @@ const SIDEBAR_MARGIN = 4;
 const COLLAPSE_THRESHOLD = 120;
 
 interface MainScreenProps {
-  onSendMessage: (channelId: string, text: string) => void;
+  onSendMessage: (channelId: string, text: string, attachmentPaths?: string[]) => void;
   onSelectChannel: (channelId: string) => void;
   onReact?: (channelId: string, emoji: string, targetTimestamp: number, remove: boolean) => void;
 }
@@ -68,9 +69,9 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact}: MainScreen
   );
 
   const handleSendMessage = useCallback(
-    (text: string) => {
+    (text: string, attachmentPaths?: string[]) => {
       if (selectedChannelId) {
-        onSendMessage(selectedChannelId, text);
+        onSendMessage(selectedChannelId, text, attachmentPaths);
       }
     },
     [selectedChannelId, onSendMessage],
@@ -122,13 +123,15 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact}: MainScreen
   return (
     <View style={styles.container}>
       {/* Chat area fills behind sidebar and input */}
-      <View style={[styles.chatArea, {left: chatLeft}]}>
+      <DropTargetView
+        style={[styles.chatArea, {left: chatLeft}]}
+        onFileDrop={(paths) => inputRef.current?.addFiles(paths)}>
         <ChatView
           channel={selectedChannel}
           messages={channelMessages}
           onReact={onReact}
         />
-      </View>
+      </DropTargetView>
 
       {/* Glass sidebar overlay */}
       <GlassView

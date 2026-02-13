@@ -57,4 +57,31 @@ RCT_EXTERN_METHOD(fetchAllAvatars:(RCTPromiseResolveBlock)resolve
 
 RCT_EXTERN_METHOD(previewFile:(NSString *)filePath)
 
+RCT_EXTERN_METHOD(sendMessageWithAttachments:(NSString *)channelId
+                  text:(NSString *)text
+                  attachmentPaths:(NSArray *)attachmentPaths
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(getFileIcon:(NSString *)filePath
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(getClipboardFiles:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(getClipboardImage:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(pickFiles:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(generateVideoThumbnailAtPath:(NSString *)videoPath
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(generateImageThumbnail:(NSString *)imagePath
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 @end

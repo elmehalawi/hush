@@ -11,6 +11,7 @@ use parking_lot::RwLock;
 use presage::libsignal_service::configuration::SignalServers;
 use presage::libsignal_service::content::{Content, ContentBody};
 use presage::libsignal_service::protocol::{Aci, ServiceId};
+use presage::libsignal_service::sender::AttachmentSpec;
 use presage::libsignal_service::zkgroup::profiles::ProfileKey;
 use presage::manager::Registered;
 use presage::model::identity::OnNewIdentity;
@@ -653,6 +654,158 @@ impl SignalClient {
                 reactions: vec![],
             })
         })
+        })
+    }
+
+    /// Send a message with file attachments to a channel
+    pub fn send_message_with_attachments(
+        &self,
+        channel_id: String,
+        text: Option<String>,
+        attachment_paths: Vec<String>,
+    ) -> Result<Message, SignalError> {
+        let mut manager_guard = self.manager.write();
+        let manager = manager_guard.as_mut().ok_or(SignalError::NotLinked)?;
+
+        let my_user_id = self.user_id.read().ok_or(SignalError::NotLinked)?;
+
+        const RED_ZONE: usize = 512 * 1024;
+        const STACK_SIZE: usize = 8 * 1024 * 1024;
+
+        stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
+            self.runtime.block_on(async {
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as u64;
+
+                // Read files and build attachment specs
+                let mut specs: Vec<(AttachmentSpec, Vec<u8>)> = Vec::new();
+                let mut file_names: Vec<Option<String>> = Vec::new();
+                let mut content_types: Vec<String> = Vec::new();
+
+                for path_str in &attachment_paths {
+                    let path = std::path::Path::new(path_str);
+                    let data = std::fs::read(path).map_err(|e| SignalError::InternalError {
+                        message: format!("Failed to read file {}: {}", path_str, e),
+                    })?;
+
+                    let mime = mime_guess::from_path(path)
+                        .first_or_octet_stream()
+                        .to_string();
+                    let file_name = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string());
+
+                    let spec = AttachmentSpec {
+                        content_type: mime.clone(),
+                        length: data.len(),
+                        file_name: file_name.clone(),
+                        ..Default::default()
+                    };
+
+                    content_types.push(mime);
+                    file_names.push(file_name);
+                    specs.push((spec, data));
+                }
+
+                // Upload attachments
+                let results = manager
+                    .upload_attachments(specs)
+                    .await
+                    .map_err(|e| SignalError::SendFailed {
+                        message: format!("Failed to upload attachments: {}", e),
+                    })?;
+
+                let mut pointers = Vec::new();
+                for result in results {
+                    match result {
+                        Ok(pointer) => pointers.push(pointer),
+                        Err(e) => {
+                            warn!("Failed to upload attachment: {:?}", e);
+                        }
+                    }
+                }
+
+                if pointers.is_empty() && text.is_none() {
+                    return Err(SignalError::SendFailed {
+                        message: "All attachment uploads failed".to_string(),
+                    });
+                }
+
+                // Build data message
+                let mut data_message = DataMessage {
+                    body: text.clone(),
+                    timestamp: Some(timestamp),
+                    attachments: pointers,
+                    ..Default::default()
+                };
+
+                // Send to group or direct
+                if channel_id.len() == 64 {
+                    let master_key_bytes =
+                        hex::decode(&channel_id).map_err(|_| SignalError::ParseError {
+                            message: "Invalid group ID".to_string(),
+                        })?;
+
+                    data_message.group_v2 = Some(GroupContextV2 {
+                        master_key: Some(master_key_bytes.clone()),
+                        revision: Some(0),
+                        ..Default::default()
+                    });
+
+                    manager
+                        .send_message_to_group(&master_key_bytes, data_message, timestamp)
+                        .await
+                        .map_err(|e| SignalError::SendFailed {
+                            message: e.to_string(),
+                        })?;
+                } else {
+                    let recipient_uuid: Uuid =
+                        channel_id.parse().map_err(|_| SignalError::ParseError {
+                            message: "Invalid UUID".to_string(),
+                        })?;
+
+                    let recipient_aci = Aci::from(recipient_uuid);
+                    let body = ContentBody::DataMessage(data_message);
+                    manager
+                        .send_message(recipient_aci, body, timestamp)
+                        .await
+                        .map_err(|e| SignalError::SendFailed {
+                            message: e.to_string(),
+                        })?;
+                }
+
+                // Build return attachments from original file paths
+                let attachments: Vec<Attachment> = attachment_paths
+                    .iter()
+                    .enumerate()
+                    .map(|(i, path)| Attachment {
+                        content_type: content_types
+                            .get(i)
+                            .cloned()
+                            .unwrap_or_else(|| "application/octet-stream".to_string()),
+                        file_path: Some(path.clone()),
+                        file_name: file_names.get(i).cloned().flatten(),
+                        width: None,
+                        height: None,
+                        size: None,
+                    })
+                    .collect();
+
+                Ok(Message {
+                    id: timestamp.to_string(),
+                    channel_id,
+                    sender_id: my_user_id.to_string(),
+                    sender_name: None,
+                    body: text,
+                    timestamp,
+                    is_outgoing: true,
+                    status: MessageStatus::Sent,
+                    attachments,
+                    reactions: vec![],
+                })
+            })
         })
     }
 

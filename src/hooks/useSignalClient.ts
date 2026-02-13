@@ -264,13 +264,22 @@ export function useSignalClient() {
     [],
   );
 
-  // Send message
+  // Send message (with optional attachments)
   const sendMessage = useCallback(
-    async (channelId: string, text: string) => {
+    async (channelId: string, text: string, attachmentPaths?: string[]) => {
       if (!PresageModule || !isInitialized.current) return;
 
       try {
-        const message = await PresageModule.sendMessage(channelId, text);
+        let message;
+        if (attachmentPaths && attachmentPaths.length > 0) {
+          message = await PresageModule.sendMessageWithAttachments(
+            channelId,
+            text || null,
+            attachmentPaths,
+          );
+        } else {
+          message = await PresageModule.sendMessage(channelId, text);
+        }
         addMessage(convertMessage(message));
       } catch (error) {
         console.error('Failed to send message:', error);
