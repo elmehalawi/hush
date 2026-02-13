@@ -145,15 +145,9 @@ function AttachmentView({
 function ReactionsRow({
   reactions,
   isOutgoing,
-  hovered,
-  onReact,
-  existingReactionEmoji,
 }: {
   reactions: Reaction[];
   isOutgoing: boolean;
-  hovered?: boolean;
-  onReact?: ((emoji: string) => void) | null;
-  existingReactionEmoji?: string;
 }) {
   const colorScheme = useColorScheme();
 
@@ -163,10 +157,7 @@ function ReactionsRow({
     grouped.set(r.emoji, (grouped.get(r.emoji) || 0) + 1);
   }
 
-  const hasReactions = reactions.length > 0;
-  const showBar = hovered && onReact;
-
-  if (!hasReactions && !showBar) return null;
+  if (reactions.length === 0) return null;
 
   const pillBg = colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.06)';
   const pillBorder = colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)';
@@ -180,7 +171,6 @@ function ReactionsRow({
           {count > 1 && <Text style={[styles.reactionCount, {color: countColor}]}>{count}</Text>}
         </View>
       ))}
-      {showBar && <ReactionBar onReact={onReact!} existingReactionEmoji={existingReactionEmoji} />}
     </View>
   );
 }
@@ -301,9 +291,6 @@ export function MessageBubble({message, isGroup, onReact, userId}: MessageBubble
     <ReactionsRow
       reactions={message.reactions}
       isOutgoing={isOutgoing}
-      hovered={hovered}
-      onReact={onReact ? handleReact : undefined}
-      existingReactionEmoji={myReaction?.emoji}
     />
   );
 
@@ -344,6 +331,18 @@ export function MessageBubble({message, isGroup, onReact, userId}: MessageBubble
           <View style={bubbleStyle}>{bubbleContent}</View>
           {reactionsRow}
         </>
+      )}
+      {hovered && onReact && (
+        <View style={[
+          styles.reactionBarOverlay,
+          isOutgoing
+            ? styles.reactionBarOverlayOutgoing
+            : showSenderInfo
+              ? styles.reactionBarOverlayIncomingGroup
+              : styles.reactionBarOverlayIncoming,
+        ]}>
+          <ReactionBar onReact={handleReact} existingReactionEmoji={myReaction?.emoji} />
+        </View>
       )}
     </View>
   );
@@ -543,6 +542,20 @@ const styles = StyleSheet.create({
   },
   statusOverMedia: {
     color: 'rgba(255, 255, 255, 0.9)',
+  },
+  reactionBarOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    zIndex: 10,
+  },
+  reactionBarOverlayOutgoing: {
+    right: 12,
+  },
+  reactionBarOverlayIncoming: {
+    left: 12,
+  },
+  reactionBarOverlayIncomingGroup: {
+    left: 46,
   },
   reactionsContainer: {
     flexDirection: 'row',
