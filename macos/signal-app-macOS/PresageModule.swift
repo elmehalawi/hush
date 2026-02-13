@@ -887,20 +887,71 @@ class MessageListenerImpl: MessageListener {
 
 // MARK: - Quick Look
 
-class QuickLookCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+private class KeyableWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
+class QuickLookCoordinator: NSViewController, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
     private var fileURL: NSURL?
+    private var helperWindow: NSWindow?
+
+    init() {
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func loadView() {
+        self.view = NSView()
+    }
 
     func previewFile(path: String) {
+        guard FileManager.default.fileExists(atPath: path) else { return }
         fileURL = NSURL(fileURLWithPath: path)
+
+        if helperWindow == nil {
+            let w = KeyableWindow(
+                contentRect: NSRect(x: -1, y: -1, width: 1, height: 1),
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            w.contentViewController = self
+            w.isReleasedWhenClosed = false
+            w.alphaValue = 0.01
+            helperWindow = w
+        }
+
+        helperWindow?.orderFront(nil)
+        helperWindow?.makeKey()
+        helperWindow?.makeFirstResponder(self.view)
+
         guard let panel = QLPreviewPanel.shared() else { return }
-        panel.dataSource = self
-        panel.delegate = self
+        panel.updateController()
 
         if panel.isVisible {
             panel.reloadData()
         } else {
             panel.makeKeyAndOrderFront(nil)
         }
+    }
+
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+        return true
+    }
+
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = self
+        panel.delegate = self
+    }
+
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = nil
+        panel.delegate = nil
+        helperWindow?.orderOut(nil)
     }
 
     func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
