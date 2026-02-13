@@ -132,6 +132,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       }
       setText('');
       setAttachments([]);
+      setTimeout(() => { sendingRef.current = false; }, 100);
     };
 
     const handleTextChange = (newText: string) => {
