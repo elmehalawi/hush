@@ -534,6 +534,11 @@ public protocol SignalClientProtocol: AnyObject {
     func sendMessage(channelId: String, text: String) throws -> Message
 
     /**
+     * Send an emoji reaction to a message
+     */
+    func sendReaction(channelId: String, emoji: String, targetTimestamp: UInt64, remove: Bool) throws
+
+    /**
      * Send a read receipt for the given message timestamps to a specific sender.
      * For group messages, receipts go to individual senders, not the group.
      */
@@ -690,6 +695,18 @@ open class SignalClient:
                                                                   FfiConverterString.lower(channelId),
                                                                   FfiConverterString.lower(text), $0)
         })
+    }
+
+    /**
+     * Send an emoji reaction to a message
+     */
+    open func sendReaction(channelId: String, emoji: String, targetTimestamp: UInt64, remove: Bool) throws { try rustCallWithError(FfiConverterTypeSignalError.lift) {
+        uniffi_presage_rn_fn_method_signalclient_send_reaction(self.uniffiClonePointer(),
+                                                               FfiConverterString.lower(channelId),
+                                                               FfiConverterString.lower(emoji),
+                                                               FfiConverterUInt64.lower(targetTimestamp),
+                                                               FfiConverterBool.lower(remove), $0)
+    }
     }
 
     /**
@@ -2352,6 +2369,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_send_message() != 4543 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_signalclient_send_reaction() != 17691 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_send_read_receipt() != 45772 {

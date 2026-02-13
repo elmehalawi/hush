@@ -371,6 +371,11 @@ void uniffi_presage_rn_fn_method_signalclient_mark_as_read(void*_Nonnull ptr, Ru
 RustBuffer uniffi_presage_rn_fn_method_signalclient_send_message(void*_Nonnull ptr, RustBuffer channel_id, RustBuffer text, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SEND_REACTION
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SEND_REACTION
+void uniffi_presage_rn_fn_method_signalclient_send_reaction(void*_Nonnull ptr, RustBuffer channel_id, RustBuffer emoji, uint64_t target_timestamp, int8_t remove, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SEND_READ_RECEIPT
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SEND_READ_RECEIPT
 void uniffi_presage_rn_fn_method_signalclient_send_read_receipt(void*_Nonnull ptr, RustBuffer sender_uuid, RustBuffer timestamps, RustCallStatus *_Nonnull out_status
@@ -720,6 +725,12 @@ uint16_t uniffi_presage_rn_checksum_method_signalclient_mark_as_read(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SEND_MESSAGE
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SEND_MESSAGE
 uint16_t uniffi_presage_rn_checksum_method_signalclient_send_message(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SEND_REACTION
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SEND_REACTION
+uint16_t uniffi_presage_rn_checksum_method_signalclient_send_reaction(void
     
 );
 #endif

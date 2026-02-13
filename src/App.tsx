@@ -27,6 +27,7 @@ function App(): React.JSX.Element {
     refreshChannels,
     loadMessages,
     sendMessage,
+    sendReaction,
     startReceiving,
     markAsRead,
   } = useSignalClient();
@@ -120,7 +121,7 @@ function App(): React.JSX.Element {
   // Linked - show main screen
   return (
     <View style={styles.container}>
-      <MainScreen onSendMessage={sendMessage} onSelectChannel={handleSelectChannel} />
+      <MainScreen onSendMessage={sendMessage} onSelectChannel={handleSelectChannel} onReact={sendReaction} />
     </View>
   );
 }

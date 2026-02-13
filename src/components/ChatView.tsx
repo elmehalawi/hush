@@ -1,6 +1,6 @@
-import React, {useRef, useEffect} from 'react';
+import React, {useRef, useEffect, useCallback} from 'react';
 import {View, ScrollView, Text, StyleSheet, Image, useColorScheme} from 'react-native';
-import {Message, Channel} from '../store/signalStore';
+import {Message, Channel, useSignalStore} from '../store/signalStore';
 import {MessageBubble} from './MessageBubble';
 import {GlassView} from './GlassView';
 import {GradientBlurView} from './GradientBlurView';
@@ -9,11 +9,22 @@ import {colors} from '../theme/colors';
 interface ChatViewProps {
   channel: Channel | null;
   messages: Message[];
+  onReact?: (channelId: string, emoji: string, targetTimestamp: number, remove: boolean) => void;
 }
 
-export function ChatView({channel, messages}: ChatViewProps) {
+export function ChatView({channel, messages, onReact}: ChatViewProps) {
   useColorScheme(); // subscribe to appearance changes so DynamicColorMacOS values update
   const scrollViewRef = useRef<ScrollView>(null);
+  const userId = useSignalStore(state => state.userId);
+
+  const handleReact = useCallback(
+    (emoji: string, targetTimestamp: number, remove: boolean) => {
+      if (channel && onReact) {
+        onReact(channel.id, emoji, targetTimestamp, remove);
+      }
+    },
+    [channel, onReact],
+  );
 
   useEffect(() => {
     scrollViewRef.current?.scrollToEnd({animated: true});
@@ -43,7 +54,7 @@ export function ChatView({channel, messages}: ChatViewProps) {
           </View>
         ) : (
           messages.map(message => (
-            <MessageBubble key={message.id} message={message} isGroup={channel.isGroup} />
+            <MessageBubble key={message.id} message={message} isGroup={channel.isGroup} onReact={handleReact} userId={userId} />
           ))
         )}
       </ScrollView>

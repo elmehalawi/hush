@@ -270,6 +270,23 @@ class PresageModule: RCTEventEmitter {
         }
     }
 
+    @objc(sendReaction:emoji:targetTimestamp:remove:resolver:rejecter:)
+    func sendReaction(_ channelId: String, emoji: String, targetTimestamp: Double, remove: Bool, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let client = client else {
+            rejecter("NOT_INITIALIZED", "Client not initialized", nil)
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try client.sendReaction(channelId: channelId, emoji: emoji, targetTimestamp: UInt64(targetTimestamp), remove: remove)
+                resolver(nil)
+            } catch {
+                rejecter("SEND_REACTION_ERROR", "Failed to send reaction: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
     @objc(startReceiving:rejecter:)
     func startReceiving(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
         guard let client = client else {

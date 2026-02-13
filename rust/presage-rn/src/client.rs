@@ -968,6 +968,86 @@ impl SignalClient {
         info!("Stop receiving requested");
     }
 
+    /// Send an emoji reaction to a message
+    pub fn send_reaction(
+        &self,
+        channel_id: String,
+        emoji: String,
+        target_timestamp: u64,
+        remove: bool,
+    ) -> Result<(), SignalError> {
+        let mut manager_guard = self.manager.write();
+        let manager = manager_guard.as_mut().ok_or(SignalError::NotLinked)?;
+
+        const RED_ZONE: usize = 512 * 1024;
+        const STACK_SIZE: usize = 8 * 1024 * 1024;
+
+        stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
+            self.runtime.block_on(async {
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as u64;
+
+                let reaction = presage::proto::data_message::Reaction {
+                    emoji: Some(emoji),
+                    remove: Some(remove),
+                    target_sent_timestamp: Some(target_timestamp),
+                    ..Default::default()
+                };
+
+                let data_message = DataMessage {
+                    reaction: Some(reaction),
+                    timestamp: Some(timestamp),
+                    ..Default::default()
+                };
+
+                if channel_id.len() == 64 {
+                    let master_key_bytes =
+                        hex::decode(&channel_id).map_err(|_| SignalError::ParseError {
+                            message: "Invalid group ID".to_string(),
+                        })?;
+
+                    let mut data_message = data_message;
+                    data_message.group_v2 = Some(GroupContextV2 {
+                        master_key: Some(master_key_bytes.clone()),
+                        revision: Some(0),
+                        ..Default::default()
+                    });
+
+                    manager
+                        .send_message_to_group(&master_key_bytes, data_message, timestamp)
+                        .await
+                        .map_err(|e| SignalError::SendFailed {
+                            message: e.to_string(),
+                        })?;
+                } else {
+                    let recipient_uuid: Uuid =
+                        channel_id.parse().map_err(|_| SignalError::ParseError {
+                            message: "Invalid UUID".to_string(),
+                        })?;
+
+                    let recipient_aci = Aci::from(recipient_uuid);
+                    let body = ContentBody::DataMessage(data_message);
+                    manager
+                        .send_message(recipient_aci, body, timestamp)
+                        .await
+                        .map_err(|e| SignalError::SendFailed {
+                            message: e.to_string(),
+                        })?;
+                }
+
+                info!(
+                    "Sent reaction {} to message {} in channel {}",
+                    if remove { "(remove)" } else { "" },
+                    target_timestamp,
+                    channel_id
+                );
+                Ok(())
+            })
+        })
+    }
+
     /// Mark a channel as read up to the given timestamp.
     /// Updates the persisted read state and returns the updated unread count (always 0).
     pub fn mark_as_read(&self, channel_id: String, up_to_timestamp: u64) -> Result<(), SignalError> {

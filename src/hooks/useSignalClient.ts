@@ -280,6 +280,33 @@ export function useSignalClient() {
     [],
   );
 
+  // Send a reaction
+  const sendReaction = useCallback(
+    async (channelId: string, emoji: string, targetTimestamp: number, remove: boolean) => {
+      if (!PresageModule || !isInitialized.current) return;
+
+      // Optimistic local update
+      const userId = useSignalStore.getState().userId;
+      if (userId) {
+        addReaction({
+          channelId,
+          emoji,
+          senderId: userId,
+          targetTimestamp,
+          remove,
+        });
+      }
+
+      try {
+        await PresageModule.sendReaction(channelId, emoji, targetTimestamp, remove);
+      } catch (error) {
+        console.error('Failed to send reaction:', error);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   // Start receiving messages
   const startReceiving = useCallback(async () => {
     if (!PresageModule || !isInitialized.current) return;
@@ -427,6 +454,7 @@ export function useSignalClient() {
     refreshChannels,
     loadMessages,
     sendMessage,
+    sendReaction,
     startReceiving,
     stopReceiving,
     markAsRead,

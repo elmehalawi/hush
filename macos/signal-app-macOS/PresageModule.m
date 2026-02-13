@@ -32,6 +32,13 @@ RCT_EXTERN_METHOD(sendMessage:(NSString *)channelId
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(sendReaction:(NSString *)channelId
+                  emoji:(NSString *)emoji
+                  targetTimestamp:(double)targetTimestamp
+                  remove:(BOOL)remove
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(startReceiving:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 

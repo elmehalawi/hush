@@ -1,6 +1,7 @@
-import React from 'react';
+import React, {useState, useCallback} from 'react';
 import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme} from 'react-native';
 import {Message, Attachment, Reaction, useSignalStore} from '../store/signalStore';
+import {ReactionBar} from './ReactionBar';
 import {colors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
@@ -12,6 +13,8 @@ function openQuickLook(filePath: string) {
 interface MessageBubbleProps {
   message: Message;
   isGroup?: boolean;
+  onReact?: (emoji: string, targetTimestamp: number, remove: boolean) => void;
+  userId?: string | null;
 }
 
 const MAX_BUBBLE_WIDTH = Dimensions.get('window').width * 0.75;
@@ -139,15 +142,31 @@ function AttachmentView({
   );
 }
 
-function ReactionsView({reactions, isOutgoing}: {reactions: Reaction[]; isOutgoing: boolean}) {
+function ReactionsRow({
+  reactions,
+  isOutgoing,
+  hovered,
+  onReact,
+  existingReactionEmoji,
+}: {
+  reactions: Reaction[];
+  isOutgoing: boolean;
+  hovered?: boolean;
+  onReact?: ((emoji: string) => void) | null;
+  existingReactionEmoji?: string;
+}) {
   const colorScheme = useColorScheme();
-  if (reactions.length === 0) return null;
 
   // Group reactions by emoji and count them
   const grouped = new Map<string, number>();
   for (const r of reactions) {
     grouped.set(r.emoji, (grouped.get(r.emoji) || 0) + 1);
   }
+
+  const hasReactions = reactions.length > 0;
+  const showBar = hovered && onReact;
+
+  if (!hasReactions && !showBar) return null;
 
   const pillBg = colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.06)';
   const pillBorder = colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)';
@@ -161,15 +180,32 @@ function ReactionsView({reactions, isOutgoing}: {reactions: Reaction[]; isOutgoi
           {count > 1 && <Text style={[styles.reactionCount, {color: countColor}]}>{count}</Text>}
         </View>
       ))}
+      {showBar && <ReactionBar onReact={onReact!} existingReactionEmoji={existingReactionEmoji} />}
     </View>
   );
 }
 
-export function MessageBubble({message, isGroup}: MessageBubbleProps) {
+export function MessageBubble({message, isGroup, onReact, userId}: MessageBubbleProps) {
   const colorScheme = useColorScheme();
   const incomingBubbleBg = colorScheme === 'dark' ? '#2A2A2C' : '#e0e0e0';
   const isOutgoing = message.isOutgoing;
   const showSenderInfo = !!isGroup && !isOutgoing;
+  const [hovered, setHovered] = useState(false);
+
+  // Find current user's existing reaction emoji on this message
+  const myReaction = userId
+    ? message.reactions.find(r => r.senderId === userId)
+    : undefined;
+
+  const handleReact = useCallback(
+    (emoji: string) => {
+      if (!onReact) return;
+      const isRemove = myReaction?.emoji === emoji;
+      onReact(emoji, message.timestamp, isRemove);
+      setHovered(false);
+    },
+    [onReact, myReaction, message.timestamp],
+  );
 
   // Look up sender's avatar from their DM channel
   const senderChannel = useSignalStore(state =>
@@ -261,8 +297,21 @@ export function MessageBubble({message, isGroup}: MessageBubbleProps) {
 
   const hasReactions = message.reactions.length > 0;
 
+  const reactionsRow = (
+    <ReactionsRow
+      reactions={message.reactions}
+      isOutgoing={isOutgoing}
+      hovered={hovered}
+      onReact={onReact ? handleReact : undefined}
+      existingReactionEmoji={myReaction?.emoji}
+    />
+  );
+
   return (
     <View
+      // @ts-ignore - onMouseEnter/onMouseLeave work on macOS
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={[
         styles.container,
         isOutgoing ? styles.outgoing : styles.incoming,
@@ -287,13 +336,13 @@ export function MessageBubble({message, isGroup}: MessageBubbleProps) {
               <Text style={styles.senderName}>{message.senderName}</Text>
             )}
             <View style={bubbleStyle}>{bubbleContent}</View>
-            <ReactionsView reactions={message.reactions} isOutgoing={isOutgoing} />
+            {reactionsRow}
           </View>
         </View>
       ) : (
         <>
           <View style={bubbleStyle}>{bubbleContent}</View>
-          <ReactionsView reactions={message.reactions} isOutgoing={isOutgoing} />
+          {reactionsRow}
         </>
       )}
     </View>
@@ -498,6 +547,7 @@ const styles = StyleSheet.create({
   reactionsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'center',
     marginTop: -8,
     gap: 4,
   },
