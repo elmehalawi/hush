@@ -17,7 +17,7 @@ class CommandPaletteModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onChannelSelected", "onShow", "onDismiss", "onNavigateChannel", "onLetterTyped"]
+        return ["onChannelSelected", "onShow", "onDismiss", "onNavigateChannel", "onLetterTyped", "onPasteFiles"]
     }
 
     override func startObserving() {
@@ -93,6 +93,21 @@ class CommandPaletteModule: RCTEventEmitter {
             if mods == [.control] && char == "k" {
                 self.emitNavigate(direction: "previous")
                 return nil
+            }
+
+            // Cmd+V → check if pasteboard has files/images, emit onPasteFiles if so
+            if mods == [.command] && char == "v" {
+                let pasteboard = NSPasteboard.general
+                let hasFiles = pasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+                let hasImage = (NSImage(pasteboard: pasteboard) != nil) && !hasFiles
+                if hasFiles || hasImage {
+                    if self.hasListeners {
+                        self.sendEvent(withName: "onPasteFiles", body: ["hasFiles": hasFiles, "hasImage": hasImage])
+                    }
+                    return nil
+                }
+                // If pasteboard is text-only, let normal paste proceed
+                return event
             }
 
             // Letter key (no Cmd/Ctrl/Option) → focus input and type

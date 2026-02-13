@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		16F990AFD2C1A061E32B018C /* DropTargetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00B25359C6CDFF7277A3B1A5 /* DropTargetView.swift */; };
 		26FB31DB1E1FD03E4D185C99 /* PresageModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 95D825E99A0FD645C00F00C1 /* PresageModule.m */; };
 		42A2C1803AEA92B14FAD318A /* libPods-signal-app-macOS.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 618A2A6ABF8E27A8E3312058 /* libPods-signal-app-macOS.a */; };
 		5142014D2437B4B30078DB4F /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5142014C2437B4B30078DB4F /* AppDelegate.mm */; };
@@ -15,10 +16,12 @@
 		514201582437B4B40078DB4F /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 514201572437B4B40078DB4F /* main.m */; };
 		5F4D61A2DAE035D60F5B5669 /* PresageModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88072ED278358CE35CDB1B3B /* PresageModule.swift */; };
 		61A07EBCE7FD3C2C3080354A /* presage_rn.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF4F3294F0B388BC62D496B0 /* presage_rn.swift */; };
+		65AE6D990FA263357B370F2A /* DropTargetViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 529236F3A6B5D4A3DF76B9A7 /* DropTargetViewManager.m */; };
 		6E1AE3D49BD4788FD7AD7321 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4E9B0F71EAE6838AB6756B60 /* PrivacyInfo.xcprivacy */; };
 		A1B2C3D4E5F60718DEADBEEF /* SpaceKeyFix.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718BEEFDEAD /* SpaceKeyFix.m */; };
 		BLUR001A00000000000001 /* GradientBlurView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BLUR001F00000000000001 /* GradientBlurView.swift */; };
 		BLUR001A00000000000002 /* GradientBlurViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = BLUR001F00000000000002 /* GradientBlurViewManager.m */; };
+		CCRN001A00000000000001 /* ContinuousCorners.m in Sources */ = {isa = PBXBuildFile; fileRef = CCRN001F00000000000001 /* ContinuousCorners.m */; };
 		CF281B0187CE890B79CD7141 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4E9B0F71EAE6838AB6756B60 /* PrivacyInfo.xcprivacy */; };
 		CMDP001A00000000000001 /* CommandPalettePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMDP001F00000000000001 /* CommandPalettePanel.swift */; };
 		CMDP001A00000000000002 /* CommandPaletteModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMDP001F00000000000002 /* CommandPaletteModule.swift */; };
@@ -31,10 +34,10 @@
 		GLASS001A00000000000005 /* GlassButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000005 /* GlassButton.swift */; };
 		GLASS001A00000000000006 /* GlassButtonManager.m in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000006 /* GlassButtonManager.m */; };
 		SCRL001A00000000000001 /* ScrollFix.m in Sources */ = {isa = PBXBuildFile; fileRef = SCRL001F00000000000001 /* ScrollFix.m */; };
-		CCRN001A00000000000001 /* ContinuousCorners.m in Sources */ = {isa = PBXBuildFile; fileRef = CCRN001F00000000000001 /* ContinuousCorners.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		00B25359C6CDFF7277A3B1A5 /* DropTargetView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DropTargetView.swift; sourceTree = "<group>"; };
 		1104BA0ADED36CD1B3542D86 /* Pods-signal-app-macOS.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-signal-app-macOS.release.xcconfig"; path = "Target Support Files/Pods-signal-app-macOS/Pods-signal-app-macOS.release.xcconfig"; sourceTree = "<group>"; };
 		117182038BA723E288796968 /* presage_rnFFI.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = presage_rnFFI.h; sourceTree = "<group>"; };
 		136E792A8A613D523E99B308 /* libpresage_rn.a */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = archive.ar; path = libpresage_rn.a; sourceTree = "<group>"; };
@@ -49,12 +52,14 @@
 		514201562437B4B40078DB4F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		514201572437B4B40078DB4F /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		514201592437B4B40078DB4F /* signal-app.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "signal-app.entitlements"; sourceTree = "<group>"; };
+		529236F3A6B5D4A3DF76B9A7 /* DropTargetViewManager.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = DropTargetViewManager.m; sourceTree = "<group>"; };
 		618A2A6ABF8E27A8E3312058 /* libPods-signal-app-macOS.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-signal-app-macOS.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		88072ED278358CE35CDB1B3B /* PresageModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PresageModule.swift; sourceTree = "<group>"; };
 		95D825E99A0FD645C00F00C1 /* PresageModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = PresageModule.m; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718BEEFDEAD /* SpaceKeyFix.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = SpaceKeyFix.m; sourceTree = "<group>"; };
 		BLUR001F00000000000001 /* GradientBlurView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GradientBlurView.swift; sourceTree = "<group>"; };
 		BLUR001F00000000000002 /* GradientBlurViewManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GradientBlurViewManager.m; sourceTree = "<group>"; };
+		CCRN001F00000000000001 /* ContinuousCorners.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ContinuousCorners.m; sourceTree = "<group>"; };
 		CMDP001F00000000000001 /* CommandPalettePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPalettePanel.swift; sourceTree = "<group>"; };
 		CMDP001F00000000000002 /* CommandPaletteModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteModule.swift; sourceTree = "<group>"; };
 		CMDP001F00000000000003 /* CommandPaletteModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CommandPaletteModule.m; sourceTree = "<group>"; };
@@ -69,7 +74,6 @@
 		GLASS001F00000000000006 /* GlassButtonManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GlassButtonManager.m; sourceTree = "<group>"; };
 		ICON001F00000000000001 /* HushIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder; path = HushIcon.icon; sourceTree = "<group>"; };
 		SCRL001F00000000000001 /* ScrollFix.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ScrollFix.m; sourceTree = "<group>"; };
-		CCRN001F00000000000001 /* ContinuousCorners.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ContinuousCorners.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -139,6 +143,8 @@
 				CMDP001F00000000000002 /* CommandPaletteModule.swift */,
 				CMDP001F00000000000003 /* CommandPaletteModule.m */,
 				ICON001F00000000000001 /* HushIcon.icon */,
+				00B25359C6CDFF7277A3B1A5 /* DropTargetView.swift */,
+				529236F3A6B5D4A3DF76B9A7 /* DropTargetViewManager.m */,
 			);
 			path = "signal-app-macOS";
 			sourceTree = "<group>";
@@ -421,6 +427,8 @@
 				CMDP001A00000000000001 /* CommandPalettePanel.swift in Sources */,
 				CMDP001A00000000000002 /* CommandPaletteModule.swift in Sources */,
 				CMDP001A00000000000003 /* CommandPaletteModule.m in Sources */,
+				16F990AFD2C1A061E32B018C /* DropTargetView.swift in Sources */,
+				65AE6D990FA263357B370F2A /* DropTargetViewManager.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

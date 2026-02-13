@@ -33,7 +33,7 @@ class PresageModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onMessage", "onReaction", "onChannelUpdated", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked"]
+        return ["onMessage", "onReaction", "onChannelUpdated", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles"]
     }
 
     override func startObserving() {
@@ -381,6 +381,166 @@ class PresageModule: RCTEventEmitter {
                 resolver(nil)
             } catch {
                 rejecter("AVATAR_ERROR", "Failed to fetch avatars: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
+    // MARK: - Attachment Sending
+
+    @objc(sendMessageWithAttachments:text:attachmentPaths:resolver:rejecter:)
+    func sendMessageWithAttachments(_ channelId: String, text: String?, attachmentPaths: [String], resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let client = client else {
+            rejecter("NOT_INITIALIZED", "Client not initialized", nil)
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let message = try client.sendMessageWithAttachments(
+                    channelId: channelId,
+                    text: text,
+                    attachmentPaths: attachmentPaths
+                )
+                resolver(self.messageToDict(message))
+            } catch {
+                rejecter("SEND_ERROR", "Failed to send message with attachments: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
+    @objc(getFileIcon:resolver:rejecter:)
+    func getFileIcon(_ filePath: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let icon = NSWorkspace.shared.icon(forFile: filePath)
+            let size = NSSize(width: 80, height: 80)
+            icon.size = size
+
+            guard let tiffData = icon.tiffRepresentation,
+                  let rep = NSBitmapImageRep(data: tiffData),
+                  let pngData = rep.representation(using: .png, properties: [:]) else {
+                rejecter("ICON_ERROR", "Failed to render file icon", nil)
+                return
+            }
+
+            let tmpDir = NSTemporaryDirectory()
+            let fileName = (filePath as NSString).lastPathComponent
+            let iconPath = "\(tmpDir)icon_\(fileName).png"
+            do {
+                try pngData.write(to: URL(fileURLWithPath: iconPath))
+                resolver(iconPath)
+            } catch {
+                rejecter("ICON_ERROR", "Failed to write icon: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
+    @objc(getClipboardFiles:rejecter:)
+    func getClipboardFiles(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.main.async {
+            let pasteboard = NSPasteboard.general
+            if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] {
+                let paths = urls.map { $0.path }
+                resolver(paths)
+            } else {
+                resolver([])
+            }
+        }
+    }
+
+    @objc(getClipboardImage:rejecter:)
+    func getClipboardImage(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.main.async {
+            let pasteboard = NSPasteboard.general
+            guard let image = NSImage(pasteboard: pasteboard) else {
+                resolver(nil)
+                return
+            }
+
+            guard let tiffData = image.tiffRepresentation,
+                  let rep = NSBitmapImageRep(data: tiffData),
+                  let pngData = rep.representation(using: .png, properties: [:]) else {
+                resolver(nil)
+                return
+            }
+
+            let tmpDir = NSTemporaryDirectory()
+            let fileName = "clipboard_\(Int(Date().timeIntervalSince1970 * 1000)).png"
+            let filePath = "\(tmpDir)\(fileName)"
+            do {
+                try pngData.write(to: URL(fileURLWithPath: filePath))
+                resolver(filePath)
+            } catch {
+                resolver(nil)
+            }
+        }
+    }
+
+    @objc(pickFiles:rejecter:)
+    func pickFiles(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        NSLog("PresageModule: pickFiles called")
+        DispatchQueue.main.async {
+            NSLog("PresageModule: showing NSOpenPanel")
+            let panel = NSOpenPanel()
+            panel.allowsMultipleSelection = true
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+
+            let response = panel.runModal()
+            NSLog("PresageModule: NSOpenPanel closed with response: %d", response.rawValue)
+            if response == .OK {
+                let paths = panel.urls.map { $0.path }
+                NSLog("PresageModule: pickFiles returning %d paths: %@", paths.count, paths.description)
+                resolver(paths)
+            } else {
+                NSLog("PresageModule: pickFiles cancelled")
+                resolver([])
+            }
+        }
+    }
+
+    @objc(generateVideoThumbnailAtPath:resolver:rejecter:)
+    func generateVideoThumbnailAtPath(_ videoPath: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            resolver(self.generateVideoThumbnail(videoPath: videoPath))
+        }
+    }
+
+    @objc(generateImageThumbnail:resolver:rejecter:)
+    func generateImageThumbnail(_ imagePath: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let thumbPath = NSTemporaryDirectory() + "thumb_" + ((imagePath as NSString).lastPathComponent as NSString).deletingPathExtension + ".jpg"
+            if FileManager.default.fileExists(atPath: thumbPath) {
+                resolver(thumbPath)
+                return
+            }
+
+            let url = URL(fileURLWithPath: imagePath)
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+                resolver(imagePath)
+                return
+            }
+
+            let options: [CFString: Any] = [
+                kCGImageSourceThumbnailMaxPixelSize: 144,
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+            ]
+            guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+                resolver(imagePath)
+                return
+            }
+
+            let rep = NSBitmapImageRep(cgImage: cgImage)
+            guard let jpegData = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
+                resolver(imagePath)
+                return
+            }
+
+            do {
+                try jpegData.write(to: URL(fileURLWithPath: thumbPath))
+                resolver(thumbPath)
+            } catch {
+                resolver(imagePath)
             }
         }
     }
