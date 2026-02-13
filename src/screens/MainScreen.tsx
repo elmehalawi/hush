@@ -21,9 +21,10 @@ const COLLAPSE_THRESHOLD = 120;
 interface MainScreenProps {
   onSendMessage: (channelId: string, text: string) => void;
   onSelectChannel: (channelId: string) => void;
+  onReact?: (channelId: string, emoji: string, targetTimestamp: number, remove: boolean) => void;
 }
 
-export function MainScreen({onSendMessage, onSelectChannel}: MainScreenProps) {
+export function MainScreen({onSendMessage, onSelectChannel, onReact}: MainScreenProps) {
   const channels = useSignalStore(state => state.channels);
   const selectedChannelId = useSignalStore(state => state.selectedChannelId);
   const messages = useSignalStore(state => state.messages);
@@ -125,6 +126,7 @@ export function MainScreen({onSendMessage, onSelectChannel}: MainScreenProps) {
         <ChatView
           channel={selectedChannel}
           messages={channelMessages}
+          onReact={onReact}
         />
       </View>
 
