@@ -4,6 +4,7 @@
 //! enabling building Signal-compatible messaging apps with React Native.
 
 use std::sync::Once;
+use std::fs::OpenOptions;
 
 mod callbacks;
 mod client;
@@ -20,11 +21,15 @@ static INIT_LOGGING: Once = Once::new();
 /// Initialize logging - call this once at startup
 pub fn init_logging() {
     INIT_LOGGING.call_once(|| {
-        // Use oslog for macOS - logs will appear in Console.app
-        let oslog = tracing_oslog::OsLogger::new("org.reactjs.native.signal-app", "presage");
+        let log_file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/tmp/hush-presage.log")
+            .expect("Failed to open log file");
         tracing_subscriber::fmt()
             .with_max_level(tracing::Level::DEBUG)
-            .with_writer(std::io::stderr)
+            .with_writer(log_file)
+            .with_ansi(false)
             .init();
         tracing::info!("Presage-RN logging initialized");
     });

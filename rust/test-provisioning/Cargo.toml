@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-presage = { git = "https://github.com/whisperfish/presage", rev = "47faeca3d53d2fc736ae5d9a1ffcf0d17b4e25d5" }
-presage-store-sqlite = { git = "https://github.com/whisperfish/presage", rev = "47faeca3d53d2fc736ae5d9a1ffcf0d17b4e25d5" }
+presage = { git = "https://github.com/whisperfish/presage", rev = "b575f2e83932e9d8bb29d281bc2ae2c93d9758f4" }
+presage-store-sqlite = { git = "https://github.com/whisperfish/presage", rev = "b575f2e83932e9d8bb29d281bc2ae2c93d9758f4" }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
