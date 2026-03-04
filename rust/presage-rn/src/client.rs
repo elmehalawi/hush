@@ -16,7 +16,7 @@ use presage::libsignal_service::zkgroup::profiles::ProfileKey;
 use presage::manager::Registered;
 use presage::model::identity::OnNewIdentity;
 use presage::proto::attachment_pointer::AttachmentIdentifier;
-use presage::proto::{receipt_message, AttachmentPointer, DataMessage, GroupContextV2, ReceiptMessage};
+use presage::proto::{receipt_message, sync_message, AttachmentPointer, DataMessage, GroupContextV2, ReceiptMessage, SyncMessage};
 use presage::store::{ContentsStore, Thread};
 use presage_store_sqlite::SqliteStore;
 use tracing::{error, info, warn};
@@ -76,7 +76,8 @@ impl SignalClient {
         }
 
         // Try to load existing manager
-        let (manager, user_id) = runtime.block_on(async {
+        let local = tokio::task::LocalSet::new();
+        let (manager, user_id) = local.block_on(&runtime, async {
             // SqliteStore expects a sqlite:// URL or plain path
             let db_url = format!("sqlite://{}?mode=rwc", store_path.display());
             info!("Opening database at: {}", db_url);
@@ -150,7 +151,8 @@ impl SignalClient {
         const STACK_SIZE: usize = 8 * 1024 * 1024;
 
         stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
-            self.runtime.block_on(async {
+            let local = tokio::task::LocalSet::new();
+            local.block_on(&self.runtime, async {
                 eprintln!("[RUST] Inside block_on async block");
             // SqliteStore expects a sqlite:// URL or plain path
             let db_url = format!("sqlite://{}?mode=rwc", self.store_path.display());
@@ -241,7 +243,8 @@ impl SignalClient {
         let avatars_dir = self.data_dir.join("avatars");
         let _ = std::fs::create_dir_all(&avatars_dir);
 
-        self.runtime.block_on(async {
+        let local = tokio::task::LocalSet::new();
+        local.block_on(&self.runtime, async {
             let mut channels = Vec::new();
 
             // Get contacts
@@ -384,7 +387,7 @@ impl SignalClient {
                     Thread::Group(key)
                 } else {
                     match channel.id.parse::<Uuid>() {
-                        Ok(uuid) => Thread::Contact(uuid),
+                        Ok(uuid) => Thread::Contact(ServiceId::from(Aci::from(uuid))),
                         Err(_) => continue,
                     }
                 };
@@ -493,7 +496,8 @@ impl SignalClient {
         let attachments_dir = self.data_dir.join("attachments");
         let _ = std::fs::create_dir_all(&attachments_dir);
 
-        self.runtime.block_on(async {
+        let local = tokio::task::LocalSet::new();
+        local.block_on(&self.runtime, async {
             let thread = if channel_id.len() == 64 {
                 // Hex-encoded group master key
                 let key_bytes = hex::decode(&channel_id).map_err(|_| SignalError::ParseError {
@@ -507,7 +511,7 @@ impl SignalClient {
                 let uuid: Uuid = channel_id.parse().map_err(|_| SignalError::ParseError {
                     message: "Invalid UUID".to_string(),
                 })?;
-                Thread::Contact(uuid)
+                Thread::Contact(ServiceId::from(Aci::from(uuid)))
             };
 
             let mut messages_with_pointers = Vec::new();
@@ -589,7 +593,8 @@ impl SignalClient {
         const STACK_SIZE: usize = 8 * 1024 * 1024;
 
         stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
-            self.runtime.block_on(async {
+            let local = tokio::task::LocalSet::new();
+            local.block_on(&self.runtime, async {
             let timestamp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -602,6 +607,7 @@ impl SignalClient {
             };
 
             // Check if this is a group or direct message
+            let my_aci = Aci::from(my_user_id);
             if channel_id.len() == 64 {
                 // Hex-encoded master key bytes (32 bytes = 64 hex chars) -> group
                 let master_key_bytes = hex::decode(&channel_id).map_err(|_| {
@@ -619,11 +625,32 @@ impl SignalClient {
                 });
 
                 manager
-                    .send_message_to_group(&master_key_bytes, data_message, timestamp)
+                    .send_message_to_group(&master_key_bytes, data_message.clone(), timestamp)
                     .await
                     .map_err(|e| SignalError::SendFailed {
                         message: e.to_string(),
                     })?;
+
+                // Explicitly send sync message to our other devices
+                tracing::info!("HUSH_SYNC: sending group sync message to self");
+                let sync = SyncMessage {
+                    sent: Some(sync_message::Sent {
+                        destination_service_id: None,
+                        timestamp: Some(timestamp),
+                        message: Some(data_message),
+                        expiration_start_timestamp: Some(timestamp),
+                        is_recipient_update: Some(false),
+                        ..Default::default()
+                    }),
+                    ..SyncMessage::default()
+                };
+                match manager
+                    .send_message(my_aci, sync, timestamp)
+                    .await
+                {
+                    Ok(_) => tracing::info!("HUSH_SYNC: group sync message sent successfully"),
+                    Err(e) => tracing::warn!("HUSH_SYNC: failed to send group sync message: {}", e),
+                }
             } else {
                 // UUID -> direct message
                 let recipient_uuid: Uuid =
@@ -632,13 +659,34 @@ impl SignalClient {
                     })?;
 
                 let recipient_aci = Aci::from(recipient_uuid);
-                let body = ContentBody::DataMessage(data_message);
+                let body = ContentBody::DataMessage(data_message.clone());
                 manager
                     .send_message(recipient_aci, body, timestamp)
                     .await
                     .map_err(|e| SignalError::SendFailed {
                         message: e.to_string(),
                     })?;
+
+                // Explicitly send sync message to our other devices
+                tracing::info!("HUSH_SYNC: sending direct sync message to self for recipient {:?}", recipient_aci);
+                let sync = SyncMessage {
+                    sent: Some(sync_message::Sent {
+                        destination_service_id: Some(ServiceId::from(recipient_aci).service_id_string()),
+                        timestamp: Some(timestamp),
+                        message: Some(data_message),
+                        expiration_start_timestamp: Some(timestamp),
+                        is_recipient_update: Some(false),
+                        ..Default::default()
+                    }),
+                    ..SyncMessage::default()
+                };
+                match manager
+                    .send_message(my_aci, sync, timestamp)
+                    .await
+                {
+                    Ok(_) => tracing::info!("HUSH_SYNC: direct sync message sent successfully"),
+                    Err(e) => tracing::warn!("HUSH_SYNC: failed to send direct sync message: {}", e),
+                }
             }
 
             Ok(Message {
@@ -673,7 +721,8 @@ impl SignalClient {
         const STACK_SIZE: usize = 8 * 1024 * 1024;
 
         stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
-            self.runtime.block_on(async {
+            let local = tokio::task::LocalSet::new();
+            local.block_on(&self.runtime, async {
                 let timestamp = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
@@ -742,6 +791,7 @@ impl SignalClient {
                 };
 
                 // Send to group or direct
+                let my_aci = Aci::from(my_user_id);
                 if channel_id.len() == 64 {
                     let master_key_bytes =
                         hex::decode(&channel_id).map_err(|_| SignalError::ParseError {
@@ -755,11 +805,27 @@ impl SignalClient {
                     });
 
                     manager
-                        .send_message_to_group(&master_key_bytes, data_message, timestamp)
+                        .send_message_to_group(&master_key_bytes, data_message.clone(), timestamp)
                         .await
                         .map_err(|e| SignalError::SendFailed {
                             message: e.to_string(),
                         })?;
+
+                    // Explicitly send sync message to our other devices
+                    let sync = SyncMessage {
+                        sent: Some(sync_message::Sent {
+                            destination_service_id: None,
+                            timestamp: Some(timestamp),
+                            message: Some(data_message),
+                            expiration_start_timestamp: Some(timestamp),
+                            is_recipient_update: Some(false),
+                            ..Default::default()
+                        }),
+                        ..SyncMessage::default()
+                    };
+                    if let Err(e) = manager.send_message(my_aci, sync, timestamp).await {
+                        tracing::warn!("HUSH_SYNC: failed to send group attachment sync: {}", e);
+                    }
                 } else {
                     let recipient_uuid: Uuid =
                         channel_id.parse().map_err(|_| SignalError::ParseError {
@@ -767,13 +833,29 @@ impl SignalClient {
                         })?;
 
                     let recipient_aci = Aci::from(recipient_uuid);
-                    let body = ContentBody::DataMessage(data_message);
+                    let body = ContentBody::DataMessage(data_message.clone());
                     manager
                         .send_message(recipient_aci, body, timestamp)
                         .await
                         .map_err(|e| SignalError::SendFailed {
                             message: e.to_string(),
                         })?;
+
+                    // Explicitly send sync message to our other devices
+                    let sync = SyncMessage {
+                        sent: Some(sync_message::Sent {
+                            destination_service_id: Some(ServiceId::from(recipient_aci).service_id_string()),
+                            timestamp: Some(timestamp),
+                            message: Some(data_message),
+                            expiration_start_timestamp: Some(timestamp),
+                            is_recipient_update: Some(false),
+                            ..Default::default()
+                        }),
+                        ..SyncMessage::default()
+                    };
+                    if let Err(e) = manager.send_message(my_aci, sync, timestamp).await {
+                        tracing::warn!("HUSH_SYNC: failed to send direct attachment sync: {}", e);
+                    }
                 }
 
                 // Build return attachments from original file paths
@@ -817,7 +899,8 @@ impl SignalClient {
         let avatars_dir = self.data_dir.join("avatars");
         let _ = std::fs::create_dir_all(&avatars_dir);
 
-        self.runtime.block_on(async {
+        let local = tokio::task::LocalSet::new();
+        local.block_on(&self.runtime, async {
             // Collect contacts with profile keys
             let contacts: Vec<_> = match manager.store().contacts().await {
                 Ok(iter) => iter.filter_map(|r| r.ok()).collect(),
@@ -966,7 +1049,8 @@ impl SignalClient {
                 const STACK_SIZE: usize = 8 * 1024 * 1024;
 
                 stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
-                    runtime_handle.block_on(async move {
+                    let local = tokio::task::LocalSet::new();
+                    runtime_handle.block_on(local.run_until(async move {
                         info!("Starting message receive loop");
 
                         let mut manager_for_stream = manager_for_stream;
@@ -1046,7 +1130,7 @@ impl SignalClient {
                                                 } else {
                                                     // Contact: look up by UUID
                                                     let (name, phone) = if let Ok(uuid) = channel_id.parse::<Uuid>() {
-                                                        match manager_for_attachments.store().contact_by_id(&uuid).await {
+                                                        match manager_for_attachments.store().contact_by_id(&ServiceId::from(Aci::from(uuid))).await {
                                                             Ok(Some(c)) => (c.name.clone(), c.phone_number.as_ref().map(|p| p.to_string())),
                                                             _ => (String::new(), None),
                                                         }
@@ -1099,7 +1183,7 @@ impl SignalClient {
                         }
 
                         info!("Message receive loop ended");
-                    });
+                    }));
                 });
 
                 // Clear the guard so a new receive thread can be spawned
@@ -1136,7 +1220,8 @@ impl SignalClient {
         const STACK_SIZE: usize = 8 * 1024 * 1024;
 
         stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
-            self.runtime.block_on(async {
+            let local = tokio::task::LocalSet::new();
+            local.block_on(&self.runtime, async {
                 let timestamp = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
@@ -1155,6 +1240,9 @@ impl SignalClient {
                     ..Default::default()
                 };
 
+                let my_user_id = self.user_id.read().ok_or(SignalError::NotLinked)?;
+                let my_aci = Aci::from(my_user_id);
+
                 if channel_id.len() == 64 {
                     let master_key_bytes =
                         hex::decode(&channel_id).map_err(|_| SignalError::ParseError {
@@ -1169,11 +1257,27 @@ impl SignalClient {
                     });
 
                     manager
-                        .send_message_to_group(&master_key_bytes, data_message, timestamp)
+                        .send_message_to_group(&master_key_bytes, data_message.clone(), timestamp)
                         .await
                         .map_err(|e| SignalError::SendFailed {
                             message: e.to_string(),
                         })?;
+
+                    // Explicitly send sync message
+                    let sync = SyncMessage {
+                        sent: Some(sync_message::Sent {
+                            destination_service_id: None,
+                            timestamp: Some(timestamp),
+                            message: Some(data_message),
+                            expiration_start_timestamp: Some(timestamp),
+                            is_recipient_update: Some(false),
+                            ..Default::default()
+                        }),
+                        ..SyncMessage::default()
+                    };
+                    if let Err(e) = manager.send_message(my_aci, sync, timestamp).await {
+                        tracing::warn!("HUSH_SYNC: failed to send group reaction sync: {}", e);
+                    }
                 } else {
                     let recipient_uuid: Uuid =
                         channel_id.parse().map_err(|_| SignalError::ParseError {
@@ -1181,13 +1285,29 @@ impl SignalClient {
                         })?;
 
                     let recipient_aci = Aci::from(recipient_uuid);
-                    let body = ContentBody::DataMessage(data_message);
+                    let body = ContentBody::DataMessage(data_message.clone());
                     manager
                         .send_message(recipient_aci, body, timestamp)
                         .await
                         .map_err(|e| SignalError::SendFailed {
                             message: e.to_string(),
                         })?;
+
+                    // Explicitly send sync message
+                    let sync = SyncMessage {
+                        sent: Some(sync_message::Sent {
+                            destination_service_id: Some(ServiceId::from(recipient_aci).service_id_string()),
+                            timestamp: Some(timestamp),
+                            message: Some(data_message),
+                            expiration_start_timestamp: Some(timestamp),
+                            is_recipient_update: Some(false),
+                            ..Default::default()
+                        }),
+                        ..SyncMessage::default()
+                    };
+                    if let Err(e) = manager.send_message(my_aci, sync, timestamp).await {
+                        tracing::warn!("HUSH_SYNC: failed to send direct reaction sync: {}", e);
+                    }
                 }
 
                 info!(
@@ -1248,7 +1368,8 @@ impl SignalClient {
         const STACK_SIZE: usize = 8 * 1024 * 1024;
 
         stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
-            self.runtime.block_on(async {
+            let local = tokio::task::LocalSet::new();
+            local.block_on(&self.runtime, async {
                 let recipient_aci = Aci::from(recipient);
                 manager
                     .send_message(recipient_aci, ContentBody::ReceiptMessage(receipt), now)

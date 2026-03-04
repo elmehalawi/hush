@@ -13,8 +13,8 @@ path = "uniffi-bindgen.rs"
 
 [dependencies]
 uniffi = { version = "0.28", features = ["cli"] }
-presage = { git = "https://github.com/whisperfish/presage", rev = "47faeca3d53d2fc736ae5d9a1ffcf0d17b4e25d5" }
-presage-store-sqlite = { git = "https://github.com/whisperfish/presage", rev = "47faeca3d53d2fc736ae5d9a1ffcf0d17b4e25d5" }
+presage = { git = "https://github.com/whisperfish/presage", rev = "c3d4dd56444e" }
+presage-store-sqlite = { git = "https://github.com/whisperfish/presage", rev = "c3d4dd56444e" }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
 thiserror = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
@@ -38,3 +38,5 @@ uniffi = { version = "0.28", features = ["build"] }
 # signal-protocol uses a fork of this library via the patch mechanism of cargo.
 # Since it is not transitive, we have to add the patch here explicitly.
 "curve25519-dalek" = { git = 'https://github.com/signalapp/curve25519-dalek', tag = 'signal-curve25519-4.1.3' }
+# presage-store-sqlite needs sqlcipher support from this fork
+libsqlite3-sys = { version = "0.36.0", git = "https://github.com/whisperfish/rusqlite", rev = "2a42b3354c9194700d08aa070f70a131a470e7dc" }
