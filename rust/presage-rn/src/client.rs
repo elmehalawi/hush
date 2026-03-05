@@ -16,7 +16,7 @@ use presage::libsignal_service::zkgroup::profiles::ProfileKey;
 use presage::manager::Registered;
 use presage::model::identity::OnNewIdentity;
 use presage::proto::attachment_pointer::AttachmentIdentifier;
-use presage::proto::{receipt_message, sync_message, AttachmentPointer, DataMessage, GroupContextV2, ReceiptMessage, SyncMessage};
+use presage::proto::{receipt_message, AttachmentPointer, DataMessage, GroupContextV2, ReceiptMessage};
 use presage::store::{ContentsStore, Thread};
 use presage_store_sqlite::SqliteStore;
 use tracing::{error, info, warn};
@@ -592,6 +592,14 @@ impl SignalClient {
         const RED_ZONE: usize = 512 * 1024;
         const STACK_SIZE: usize = 8 * 1024 * 1024;
 
+        // Log device_id for sync debugging
+        tracing::info!(
+            "HUSH_SYNC_DEBUG: device_id={:?}, my_user_id={}, channel_id={}",
+            manager.device_id(),
+            my_user_id,
+            channel_id
+        );
+
         stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
             let local = tokio::task::LocalSet::new();
             local.block_on(&self.runtime, async {
@@ -607,7 +615,6 @@ impl SignalClient {
             };
 
             // Check if this is a group or direct message
-            let my_aci = Aci::from(my_user_id);
             if channel_id.len() == 64 {
                 // Hex-encoded master key bytes (32 bytes = 64 hex chars) -> group
                 let master_key_bytes = hex::decode(&channel_id).map_err(|_| {
@@ -624,33 +631,18 @@ impl SignalClient {
                     ..Default::default()
                 });
 
+                // presage's send_message_to_group handles sync messages internally
+                tracing::info!("HUSH_SYNC: sending group message (presage handles sync internally)");
                 manager
                     .send_message_to_group(&master_key_bytes, data_message.clone(), timestamp)
                     .await
-                    .map_err(|e| SignalError::SendFailed {
-                        message: e.to_string(),
+                    .map_err(|e| {
+                        tracing::error!("HUSH_SYNC: group send failed: {}", e);
+                        SignalError::SendFailed {
+                            message: e.to_string(),
+                        }
                     })?;
-
-                // Explicitly send sync message to our other devices
-                tracing::info!("HUSH_SYNC: sending group sync message to self");
-                let sync = SyncMessage {
-                    sent: Some(sync_message::Sent {
-                        destination_service_id: None,
-                        timestamp: Some(timestamp),
-                        message: Some(data_message),
-                        expiration_start_timestamp: Some(timestamp),
-                        is_recipient_update: Some(false),
-                        ..Default::default()
-                    }),
-                    ..SyncMessage::default()
-                };
-                match manager
-                    .send_message(my_aci, sync, timestamp)
-                    .await
-                {
-                    Ok(_) => tracing::info!("HUSH_SYNC: group sync message sent successfully"),
-                    Err(e) => tracing::warn!("HUSH_SYNC: failed to send group sync message: {}", e),
-                }
+                tracing::info!("HUSH_SYNC: group message sent successfully (sync should have been sent by presage)");
             } else {
                 // UUID -> direct message
                 let recipient_uuid: Uuid =
@@ -659,34 +651,19 @@ impl SignalClient {
                     })?;
 
                 let recipient_aci = Aci::from(recipient_uuid);
+                // presage's send_message handles sync messages internally
+                tracing::info!("HUSH_SYNC: sending direct message to {:?} (presage handles sync internally)", recipient_aci);
                 let body = ContentBody::DataMessage(data_message.clone());
                 manager
                     .send_message(recipient_aci, body, timestamp)
                     .await
-                    .map_err(|e| SignalError::SendFailed {
-                        message: e.to_string(),
+                    .map_err(|e| {
+                        tracing::error!("HUSH_SYNC: direct send failed: {}", e);
+                        SignalError::SendFailed {
+                            message: e.to_string(),
+                        }
                     })?;
-
-                // Explicitly send sync message to our other devices
-                tracing::info!("HUSH_SYNC: sending direct sync message to self for recipient {:?}", recipient_aci);
-                let sync = SyncMessage {
-                    sent: Some(sync_message::Sent {
-                        destination_service_id: Some(ServiceId::from(recipient_aci).service_id_string()),
-                        timestamp: Some(timestamp),
-                        message: Some(data_message),
-                        expiration_start_timestamp: Some(timestamp),
-                        is_recipient_update: Some(false),
-                        ..Default::default()
-                    }),
-                    ..SyncMessage::default()
-                };
-                match manager
-                    .send_message(my_aci, sync, timestamp)
-                    .await
-                {
-                    Ok(_) => tracing::info!("HUSH_SYNC: direct sync message sent successfully"),
-                    Err(e) => tracing::warn!("HUSH_SYNC: failed to send direct sync message: {}", e),
-                }
+                tracing::info!("HUSH_SYNC: direct message sent successfully (sync should have been sent by presage)");
             }
 
             Ok(Message {
@@ -791,7 +768,6 @@ impl SignalClient {
                 };
 
                 // Send to group or direct
-                let my_aci = Aci::from(my_user_id);
                 if channel_id.len() == 64 {
                     let master_key_bytes =
                         hex::decode(&channel_id).map_err(|_| SignalError::ParseError {
@@ -804,28 +780,13 @@ impl SignalClient {
                         ..Default::default()
                     });
 
+                    // presage handles sync messages internally
                     manager
                         .send_message_to_group(&master_key_bytes, data_message.clone(), timestamp)
                         .await
                         .map_err(|e| SignalError::SendFailed {
                             message: e.to_string(),
                         })?;
-
-                    // Explicitly send sync message to our other devices
-                    let sync = SyncMessage {
-                        sent: Some(sync_message::Sent {
-                            destination_service_id: None,
-                            timestamp: Some(timestamp),
-                            message: Some(data_message),
-                            expiration_start_timestamp: Some(timestamp),
-                            is_recipient_update: Some(false),
-                            ..Default::default()
-                        }),
-                        ..SyncMessage::default()
-                    };
-                    if let Err(e) = manager.send_message(my_aci, sync, timestamp).await {
-                        tracing::warn!("HUSH_SYNC: failed to send group attachment sync: {}", e);
-                    }
                 } else {
                     let recipient_uuid: Uuid =
                         channel_id.parse().map_err(|_| SignalError::ParseError {
@@ -833,6 +794,7 @@ impl SignalClient {
                         })?;
 
                     let recipient_aci = Aci::from(recipient_uuid);
+                    // presage handles sync messages internally
                     let body = ContentBody::DataMessage(data_message.clone());
                     manager
                         .send_message(recipient_aci, body, timestamp)
@@ -840,22 +802,6 @@ impl SignalClient {
                         .map_err(|e| SignalError::SendFailed {
                             message: e.to_string(),
                         })?;
-
-                    // Explicitly send sync message to our other devices
-                    let sync = SyncMessage {
-                        sent: Some(sync_message::Sent {
-                            destination_service_id: Some(ServiceId::from(recipient_aci).service_id_string()),
-                            timestamp: Some(timestamp),
-                            message: Some(data_message),
-                            expiration_start_timestamp: Some(timestamp),
-                            is_recipient_update: Some(false),
-                            ..Default::default()
-                        }),
-                        ..SyncMessage::default()
-                    };
-                    if let Err(e) = manager.send_message(my_aci, sync, timestamp).await {
-                        tracing::warn!("HUSH_SYNC: failed to send direct attachment sync: {}", e);
-                    }
                 }
 
                 // Build return attachments from original file paths
@@ -1240,9 +1186,6 @@ impl SignalClient {
                     ..Default::default()
                 };
 
-                let my_user_id = self.user_id.read().ok_or(SignalError::NotLinked)?;
-                let my_aci = Aci::from(my_user_id);
-
                 if channel_id.len() == 64 {
                     let master_key_bytes =
                         hex::decode(&channel_id).map_err(|_| SignalError::ParseError {
@@ -1256,28 +1199,13 @@ impl SignalClient {
                         ..Default::default()
                     });
 
+                    // presage handles sync messages internally
                     manager
                         .send_message_to_group(&master_key_bytes, data_message.clone(), timestamp)
                         .await
                         .map_err(|e| SignalError::SendFailed {
                             message: e.to_string(),
                         })?;
-
-                    // Explicitly send sync message
-                    let sync = SyncMessage {
-                        sent: Some(sync_message::Sent {
-                            destination_service_id: None,
-                            timestamp: Some(timestamp),
-                            message: Some(data_message),
-                            expiration_start_timestamp: Some(timestamp),
-                            is_recipient_update: Some(false),
-                            ..Default::default()
-                        }),
-                        ..SyncMessage::default()
-                    };
-                    if let Err(e) = manager.send_message(my_aci, sync, timestamp).await {
-                        tracing::warn!("HUSH_SYNC: failed to send group reaction sync: {}", e);
-                    }
                 } else {
                     let recipient_uuid: Uuid =
                         channel_id.parse().map_err(|_| SignalError::ParseError {
@@ -1285,6 +1213,7 @@ impl SignalClient {
                         })?;
 
                     let recipient_aci = Aci::from(recipient_uuid);
+                    // presage handles sync messages internally
                     let body = ContentBody::DataMessage(data_message.clone());
                     manager
                         .send_message(recipient_aci, body, timestamp)
@@ -1292,22 +1221,6 @@ impl SignalClient {
                         .map_err(|e| SignalError::SendFailed {
                             message: e.to_string(),
                         })?;
-
-                    // Explicitly send sync message
-                    let sync = SyncMessage {
-                        sent: Some(sync_message::Sent {
-                            destination_service_id: Some(ServiceId::from(recipient_aci).service_id_string()),
-                            timestamp: Some(timestamp),
-                            message: Some(data_message),
-                            expiration_start_timestamp: Some(timestamp),
-                            is_recipient_update: Some(false),
-                            ..Default::default()
-                        }),
-                        ..SyncMessage::default()
-                    };
-                    if let Err(e) = manager.send_message(my_aci, sync, timestamp).await {
-                        tracing::warn!("HUSH_SYNC: failed to send direct reaction sync: {}", e);
-                    }
                 }
 
                 info!(
