@@ -17,6 +17,11 @@ class PresageModule: RCTEventEmitter {
     private var currentQrCodeUrl: String?  // Always stores the current QR URL for polling
     private let queueLock = NSLock()
 
+    // Audio playback
+    private var audioPlayer: AVAudioPlayer?
+    private var audioProgressTimer: Timer?
+    private var currentAudioFilePath: String?
+
     // Notifications
     private var notificationsAuthorized = false
     private var channelNameCache: [String: String] = [:]
@@ -33,7 +38,7 @@ class PresageModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onMessage", "onReaction", "onChannelUpdated", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles"]
+        return ["onMessage", "onReaction", "onChannelUpdated", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete"]
     }
 
     override func startObserving() {
@@ -545,6 +550,117 @@ class PresageModule: RCTEventEmitter {
         }
     }
 
+    // MARK: - Audio Playback
+
+    @objc(playAudio:resolver:rejecter:)
+    func playAudio(_ filePath: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.main.async {
+            // If a different file is playing, stop it first
+            if let currentPath = self.currentAudioFilePath, currentPath != filePath {
+                self.stopAudioInternal()
+                self.sendEventIfListening("onAudioComplete", body: ["filePath": currentPath])
+            }
+
+            // If same file and player exists, toggle resume
+            if let player = self.audioPlayer, self.currentAudioFilePath == filePath {
+                player.play()
+                self.startProgressTimer()
+                resolver(["duration": player.duration, "currentTime": player.currentTime])
+                return
+            }
+
+            // Create new player
+            let url = URL(fileURLWithPath: filePath)
+            do {
+                let player = try AVAudioPlayer(contentsOf: url)
+                player.delegate = AudioPlayerDelegateProxy.shared
+                AudioPlayerDelegateProxy.shared.presageModule = self
+                player.play()
+                self.audioPlayer = player
+                self.currentAudioFilePath = filePath
+                self.startProgressTimer()
+                resolver(["duration": player.duration, "currentTime": player.currentTime])
+            } catch {
+                rejecter("AUDIO_ERROR", "Failed to play audio: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
+    @objc(pauseAudio:rejecter:)
+    func pauseAudio(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.main.async {
+            self.audioPlayer?.pause()
+            self.audioProgressTimer?.invalidate()
+            self.audioProgressTimer = nil
+            resolver(nil)
+        }
+    }
+
+    @objc(stopAudio:rejecter:)
+    func stopAudio(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.main.async {
+            if let path = self.currentAudioFilePath {
+                self.stopAudioInternal()
+                self.sendEventIfListening("onAudioComplete", body: ["filePath": path])
+            }
+            resolver(nil)
+        }
+    }
+
+    @objc(seekAudio:resolver:rejecter:)
+    func seekAudio(_ position: Double, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.main.async {
+            guard let player = self.audioPlayer else {
+                resolver(nil)
+                return
+            }
+            player.currentTime = position * player.duration
+            resolver(["currentTime": player.currentTime, "duration": player.duration])
+        }
+    }
+
+    @objc(getAudioDuration:resolver:rejecter:)
+    func getAudioDuration(_ filePath: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let url = URL(fileURLWithPath: filePath)
+            do {
+                let player = try AVAudioPlayer(contentsOf: url)
+                resolver(player.duration)
+            } catch {
+                rejecter("AUDIO_ERROR", "Failed to get audio duration: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
+    private func startProgressTimer() {
+        audioProgressTimer?.invalidate()
+        audioProgressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self = self, let player = self.audioPlayer, let path = self.currentAudioFilePath else { return }
+            self.sendEventIfListening("onAudioProgress", body: [
+                "currentTime": player.currentTime,
+                "duration": player.duration,
+                "filePath": path,
+            ])
+        }
+    }
+
+    private func stopAudioInternal() {
+        audioPlayer?.stop()
+        audioPlayer = nil
+        audioProgressTimer?.invalidate()
+        audioProgressTimer = nil
+        currentAudioFilePath = nil
+    }
+
+    func audioDidFinishPlaying() {
+        DispatchQueue.main.async {
+            if let path = self.currentAudioFilePath {
+                self.sendEventIfListening("onAudioComplete", body: ["filePath": path])
+            }
+            self.stopAudioInternal()
+        }
+    }
+
     // MARK: - Quick Look Preview
 
     private let quickLookCoordinator = QuickLookCoordinator()
@@ -960,6 +1076,17 @@ class QuickLookCoordinator: NSViewController, QLPreviewPanelDataSource, QLPrevie
 
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
         return fileURL
+    }
+}
+
+// MARK: - Audio Player Delegate
+
+class AudioPlayerDelegateProxy: NSObject, AVAudioPlayerDelegate {
+    static let shared = AudioPlayerDelegateProxy()
+    weak var presageModule: PresageModule?
+
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        presageModule?.audioDidFinishPlaying()
     }
 }
 

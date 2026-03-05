@@ -2,6 +2,7 @@ import React, {useState, useCallback} from 'react';
 import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme} from 'react-native';
 import {Message, Attachment, Reaction, useSignalStore} from '../store/signalStore';
 import {ReactionBar} from './ReactionBar';
+import {AudioAttachmentView} from './AudioAttachmentView';
 import {colors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
@@ -72,6 +73,10 @@ function isImageType(contentType: string) {
 
 function isVideoType(contentType: string) {
   return contentType.startsWith('video/');
+}
+
+function isAudioType(contentType: string) {
+  return contentType.startsWith('audio/');
 }
 
 function AttachmentView({
@@ -203,12 +208,16 @@ export function MessageBubble({message, isGroup, onReact, userId}: MessageBubble
   );
   const senderAvatar = senderChannel?.avatarPath;
   const senderInitial = message.senderName?.charAt(0).toUpperCase() || '?';
-  const hasAttachments = message.attachments.length > 0;
+  const audioAttachments = message.attachments.filter(a => isAudioType(a.contentType));
+  const nonAudioAttachments = message.attachments.filter(a => !isAudioType(a.contentType));
+  const hasAttachments = nonAudioAttachments.length > 0;
+  const hasAudio = audioAttachments.length > 0;
   const hasBody = !!message.body;
-  const mediaAttachments = message.attachments.filter(
+  const mediaAttachments = nonAudioAttachments.filter(
     a => isImageType(a.contentType) || isVideoType(a.contentType),
   );
   const hasMedia = mediaAttachments.length > 0;
+  const audioOnly = hasAudio && !hasBody && !hasAttachments;
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -239,11 +248,46 @@ export function MessageBubble({message, isGroup, onReact, userId}: MessageBubble
     showSenderInfo && styles.bubbleInGroup,
   ];
 
+  const metaRow = (
+    <View style={[styles.meta, hasMedia && !hasBody && styles.metaOverMedia]}>
+      <Text
+        style={[
+          styles.time,
+          isOutgoing && styles.timeOutgoing,
+          hasMedia && !hasBody && styles.timeOverMedia,
+        ]}>
+        {formatTime(message.timestamp)}
+      </Text>
+      {isOutgoing && (
+        <Text
+          style={[
+            styles.status,
+            message.status === 'read' && styles.statusRead,
+            hasMedia && !hasBody && styles.statusOverMedia,
+          ]}>
+          {getStatusIcon()}
+        </Text>
+      )}
+    </View>
+  );
+
+  const audioContent = hasAudio ? (
+    <View>
+      {audioAttachments.map((attachment, index) => (
+        <AudioAttachmentView
+          key={`audio-${index}`}
+          filePath={attachment.filePath!}
+          isOutgoing={isOutgoing}
+        />
+      ))}
+    </View>
+  ) : null;
+
   const bubbleContent = (
     <>
       {hasAttachments && (
         <View style={styles.attachmentsContainer}>
-          {message.attachments.map((attachment, index) => (
+          {nonAudioAttachments.map((attachment, index) => (
             <AttachmentView
               key={index}
               attachment={attachment}
@@ -257,31 +301,12 @@ export function MessageBubble({message, isGroup, onReact, userId}: MessageBubble
           <LinkifiedText text={message.body!} isOutgoing={isOutgoing} />
         </View>
       )}
-      {!hasBody && !hasAttachments && (
+      {!hasBody && !hasAttachments && !hasAudio && (
         <Text style={[styles.body, isOutgoing && styles.bodyOutgoing]}>
           [No content]
         </Text>
       )}
-      <View style={[styles.meta, hasMedia && !hasBody && styles.metaOverMedia]}>
-        <Text
-          style={[
-            styles.time,
-            isOutgoing && styles.timeOutgoing,
-            hasMedia && !hasBody && styles.timeOverMedia,
-          ]}>
-          {formatTime(message.timestamp)}
-        </Text>
-        {isOutgoing && (
-          <Text
-            style={[
-              styles.status,
-              message.status === 'read' && styles.statusRead,
-              hasMedia && !hasBody && styles.statusOverMedia,
-            ]}>
-            {getStatusIcon()}
-          </Text>
-        )}
-      </View>
+      {!audioOnly && metaRow}
     </>
   );
 
@@ -322,13 +347,17 @@ export function MessageBubble({message, isGroup, onReact, userId}: MessageBubble
             {message.senderName && (
               <Text style={styles.senderName}>{message.senderName}</Text>
             )}
-            <View style={bubbleStyle}>{bubbleContent}</View>
+            {audioContent}
+            {!audioOnly && <View style={bubbleStyle}>{bubbleContent}</View>}
+            {audioOnly && <View style={styles.audioMeta}>{metaRow}</View>}
             {reactionsRow}
           </View>
         </View>
       ) : (
         <>
-          <View style={bubbleStyle}>{bubbleContent}</View>
+          {audioContent}
+          {!audioOnly && <View style={bubbleStyle}>{bubbleContent}</View>}
+          {audioOnly && <View style={styles.audioMeta}>{metaRow}</View>}
           {reactionsRow}
         </>
       )}
@@ -467,6 +496,10 @@ const styles = StyleSheet.create({
   failedAttachmentText: {
     fontSize: 12,
     color: '#999',
+  },
+  audioMeta: {
+    paddingHorizontal: 4,
+    marginTop: 1,
   },
   fileAttachment: {
     flexDirection: 'row',
