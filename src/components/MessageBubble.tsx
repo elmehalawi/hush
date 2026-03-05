@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useRef} from 'react';
 import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme} from 'react-native';
 import {Message, Attachment, Reaction, useSignalStore} from '../store/signalStore';
 import {ReactionBar} from './ReactionBar';
@@ -86,6 +86,8 @@ function AttachmentView({
   attachment: Attachment;
   isOutgoing: boolean;
 }) {
+  const rightClickedRef = useRef(false);
+
   if (!attachment.filePath) {
     return (
       <View style={styles.failedAttachment}>
@@ -94,10 +96,30 @@ function AttachmentView({
     );
   }
 
+  const handlePressIn = (e: any) => {
+    if (e.nativeEvent?.button === 2) {
+      rightClickedRef.current = true;
+      PresageModule?.showFileContextMenu(
+        attachment.filePath!,
+        attachment.fileName || 'File',
+      );
+    } else {
+      rightClickedRef.current = false;
+    }
+  };
+
+  const handlePress = () => {
+    if (rightClickedRef.current) {
+      rightClickedRef.current = false;
+      return;
+    }
+    openQuickLook(attachment.filePath!);
+  };
+
   if (isImageType(attachment.contentType)) {
     const dims = getImageDimensions(attachment);
     return (
-      <Pressable onPress={() => openQuickLook(attachment.filePath!)}>
+      <Pressable onPress={handlePress} onPressIn={handlePressIn}>
         <Image
           source={{uri: `file://${attachment.filePath}`}}
           style={[styles.attachmentImage, {width: dims.width, height: dims.height}]}
@@ -113,7 +135,7 @@ function AttachmentView({
       ? `file://${attachment.thumbnailPath}`
       : undefined;
     return (
-      <Pressable onPress={() => openQuickLook(attachment.filePath!)}>
+      <Pressable onPress={handlePress} onPressIn={handlePressIn}>
         <View style={[styles.videoContainer, {width: dims.width, height: dims.height}]}>
           {thumbUri ? (
             <Image
@@ -136,14 +158,16 @@ function AttachmentView({
 
   // Generic file attachment
   return (
-    <View style={[styles.fileAttachment, isOutgoing && styles.fileAttachmentOutgoing]}>
-      <Text style={[styles.fileIcon]}>{'📎'}</Text>
-      <Text
-        style={[styles.fileName, isOutgoing && styles.fileNameOutgoing]}
-        numberOfLines={1}>
-        {attachment.fileName || 'File'}
-      </Text>
-    </View>
+    <Pressable onPress={handlePress} onPressIn={handlePressIn}>
+      <View style={[styles.fileAttachment, isOutgoing && styles.fileAttachmentOutgoing]}>
+        <Text style={[styles.fileIcon]}>{'📎'}</Text>
+        <Text
+          style={[styles.fileName, isOutgoing && styles.fileNameOutgoing]}
+          numberOfLines={2}>
+          {attachment.fileName || 'File'}
+        </Text>
+      </View>
+    </Pressable>
   );
 }
 
@@ -504,10 +528,11 @@ const styles = StyleSheet.create({
   fileAttachment: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
+    padding: 10,
     borderRadius: 12,
     backgroundColor: 'rgba(0, 0, 0, 0.05)',
     margin: 4,
+    minWidth: 200,
   },
   fileAttachmentOutgoing: {
     backgroundColor: 'rgba(255, 255, 255, 0.15)',

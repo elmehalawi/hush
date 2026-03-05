@@ -661,6 +661,59 @@ class PresageModule: RCTEventEmitter {
         }
     }
 
+    // MARK: - File Context Menu
+
+    @objc(showFileContextMenu:fileName:)
+    func showFileContextMenu(_ filePath: String, fileName: String) {
+        DispatchQueue.main.async {
+            let menu = NSMenu()
+
+            let saveItem = NSMenuItem(title: "Save to Downloads", action: #selector(self.handleSaveToDownloads(_:)), keyEquivalent: "")
+            saveItem.representedObject = filePath
+            saveItem.target = self
+            menu.addItem(saveItem)
+
+            let openItem = NSMenuItem(title: "Open", action: #selector(self.handleOpenFile(_:)), keyEquivalent: "")
+            openItem.representedObject = filePath
+            openItem.target = self
+            menu.addItem(openItem)
+
+            guard let window = NSApp.keyWindow, let contentView = window.contentView else { return }
+            let mouseInWindow = window.mouseLocationOutsideOfEventStream
+            let mouseInView = contentView.convert(mouseInWindow, from: nil)
+            menu.popUp(positioning: nil, at: mouseInView, in: contentView)
+        }
+    }
+
+    @objc private func handleSaveToDownloads(_ sender: NSMenuItem) {
+        guard let filePath = sender.representedObject as? String else { return }
+        let fileManager = FileManager.default
+        guard let downloadsURL = fileManager.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return }
+        let fileName = (filePath as NSString).lastPathComponent
+        let nameWithoutExt = (fileName as NSString).deletingPathExtension
+        let ext = (fileName as NSString).pathExtension
+
+        var destURL = downloadsURL.appendingPathComponent(fileName)
+        var counter = 1
+        while fileManager.fileExists(atPath: destURL.path) {
+            counter += 1
+            let newName = ext.isEmpty ? "\(nameWithoutExt) (\(counter))" : "\(nameWithoutExt) (\(counter)).\(ext)"
+            destURL = downloadsURL.appendingPathComponent(newName)
+        }
+
+        do {
+            try fileManager.copyItem(atPath: filePath, toPath: destURL.path)
+            NSLog("PresageModule: Saved file to %@", destURL.path)
+        } catch {
+            NSLog("PresageModule: Failed to save to downloads: %@", error.localizedDescription)
+        }
+    }
+
+    @objc private func handleOpenFile(_ sender: NSMenuItem) {
+        guard let filePath = sender.representedObject as? String else { return }
+        self.quickLookCoordinator.previewFile(path: filePath)
+    }
+
     // MARK: - Quick Look Preview
 
     private let quickLookCoordinator = QuickLookCoordinator()

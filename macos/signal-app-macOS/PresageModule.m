@@ -57,6 +57,9 @@ RCT_EXTERN_METHOD(fetchAllAvatars:(RCTPromiseResolveBlock)resolve
 
 RCT_EXTERN_METHOD(previewFile:(NSString *)filePath)
 
+RCT_EXTERN_METHOD(showFileContextMenu:(NSString *)filePath
+                  fileName:(NSString *)fileName)
+
 RCT_EXTERN_METHOD(sendMessageWithAttachments:(NSString *)channelId
                   text:(NSString *)text
                   attachmentPaths:(NSArray *)attachmentPaths
