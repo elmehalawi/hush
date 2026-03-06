@@ -503,6 +503,11 @@ public protocol SignalClientProtocol: AnyObject {
     func fetchAllAvatars() throws
 
     /**
+     * Get all sessions in the database, grouped by address, with contact names where known.
+     */
+    func getAllSessions() throws -> [SessionInfo]
+
+    /**
      * Get the list of all channels (contacts and groups)
      */
     func getChannels() throws -> [Channel]
@@ -527,6 +532,13 @@ public protocol SignalClientProtocol: AnyObject {
      * Updates the persisted read state and returns the updated unread count (always 0).
      */
     func markAsRead(channelId: String, upToTimestamp: UInt64) throws
+
+    /**
+     * Reset the encrypted session with a contact.
+     * Sends an END_SESSION message so the remote side resets their session,
+     * then deletes local session records to force a fresh key exchange.
+     */
+    func resetSession(channelId: String) throws
 
     /**
      * Send a text message to a channel
@@ -643,6 +655,15 @@ open class SignalClient:
     }
 
     /**
+     * Get all sessions in the database, grouped by address, with contact names where known.
+     */
+    open func getAllSessions() throws -> [SessionInfo] {
+        return try FfiConverterSequenceTypeSessionInfo.lift(rustCallWithError(FfiConverterTypeSignalError.lift) {
+            uniffi_presage_rn_fn_method_signalclient_get_all_sessions(self.uniffiClonePointer(), $0)
+        })
+    }
+
+    /**
      * Get the list of all channels (contacts and groups)
      */
     open func getChannels() throws -> [Channel] {
@@ -688,6 +709,17 @@ open class SignalClient:
         uniffi_presage_rn_fn_method_signalclient_mark_as_read(self.uniffiClonePointer(),
                                                               FfiConverterString.lower(channelId),
                                                               FfiConverterUInt64.lower(upToTimestamp), $0)
+    }
+    }
+
+    /**
+     * Reset the encrypted session with a contact.
+     * Sends an END_SESSION message so the remote side resets their session,
+     * then deletes local session records to force a fresh key exchange.
+     */
+    open func resetSession(channelId: String) throws { try rustCallWithError(FfiConverterTypeSignalError.lift) {
+        uniffi_presage_rn_fn_method_signalclient_reset_session(self.uniffiClonePointer(),
+                                                               FfiConverterString.lower(channelId), $0)
     }
     }
 
@@ -1508,6 +1540,97 @@ public func FfiConverterTypeReactionEvent_lift(_ buf: RustBuffer) throws -> Reac
 #endif
 public func FfiConverterTypeReactionEvent_lower(_ value: ReactionEvent) -> RustBuffer {
     return FfiConverterTypeReactionEvent.lower(value)
+}
+
+/**
+ * A session entry for the settings UI
+ */
+public struct SessionInfo {
+    /**
+     * UUID of the remote party
+     */
+    public var address: String
+    /**
+     * Number of device sessions for this address
+     */
+    public var deviceCount: UInt32
+    /**
+     * Contact name (if known)
+     */
+    public var contactName: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * UUID of the remote party
+         */ address: String,
+        /**
+            * Number of device sessions for this address
+            */ deviceCount: UInt32,
+        /**
+            * Contact name (if known)
+            */ contactName: String?
+    ) {
+        self.address = address
+        self.deviceCount = deviceCount
+        self.contactName = contactName
+    }
+}
+
+extension SessionInfo: Equatable, Hashable {
+    public static func == (lhs: SessionInfo, rhs: SessionInfo) -> Bool {
+        if lhs.address != rhs.address {
+            return false
+        }
+        if lhs.deviceCount != rhs.deviceCount {
+            return false
+        }
+        if lhs.contactName != rhs.contactName {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(address)
+        hasher.combine(deviceCount)
+        hasher.combine(contactName)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSessionInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SessionInfo {
+        return
+            try SessionInfo(
+                address: FfiConverterString.read(from: &buf),
+                deviceCount: FfiConverterUInt32.read(from: &buf),
+                contactName: FfiConverterOptionString.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: SessionInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.address, into: &buf)
+        FfiConverterUInt32.write(value.deviceCount, into: &buf)
+        FfiConverterOptionString.write(value.contactName, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSessionInfo_lift(_ buf: RustBuffer) throws -> SessionInfo {
+    return try FfiConverterTypeSessionInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSessionInfo_lower(_ value: SessionInfo) -> RustBuffer {
+    return FfiConverterTypeSessionInfo.lower(value)
 }
 
 // Note that we don't yet support `indirect` for enums.
@@ -2376,6 +2499,31 @@ private struct FfiConverterSequenceTypeReaction: FfiConverterRustBuffer {
     }
 }
 
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private struct FfiConverterSequenceTypeSessionInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [SessionInfo]
+
+    public static func write(_ value: [SessionInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSessionInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SessionInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SessionInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            try seq.append(FfiConverterTypeSessionInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
 private enum InitializationResult {
     case ok
     case contractVersionMismatch
@@ -2395,6 +2543,9 @@ private var initializationResult: InitializationResult = {
     if uniffi_presage_rn_checksum_method_signalclient_fetch_all_avatars() != 14777 {
         return InitializationResult.apiChecksumMismatch
     }
+    if uniffi_presage_rn_checksum_method_signalclient_get_all_sessions() != 53964 {
+        return InitializationResult.apiChecksumMismatch
+    }
     if uniffi_presage_rn_checksum_method_signalclient_get_channels() != 33227 {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2408,6 +2559,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_mark_as_read() != 20851 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_signalclient_reset_session() != 12309 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_send_message() != 4543 {

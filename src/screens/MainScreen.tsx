@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
-import {View, StyleSheet, PanResponder, NativeModules, NativeEventEmitter} from 'react-native';
+import {View, StyleSheet, PanResponder, NativeModules, NativeEventEmitter, Platform} from 'react-native';
 import {useSignalStore} from '../store/signalStore';
 import {ChannelList} from '../components/ChannelList';
 import {ChatView} from '../components/ChatView';
@@ -7,10 +7,14 @@ import {MessageInput, MessageInputHandle} from '../components/MessageInput';
 import {GlassView} from '../components/GlassView';
 import {GlassContainerView} from '../components/GlassContainerView';
 import {DropTargetView} from '../components/DropTargetView';
+import {SessionsModal} from '../components/SessionsModal';
 
-const {CommandPaletteModule} = NativeModules;
+const {CommandPaletteModule, PresageModule} = NativeModules;
 const emitter = CommandPaletteModule
   ? new NativeEventEmitter(CommandPaletteModule)
+  : null;
+const presageEmitter = PresageModule
+  ? new NativeEventEmitter(PresageModule)
   : null;
 
 const SIDEBAR_DEFAULT = 268;
@@ -32,6 +36,7 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact}: MainScreen
   const setSelectedChannelId = useSignalStore(state => state.setSelectedChannelId);
 
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
+  const [settingsVisible, setSettingsVisible] = useState(false);
   const startWidthRef = useRef(SIDEBAR_DEFAULT);
   const currentWidthRef = useRef(SIDEBAR_DEFAULT);
   const inputRef = useRef<MessageInputHandle>(null);
@@ -76,6 +81,15 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact}: MainScreen
     },
     [selectedChannelId, onSendMessage],
   );
+
+  // Listen for "Sessions..." menu item from macOS app menu
+  useEffect(() => {
+    if (!presageEmitter) return;
+    const sub = presageEmitter.addListener('onOpenSessions', () => {
+      setSettingsVisible(true);
+    });
+    return () => sub.remove();
+  }, []);
 
   // Channel navigation shortcut handler
   useEffect(() => {
@@ -157,6 +171,11 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact}: MainScreen
           <MessageInput ref={inputRef} onSend={handleSendMessage} />
         </GlassContainerView>
       )}
+
+      <SessionsModal
+        visible={settingsVisible}
+        onClose={() => setSettingsVisible(false)}
+      />
     </View>
   );
 }

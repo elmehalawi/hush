@@ -110,6 +110,17 @@ impl Default for MessageStatus {
     }
 }
 
+/// A session entry for the settings UI
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SessionInfo {
+    /// UUID of the remote party
+    pub address: String,
+    /// Number of device sessions for this address
+    pub device_count: u32,
+    /// Contact name (if known)
+    pub contact_name: Option<String>,
+}
+
 /// Linking state for the QR code flow
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum LinkingState {

@@ -52,10 +52,20 @@ RCT_EXTERN_METHOD(markAsRead:(NSString *)channelId
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(getAllSessions:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(resetSession:(NSString *)channelId
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(fetchAllAvatars:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
 RCT_EXTERN_METHOD(previewFile:(NSString *)filePath)
+
+RCT_EXTERN_METHOD(showChannelContextMenu:(NSString *)channelId
+                  isGroup:(BOOL)isGroup)
 
 RCT_EXTERN_METHOD(showFileContextMenu:(NSString *)filePath
                   fileName:(NSString *)fileName)

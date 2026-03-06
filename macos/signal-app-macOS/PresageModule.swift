@@ -31,6 +31,16 @@ class PresageModule: RCTEventEmitter {
 
     override init() {
         super.init()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleOpenSessions),
+            name: NSNotification.Name("OpenSessionsSettings"),
+            object: nil
+        )
+    }
+
+    @objc private func handleOpenSessions() {
+        sendEventIfListening("onOpenSessions", body: nil)
     }
 
     @objc override static func requiresMainQueueSetup() -> Bool {
@@ -38,7 +48,7 @@ class PresageModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onMessage", "onReaction", "onChannelUpdated", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete"]
+        return ["onMessage", "onReaction", "onChannelUpdated", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions"]
     }
 
     override func startObserving() {
@@ -373,6 +383,49 @@ class PresageModule: RCTEventEmitter {
         }
     }
 
+    @objc(getAllSessions:rejecter:)
+    func getAllSessions(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let client = client else {
+            rejecter("NOT_INITIALIZED", "Client not initialized", nil)
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let sessions = try client.getAllSessions()
+                let dicts = sessions.map { session -> [String: Any?] in
+                    return [
+                        "address": session.address,
+                        "deviceCount": session.deviceCount,
+                        "contactName": session.contactName,
+                    ]
+                }
+                resolver(dicts)
+            } catch {
+                rejecter("GET_SESSIONS_ERROR", "Failed to get sessions: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
+    @objc(resetSession:resolver:rejecter:)
+    func resetSession(_ channelId: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let client = client else {
+            rejecter("NOT_INITIALIZED", "Client not initialized", nil)
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try client.resetSession(channelId: channelId)
+                NSLog("PresageModule: Session reset completed for %@", channelId)
+                resolver(nil)
+            } catch {
+                NSLog("PresageModule: Session reset failed: %@", error.localizedDescription)
+                rejecter("RESET_SESSION_ERROR", "Failed to reset session: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
     @objc(fetchAllAvatars:rejecter:)
     func fetchAllAvatars(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
         guard let client = client else {
@@ -658,6 +711,58 @@ class PresageModule: RCTEventEmitter {
                 self.sendEventIfListening("onAudioComplete", body: ["filePath": path])
             }
             self.stopAudioInternal()
+        }
+    }
+
+    // MARK: - Channel Context Menu
+
+    @objc(showChannelContextMenu:isGroup:)
+    func showChannelContextMenu(_ channelId: String, isGroup: Bool) {
+        DispatchQueue.main.async {
+            let menu = NSMenu()
+
+            if !isGroup {
+                let resetItem = NSMenuItem(title: "Reset Session", action: #selector(self.handleResetSession(_:)), keyEquivalent: "")
+                resetItem.representedObject = channelId
+                resetItem.target = self
+                menu.addItem(resetItem)
+            }
+
+            guard !menu.items.isEmpty else { return }
+            guard let window = NSApp.keyWindow, let contentView = window.contentView else { return }
+            let mouseInWindow = window.mouseLocationOutsideOfEventStream
+            let mouseInView = contentView.convert(mouseInWindow, from: nil)
+            menu.popUp(positioning: nil, at: mouseInView, in: contentView)
+        }
+    }
+
+    @objc private func handleResetSession(_ sender: NSMenuItem) {
+        guard let channelId = sender.representedObject as? String,
+              let client = client else { return }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try client.resetSession(channelId: channelId)
+                NSLog("PresageModule: Session reset completed for %@", channelId)
+                DispatchQueue.main.async {
+                    let alert = NSAlert()
+                    alert.messageText = "Session Reset"
+                    alert.informativeText = "Encryption session has been reset. New messages should now decrypt correctly."
+                    alert.alertStyle = .informational
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                }
+            } catch {
+                NSLog("PresageModule: Session reset failed: %@", error.localizedDescription)
+                DispatchQueue.main.async {
+                    let alert = NSAlert()
+                    alert.messageText = "Session Reset Failed"
+                    alert.informativeText = error.localizedDescription
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                }
+            }
         }
     }
 
