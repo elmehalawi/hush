@@ -5,7 +5,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Modal,
   NativeModules,
   ActivityIndicator,
 } from 'react-native';
@@ -63,72 +62,73 @@ export function SessionsModal({visible, onClose}: SessionsModalProps) {
     }
   }, [loadSessions]);
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.modalContainer} onPress={e => e.stopPropagation()}>
-          <GlassView style={StyleSheet.absoluteFill} cornerRadius={16} />
-          <View style={styles.content}>
-            <View style={styles.header}>
-              <Text style={styles.title}>Sessions</Text>
-              <Pressable onPress={onClose} style={styles.closeButton}>
-                <Text style={styles.closeText}>Done</Text>
-              </Pressable>
-            </View>
-            <Text style={styles.description}>
-              Encryption sessions with your contacts. Reset a session if messages
-              aren't decrypting correctly.
-            </Text>
-            <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-              {loading ? (
-                <ActivityIndicator style={styles.loader} color="rgba(255,255,255,0.5)" />
-              ) : sessions.length === 0 ? (
-                <Text style={styles.emptyText}>No sessions found</Text>
-              ) : (
-                sessions.map(session => (
-                  <View key={session.address} style={styles.sessionRow}>
-                    <View style={styles.sessionInfo}>
-                      <Text style={styles.sessionName} numberOfLines={1}>
-                        {session.contactName || 'Unknown'}
-                      </Text>
-                      <Text style={styles.sessionAddress} numberOfLines={1}>
-                        {session.address}
-                      </Text>
-                      <Text style={styles.sessionDevices}>
-                        {session.deviceCount} device{session.deviceCount !== 1 ? 's' : ''}
-                      </Text>
-                    </View>
-                    <Pressable
-                      style={({pressed}) => [
-                        styles.resetButton,
-                        pressed && styles.resetButtonPressed,
-                        resettingId === session.address && styles.resetButtonDisabled,
-                      ]}
-                      onPress={() => handleReset(session.address)}
-                      disabled={resettingId === session.address}>
-                      {resettingId === session.address ? (
-                        <ActivityIndicator size="small" color="white" />
-                      ) : (
-                        <Text style={styles.resetText}>Reset</Text>
-                      )}
-                    </Pressable>
-                  </View>
-                ))
-              )}
-            </ScrollView>
+    <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable style={styles.modalContainer} onPress={e => e.stopPropagation()}>
+        <GlassView style={StyleSheet.absoluteFill} cornerRadius={16} />
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Sessions</Text>
+            <Pressable onPress={onClose} style={styles.closeButton}>
+              <Text style={styles.closeText}>Done</Text>
+            </Pressable>
           </View>
-        </Pressable>
+          <Text style={styles.description}>
+            Encryption sessions with your contacts. Reset a session if messages
+            aren't decrypting correctly.
+          </Text>
+          <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+            {loading ? (
+              <ActivityIndicator style={styles.loader} color="rgba(255,255,255,0.5)" />
+            ) : sessions.length === 0 ? (
+              <Text style={styles.emptyText}>No sessions found</Text>
+            ) : (
+              sessions.map(session => (
+                <View key={session.address} style={styles.sessionRow}>
+                  <View style={styles.sessionInfo}>
+                    <Text style={styles.sessionName} numberOfLines={1}>
+                      {session.contactName || 'Unknown'}
+                    </Text>
+                    <Text style={styles.sessionAddress} numberOfLines={1}>
+                      {session.address}
+                    </Text>
+                    <Text style={styles.sessionDevices}>
+                      {session.deviceCount} device{session.deviceCount !== 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                  <Pressable
+                    style={({pressed}) => [
+                      styles.resetButton,
+                      pressed && styles.resetButtonPressed,
+                      resettingId === session.address && styles.resetButtonDisabled,
+                    ]}
+                    onPress={() => handleReset(session.address)}
+                    disabled={resettingId === session.address}>
+                    {resettingId === session.address ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <Text style={styles.resetText}>Reset</Text>
+                    )}
+                  </Pressable>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
       </Pressable>
-    </Modal>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   backdrop: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.4)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 100,
   },
   modalContainer: {
     width: 420,
