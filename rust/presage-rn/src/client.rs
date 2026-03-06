@@ -24,7 +24,7 @@ use uuid::Uuid;
 
 use crate::callbacks::{LinkingCallback, MessageListener};
 use crate::error::SignalError;
-use crate::types::{Attachment, Channel, Message, MessageStatus, Reaction, ReactionEvent};
+use crate::types::{Attachment, Channel, Message, MessageStatus, Reaction, ReactionEvent, SessionInfo};
 
 type PresageManager = presage::Manager<SqliteStore, Registered>;
 
@@ -1247,6 +1247,129 @@ impl SignalClient {
         }
         info!("Marked channel {} as read up to {}", channel_id, up_to_timestamp);
         Ok(())
+    }
+
+    /// Get all sessions in the database, grouped by address, with contact names where known.
+    pub fn get_all_sessions(&self) -> Result<Vec<SessionInfo>, SignalError> {
+        let manager_guard = self.manager.read();
+        let manager = manager_guard.as_ref().ok_or(SignalError::NotLinked)?;
+        let my_user_id = self.user_id.read();
+
+        let local = tokio::task::LocalSet::new();
+        local.block_on(&self.runtime, async {
+            // Build a name lookup from contacts
+            let mut name_map: HashMap<String, String> = HashMap::new();
+            if let Ok(contacts_iter) = manager.store().contacts().await {
+                for contact_result in contacts_iter {
+                    if let Ok(contact) = contact_result {
+                        if !contact.name.is_empty() {
+                            name_map.insert(contact.uuid.to_string(), contact.name.clone());
+                        }
+                    }
+                }
+            }
+
+            // Query distinct session addresses directly from the DB
+            let db_path = self.store_path.to_string_lossy().to_string();
+            let output = std::process::Command::new("sqlite3")
+                .arg(&db_path)
+                .arg("SELECT address, COUNT(*) FROM sessions WHERE identity = 'aci' GROUP BY address ORDER BY address;")
+                .output()
+                .map_err(|e| SignalError::InternalError {
+                    message: format!("Failed to query sessions: {}", e),
+                })?;
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let mut sessions = Vec::new();
+
+            for line in stdout.lines() {
+                let parts: Vec<&str> = line.split('|').collect();
+                if parts.len() == 2 {
+                    let address = parts[0].to_string();
+                    let device_count: u32 = parts[1].parse().unwrap_or(0);
+
+                    // Skip our own sessions
+                    if let Some(my_id) = *my_user_id {
+                        if address == my_id.to_string() {
+                            continue;
+                        }
+                    }
+
+                    let contact_name = name_map.get(&address).cloned();
+
+                    sessions.push(SessionInfo {
+                        address,
+                        device_count,
+                        contact_name,
+                    });
+                }
+            }
+
+            // Sort: named contacts first, then by address
+            sessions.sort_by(|a, b| {
+                match (&a.contact_name, &b.contact_name) {
+                    (Some(na), Some(nb)) => na.cmp(nb),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => a.address.cmp(&b.address),
+                }
+            });
+
+            Ok(sessions)
+        })
+    }
+
+    /// Reset the encrypted session with a contact.
+    /// Sends an END_SESSION message so the remote side resets their session,
+    /// then deletes local session records to force a fresh key exchange.
+    pub fn reset_session(&self, channel_id: String) -> Result<(), SignalError> {
+        let mut manager_guard = self.manager.write();
+        let manager = manager_guard.as_mut().ok_or(SignalError::NotLinked)?;
+
+        let uuid: Uuid = channel_id.parse().map_err(|_| SignalError::ParseError {
+            message: "Invalid UUID".to_string(),
+        })?;
+
+        let service_id = ServiceId::from(Aci::from(uuid));
+
+        const RED_ZONE: usize = 512 * 1024;
+        const STACK_SIZE: usize = 8 * 1024 * 1024;
+
+        stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
+            let local = tokio::task::LocalSet::new();
+            local.block_on(&self.runtime, async {
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as u64;
+
+                // 1. Send END_SESSION to all of the recipient's devices
+                info!("Sending session reset (END_SESSION) to {}", channel_id);
+                manager
+                    .send_session_reset(&service_id, timestamp)
+                    .await
+                    .map_err(|e| SignalError::SendFailed {
+                        message: format!("Failed to send session reset: {}", e),
+                    })?;
+                info!("Session reset sent to {}", channel_id);
+
+                // 2. Delete local session records so incoming messages
+                //    trigger a fresh PreKey exchange
+                use presage::libsignal_service::session_store::SessionStoreExt;
+                use presage::store::Store;
+                let deleted = manager
+                    .store()
+                    .aci_protocol_store()
+                    .delete_all_sessions(&service_id)
+                    .await
+                    .map_err(|e| SignalError::InternalError {
+                        message: format!("Failed to delete local sessions: {:?}", e),
+                    })?;
+                info!("Deleted {} local sessions for {}", deleted, channel_id);
+
+                Ok(())
+            })
+        })
     }
 
     /// Send a read receipt for the given message timestamps to a specific sender.

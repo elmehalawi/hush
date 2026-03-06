@@ -73,7 +73,20 @@
       }
     }
     [appMenu insertItem:checkForUpdatesItem atIndex:insertIndex];
+
+    // Add "Sessions..." menu item
+    NSMenuItem *sessionsItem =
+      [[NSMenuItem alloc] initWithTitle:@"Sessions..."
+                                 action:@selector(openSessions:)
+                          keyEquivalent:@""];
+    sessionsItem.target = self;
+    [appMenu insertItem:sessionsItem atIndex:insertIndex + 1];
   }
+}
+
+- (void)openSessions:(id)sender
+{
+  [[NSNotificationCenter defaultCenter] postNotificationName:@"OpenSessionsSettings" object:nil];
 }
 
 - (void)repositionTrafficLights:(NSWindow *)window

@@ -1,8 +1,10 @@
-import React, {useMemo} from 'react';
-import {View, Text, Pressable, StyleSheet, Image} from 'react-native';
+import React, {useMemo, useCallback} from 'react';
+import {View, Text, Pressable, StyleSheet, Image, NativeModules} from 'react-native';
 import {Channel} from '../store/signalStore';
 import {GlassView} from './GlassView';
 import {colors} from '../theme/colors';
+
+const {PresageModule} = NativeModules;
 
 interface ChannelItemProps {
   channel: Channel;
@@ -47,11 +49,18 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
     [channel.lastMessageTimestamp],
   );
 
+  const handlePressIn = useCallback((e: any) => {
+    if (e.nativeEvent?.button === 2) {
+      PresageModule?.showChannelContextMenu(channel.id, channel.isGroup);
+    }
+  }, [channel.id, channel.isGroup]);
+
   if (collapsed) {
     return (
       <Pressable
         style={[styles.collapsedContainer, isSelected && styles.selected]}
-        onPress={() => onSelect(channel.id)}>
+        onPress={() => onSelect(channel.id)}
+        onPressIn={handlePressIn}>
         <View style={[styles.avatar, styles.avatarCollapsed]}>
           {channel.avatarPath ? (
             <Image
@@ -79,7 +88,8 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
   return (
     <Pressable
       style={[styles.container, isSelected && styles.selected]}
-      onPress={() => onSelect(channel.id)}>
+      onPress={() => onSelect(channel.id)}
+      onPressIn={handlePressIn}>
       <View style={styles.avatar}>
         {channel.avatarPath ? (
           <Image
