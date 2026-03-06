@@ -385,7 +385,7 @@ export function MessageBubble({message, isGroup, onReact, userId}: MessageBubble
           {reactionsRow}
         </>
       )}
-      {hovered && onReact && (
+      {hovered && onReact && !isOutgoing && (
         <View style={[
           styles.reactionBarOverlay,
           isOutgoing
