@@ -3,12 +3,12 @@
     <channel>
         <title>Hush</title>
         <item>
-            <title>1.6.0</title>
-            <pubDate>Thu, 05 Mar 2026 22:31:34 -0600</pubDate>
-            <sparkle:version>14</sparkle:version>
-            <sparkle:shortVersionString>1.6.0</sparkle:shortVersionString>
+            <title>1.6.1</title>
+            <pubDate>Thu, 05 Mar 2026 22:38:07 -0600</pubDate>
+            <sparkle:version>15</sparkle:version>
+            <sparkle:shortVersionString>1.6.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/elmehalawi/hush/releases/download/v1.6.0/Hush-1.6.0.dmg" length="44583044" type="application/octet-stream" sparkle:edSignature="eZHHdyCCkmum/MNVyI/57U+HczmjBNxYp1hG7XPZ7aGQQKGTLtYDbi/IyQqHqWZ6c6G48m+oSKQAtyHF/3aPCw=="/>
+            <enclosure url="https://github.com/elmehalawi/hush/releases/download/v1.6.1/Hush-1.6.1.dmg" length="44585121" type="application/octet-stream" sparkle:edSignature="U9KmC/nlBKmmJp2+iRCpMXupsWRX03CwOt5z9T6P2ERB47UEVpbgnFxEhdA20dbJDJMUAAIV/dxFO/q4PNiDAg=="/>
         </item>
         <item>
             <title>1.5.0</title>
