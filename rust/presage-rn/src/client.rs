@@ -1257,13 +1257,43 @@ impl SignalClient {
 
         let local = tokio::task::LocalSet::new();
         local.block_on(&self.runtime, async {
-            // Build a name lookup from contacts
+            // Build a name lookup from contacts + profiles
             let mut name_map: HashMap<String, String> = HashMap::new();
             if let Ok(contacts_iter) = manager.store().contacts().await {
                 for contact_result in contacts_iter {
                     if let Ok(contact) = contact_result {
                         if !contact.name.is_empty() {
                             name_map.insert(contact.uuid.to_string(), contact.name.clone());
+                        }
+                    }
+                }
+            }
+            // Also check profiles table for names not in contacts
+            let db_path_str = self.store_path.to_string_lossy().to_string();
+            if let Ok(profile_output) = std::process::Command::new("sqlite3")
+                .arg(&db_path_str)
+                .arg("SELECT lower(hex(uuid)), given_name, family_name FROM profiles WHERE given_name IS NOT NULL AND given_name != '';")
+                .output()
+            {
+                let profile_stdout = String::from_utf8_lossy(&profile_output.stdout);
+                for line in profile_stdout.lines() {
+                    let parts: Vec<&str> = line.split('|').collect();
+                    if parts.len() >= 2 {
+                        // Convert hex UUID to dashed format
+                        let hex = parts[0];
+                        if hex.len() == 32 {
+                            let uuid_str = format!(
+                                "{}-{}-{}-{}-{}",
+                                &hex[0..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32]
+                            );
+                            if !name_map.contains_key(&uuid_str) {
+                                let mut name = parts[1].to_string();
+                                if parts.len() >= 3 && !parts[2].is_empty() {
+                                    name.push(' ');
+                                    name.push_str(parts[2]);
+                                }
+                                name_map.insert(uuid_str, name);
+                            }
                         }
                     }
                 }
