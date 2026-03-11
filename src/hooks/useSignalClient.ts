@@ -219,10 +219,10 @@ export function useSignalClient() {
             // Ignore polling errors
           }
           // Stop polling after 30 seconds
-          if (pollCount > 30) {
+          if (pollCount > 10) {
             clearInterval(pollInterval);
           }
-        }, 1000);
+        }, 3000);
       } catch (error) {
         setLinkingState({
           type: 'failed',

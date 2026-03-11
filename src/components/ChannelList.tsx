@@ -1,4 +1,4 @@
-import React, {useMemo} from 'react';
+import React, {useMemo, useCallback} from 'react';
 import {View, FlatList, Text, StyleSheet, useColorScheme} from 'react-native';
 import {Channel} from '../store/signalStore';
 import {ChannelItem} from './ChannelItem';
@@ -12,11 +12,25 @@ interface ChannelListProps {
   collapsed?: boolean;
 }
 
+const channelKeyExtractor = (item: Channel) => item.id;
+
 export function ChannelList({channels, selectedId, onSelect, collapsed}: ChannelListProps) {
   useColorScheme(); // subscribe to appearance changes so DynamicColorMacOS values update
   const sorted = useMemo(
     () => [...channels].sort((a, b) => (b.lastMessageTimestamp ?? 0) - (a.lastMessageTimestamp ?? 0)),
     [channels],
+  );
+
+  const renderItem = useCallback(
+    ({item}: {item: Channel}) => (
+      <ChannelItem
+        channel={item}
+        isSelected={selectedId === item.id}
+        onSelect={onSelect}
+        collapsed={collapsed}
+      />
+    ),
+    [selectedId, onSelect, collapsed],
   );
 
   return (
@@ -28,16 +42,11 @@ export function ChannelList({channels, selectedId, onSelect, collapsed}: Channel
           collapsed && styles.listContentCollapsed,
         ]}
         data={sorted}
-        keyExtractor={item => item.id}
+        keyExtractor={channelKeyExtractor}
         showsHorizontalScrollIndicator={false}
-        renderItem={({item}) => (
-          <ChannelItem
-            channel={item}
-            isSelected={selectedId === item.id}
-            onSelect={onSelect}
-            collapsed={collapsed}
-          />
-        )}
+        renderItem={renderItem}
+        maxToRenderPerBatch={15}
+        windowSize={5}
         ListEmptyComponent={
           <View style={styles.empty}>
             {!collapsed && (

@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useRef} from 'react';
+import React, {useState, useCallback, useRef, useMemo} from 'react';
 import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme} from 'react-native';
 import {Message, Attachment, Reaction, useSignalStore} from '../store/signalStore';
 import {ReactionBar} from './ReactionBar';
@@ -204,7 +204,29 @@ function ReactionsRow({
   );
 }
 
-export function MessageBubble({message, isGroup, onReact, userId}: MessageBubbleProps) {
+function formatTime(timestamp: number) {
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+}
+
+function getStatusIcon(status: string) {
+  switch (status) {
+    case 'sending':
+      return '\u23F3';
+    case 'sent':
+      return '\u2713';
+    case 'delivered':
+      return '\u2713\u2713';
+    case 'read':
+      return '\u2713\u2713';
+    case 'failed':
+      return '\u26A0';
+    default:
+      return '';
+  }
+}
+
+export const MessageBubble = React.memo(function MessageBubble({message, isGroup, onReact, userId}: MessageBubbleProps) {
   const colorScheme = useColorScheme();
   const incomingBubbleBg = colorScheme === 'dark' ? '#2A2A2C' : '#e0e0e0';
   const isOutgoing = message.isOutgoing;
@@ -232,38 +254,25 @@ export function MessageBubble({message, isGroup, onReact, userId}: MessageBubble
   );
   const senderAvatar = senderChannel?.avatarPath;
   const senderInitial = message.senderName?.charAt(0).toUpperCase() || '?';
-  const audioAttachments = message.attachments.filter(a => isAudioType(a.contentType));
-  const nonAudioAttachments = message.attachments.filter(a => !isAudioType(a.contentType));
-  const hasAttachments = nonAudioAttachments.length > 0;
-  const hasAudio = audioAttachments.length > 0;
+
+  const {audioAttachments, nonAudioAttachments, hasAttachments, hasAudio, hasMedia} = useMemo(() => {
+    const audio = message.attachments.filter(a => isAudioType(a.contentType));
+    const nonAudio = message.attachments.filter(a => !isAudioType(a.contentType));
+    const media = nonAudio.filter(a => isImageType(a.contentType) || isVideoType(a.contentType));
+    return {
+      audioAttachments: audio,
+      nonAudioAttachments: nonAudio,
+      hasAttachments: nonAudio.length > 0,
+      hasAudio: audio.length > 0,
+      hasMedia: media.length > 0,
+    };
+  }, [message.attachments]);
+
   const hasBody = !!message.body;
-  const mediaAttachments = nonAudioAttachments.filter(
-    a => isImageType(a.contentType) || isVideoType(a.contentType),
-  );
-  const hasMedia = mediaAttachments.length > 0;
   const audioOnly = hasAudio && !hasBody && !hasAttachments;
 
-  const formatTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-  };
-
-  const getStatusIcon = () => {
-    switch (message.status) {
-      case 'sending':
-        return '\u23F3';
-      case 'sent':
-        return '\u2713';
-      case 'delivered':
-        return '\u2713\u2713';
-      case 'read':
-        return '\u2713\u2713';
-      case 'failed':
-        return '\u26A0';
-      default:
-        return '';
-    }
-  };
+  const timeStr = useMemo(() => formatTime(message.timestamp), [message.timestamp]);
+  const statusIcon = useMemo(() => getStatusIcon(message.status), [message.status]);
 
   const bubbleStyle = [
     styles.bubble,
@@ -280,7 +289,7 @@ export function MessageBubble({message, isGroup, onReact, userId}: MessageBubble
           isOutgoing && styles.timeOutgoing,
           hasMedia && !hasBody && styles.timeOverMedia,
         ]}>
-        {formatTime(message.timestamp)}
+        {timeStr}
       </Text>
       {isOutgoing && (
         <Text
@@ -289,7 +298,7 @@ export function MessageBubble({message, isGroup, onReact, userId}: MessageBubble
             message.status === 'read' && styles.statusRead,
             hasMedia && !hasBody && styles.statusOverMedia,
           ]}>
-          {getStatusIcon()}
+          {statusIcon}
         </Text>
       )}
     </View>
@@ -399,7 +408,7 @@ export function MessageBubble({message, isGroup, onReact, userId}: MessageBubble
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
