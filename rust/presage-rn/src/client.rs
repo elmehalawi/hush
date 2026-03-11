@@ -398,6 +398,10 @@ impl SignalClient {
                 if let Ok(messages_iter) = manager.store().messages(&thread, ..).await {
                     let mut got_last = false;
                     let mut unread = 0u32;
+                    // Cap iteration to avoid scanning thousands of messages for
+                    // channels that have never been read (last_read_ts == 0)
+                    const MAX_SCAN: u32 = 500;
+                    let mut scanned = 0u32;
                     for result in messages_iter {
                         if let Ok(content) = result {
                             let ts = content.metadata.timestamp;
@@ -437,6 +441,8 @@ impl SignalClient {
                                 continue;
                             }
 
+                            scanned += 1;
+
                             if !got_last {
                                 channel.last_message_timestamp = Some(ts);
                                 let (body, attachments) = match &content.body {
@@ -469,6 +475,11 @@ impl SignalClient {
 
                             // Once we're past the last-read boundary, no more unreads
                             if ts <= last_read_ts {
+                                break;
+                            }
+
+                            // Cap to avoid scanning entire history for never-read channels
+                            if scanned >= MAX_SCAN {
                                 break;
                             }
                         }
