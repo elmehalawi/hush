@@ -1558,6 +1558,10 @@ public struct SessionInfo {
      * Contact name (if known)
      */
     public var contactName: String?
+    /**
+     * Whether this session belongs to our own account (another linked device)
+     */
+    public var isSelf: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1570,11 +1574,15 @@ public struct SessionInfo {
             */ deviceCount: UInt32,
         /**
             * Contact name (if known)
-            */ contactName: String?
+            */ contactName: String?,
+        /**
+            * Whether this session belongs to our own account (another linked device)
+            */ isSelf: Bool
     ) {
         self.address = address
         self.deviceCount = deviceCount
         self.contactName = contactName
+        self.isSelf = isSelf
     }
 }
 
@@ -1589,6 +1597,9 @@ extension SessionInfo: Equatable, Hashable {
         if lhs.contactName != rhs.contactName {
             return false
         }
+        if lhs.isSelf != rhs.isSelf {
+            return false
+        }
         return true
     }
 
@@ -1596,6 +1607,7 @@ extension SessionInfo: Equatable, Hashable {
         hasher.combine(address)
         hasher.combine(deviceCount)
         hasher.combine(contactName)
+        hasher.combine(isSelf)
     }
 }
 
@@ -1608,7 +1620,8 @@ public struct FfiConverterTypeSessionInfo: FfiConverterRustBuffer {
             try SessionInfo(
                 address: FfiConverterString.read(from: &buf),
                 deviceCount: FfiConverterUInt32.read(from: &buf),
-                contactName: FfiConverterOptionString.read(from: &buf)
+                contactName: FfiConverterOptionString.read(from: &buf),
+                isSelf: FfiConverterBool.read(from: &buf)
             )
     }
 
@@ -1616,6 +1629,7 @@ public struct FfiConverterTypeSessionInfo: FfiConverterRustBuffer {
         FfiConverterString.write(value.address, into: &buf)
         FfiConverterUInt32.write(value.deviceCount, into: &buf)
         FfiConverterOptionString.write(value.contactName, into: &buf)
+        FfiConverterBool.write(value.isSelf, into: &buf)
     }
 }
 
