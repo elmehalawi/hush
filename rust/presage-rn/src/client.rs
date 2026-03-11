@@ -1329,12 +1329,10 @@ impl SignalClient {
                     let address = parts[0].to_string();
                     let device_count: u32 = parts[1].parse().unwrap_or(0);
 
-                    // Skip our own sessions
-                    if let Some(my_id) = *my_user_id {
-                        if address == my_id.to_string() {
-                            continue;
-                        }
-                    }
+                    let is_self = match *my_user_id {
+                        Some(my_id) => address == my_id.to_string(),
+                        None => false,
+                    };
 
                     let contact_name = name_map.get(&address).cloned();
 
@@ -1342,12 +1340,18 @@ impl SignalClient {
                         address,
                         device_count,
                         contact_name,
+                        is_self,
                     });
                 }
             }
 
-            // Sort: named contacts first, then by address
+            // Sort: self first, then named contacts, then unknown by address
             sessions.sort_by(|a, b| {
+                match (a.is_self, b.is_self) {
+                    (true, false) => return std::cmp::Ordering::Less,
+                    (false, true) => return std::cmp::Ordering::Greater,
+                    _ => {}
+                }
                 match (&a.contact_name, &b.contact_name) {
                     (Some(na), Some(nb)) => na.cmp(nb),
                     (Some(_), None) => std::cmp::Ordering::Less,

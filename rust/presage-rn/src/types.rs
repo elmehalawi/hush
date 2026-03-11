@@ -119,6 +119,8 @@ pub struct SessionInfo {
     pub device_count: u32,
     /// Contact name (if known)
     pub contact_name: Option<String>,
+    /// Whether this session belongs to our own account (another linked device)
+    pub is_self: bool,
 }
 
 /// Linking state for the QR code flow

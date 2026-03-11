@@ -398,6 +398,7 @@ class PresageModule: RCTEventEmitter {
                         "address": session.address,
                         "deviceCount": session.deviceCount,
                         "contactName": session.contactName,
+                        "isSelf": session.isSelf,
                     ]
                 }
                 resolver(dicts)
