@@ -1,5 +1,5 @@
-import React, {useRef, useEffect, useCallback, useMemo} from 'react';
-import {View, FlatList, Text, StyleSheet, Image, useColorScheme} from 'react-native';
+import React, {useRef, useEffect, useCallback} from 'react';
+import {View, ScrollView, Text, StyleSheet, Image, useColorScheme} from 'react-native';
 import {Message, Channel, useSignalStore} from '../store/signalStore';
 import {MessageBubble} from './MessageBubble';
 import {GlassView} from './GlassView';
@@ -12,13 +12,10 @@ interface ChatViewProps {
   onReact?: (channelId: string, emoji: string, targetTimestamp: number, remove: boolean) => void;
 }
 
-const keyExtractor = (item: Message) => item.id;
-
 export function ChatView({channel, messages, onReact}: ChatViewProps) {
   useColorScheme(); // subscribe to appearance changes so DynamicColorMacOS values update
-  const flatListRef = useRef<FlatList<Message>>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
   const userId = useSignalStore(state => state.userId);
-  const prevLengthRef = useRef(messages.length);
 
   const handleReact = useCallback(
     (emoji: string, targetTimestamp: number, remove: boolean) => {
@@ -29,23 +26,8 @@ export function ChatView({channel, messages, onReact}: ChatViewProps) {
     [channel, onReact],
   );
 
-  const isGroup = channel?.isGroup ?? false;
-
-  const renderItem = useCallback(
-    ({item}: {item: Message}) => (
-      <MessageBubble message={item} isGroup={isGroup} onReact={handleReact} userId={userId} />
-    ),
-    [isGroup, handleReact, userId],
-  );
-
   useEffect(() => {
-    // Only auto-scroll when new messages are added (length increased)
-    if (messages.length > prevLengthRef.current) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({animated: true});
-      }, 100);
-    }
-    prevLengthRef.current = messages.length;
+    scrollViewRef.current?.scrollToEnd({animated: true});
   }, [messages.length]);
 
   if (!channel) {
@@ -60,23 +42,22 @@ export function ChatView({channel, messages, onReact}: ChatViewProps) {
 
   return (
     <View style={styles.container}>
-      <FlatList
-        ref={flatListRef}
+      <ScrollView
+        ref={scrollViewRef}
         style={styles.messages}
-        contentContainerStyle={messages.length === 0 ? styles.messagesContentEmpty : styles.messagesContent}
-        data={messages}
-        keyExtractor={keyExtractor}
-        renderItem={renderItem}
-        windowSize={7}
-        maxToRenderPerBatch={10}
-        initialNumToRender={15}
-        ListEmptyComponent={
+        contentContainerStyle={styles.messagesContent}
+      >
+        {messages.length === 0 ? (
           <View style={styles.noMessages}>
             <Text style={styles.noMessagesText}>No messages yet</Text>
             <Text style={styles.noMessagesHint}>Send a message to start the conversation</Text>
           </View>
-        }
-      />
+        ) : (
+          messages.map(message => (
+            <MessageBubble key={message.id} message={message} isGroup={channel.isGroup} onReact={handleReact} userId={userId} />
+          ))
+        )}
+      </ScrollView>
 
       {/* Gradient blur overlay at top - mimics Tahoe Messages */}
       <GradientBlurView style={styles.topBlur} />
@@ -131,11 +112,6 @@ const styles = StyleSheet.create({
   messagesContent: {
     paddingTop: 80,
     paddingBottom: 80,
-  },
-  messagesContentEmpty: {
-    paddingTop: 80,
-    paddingBottom: 80,
-    flexGrow: 1,
   },
   topBlur: {
     position: 'absolute',

@@ -17,7 +17,6 @@ interface SessionEntry {
   address: string;
   deviceCount: number;
   contactName: string | null;
-  isSelf: boolean;
 }
 
 interface SessionsModalProps {
@@ -77,8 +76,8 @@ export function SessionsModal({visible, onClose}: SessionsModalProps) {
             </Pressable>
           </View>
           <Text style={styles.description}>
-            Encryption sessions with your contacts and linked devices. Reset a
-            session if messages aren't decrypting correctly.
+            Encryption sessions with your contacts. Reset a session if messages
+            aren't decrypting correctly.
           </Text>
           <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
             {loading ? (
@@ -89,10 +88,8 @@ export function SessionsModal({visible, onClose}: SessionsModalProps) {
               sessions.map(session => (
                 <View key={session.address} style={styles.sessionRow}>
                   <View style={styles.sessionInfo}>
-                    <Text style={[styles.sessionName, session.isSelf && styles.selfSessionName]} numberOfLines={1}>
-                      {session.isSelf
-                        ? 'My Devices'
-                        : session.contactName || 'Unknown'}
+                    <Text style={styles.sessionName} numberOfLines={1}>
+                      {session.contactName || 'Unknown'}
                     </Text>
                     <Text style={styles.sessionAddress} numberOfLines={1}>
                       {session.address}
@@ -197,9 +194,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: colors.label,
-  },
-  selfSessionName: {
-    color: '#4A9EFF',
   },
   sessionAddress: {
     fontSize: 10,

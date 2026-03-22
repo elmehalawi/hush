@@ -2,10 +2,14 @@
 #import <objc/runtime.h>
 
 // Fix scroll behavior for React Native macOS scroll views on macOS Tahoe.
-// Disables responsive scrolling, strips unwanted horizontal deltas,
-// and caps vertical overscroll to prevent infinite scrolling.
-
-static const CGFloat kMaxOverscroll = 100.0;
+//
+// Root causes addressed:
+// 1. RCTScrollViewComponentView sets autoresizingMask = FlexibleWidth|FlexibleHeight
+//    on the document view, which fights with Fabric's frame management and causes
+//    the document view to auto-resize to the clip view's size, corrupting content size.
+// 2. Scroll events arrive with phase=0 (NSEventPhaseNone), so NSScrollView's elastic
+//    bounce-back never triggers, causing overscroll to get permanently stuck.
+// 3. constrainBoundsRect: must enforce strict [0, max] range for RN scroll views.
 
 static BOOL swizzled_responsiveScrolling_NO(id self, SEL _cmd) {
   return NO;
@@ -31,45 +35,65 @@ static void disableResponsiveScrollingOnAllClasses(void) {
   if (m) method_setImplementation(m, (IMP)swizzled_responsiveScrolling_NO);
 }
 
-// Clamp clip view bounds so overscroll never exceeds kMaxOverscroll.
-static BOOL sIsClamping = NO;
+// Cached class for RN scroll view detection
+static Class sRNScrollViewClass = nil;
 
-static void clampClipView(NSClipView *clipView) {
-  if (sIsClamping) return;
+static BOOL isRNScrollView(id sv) {
+  return sRNScrollViewClass && [sv isKindOfClass:sRNScrollViewClass];
+}
 
+// ---- Fix 1: constrainBoundsRect swizzle ----
+// Enforce strict bounds [0, max] on clip views inside RN scroll views.
+// This PREVENTS invalid scroll positions rather than fixing them after the fact.
+static IMP sOrigConstrainBoundsRect = NULL;
+
+static NSRect swizzled_constrainBoundsRect(id self, SEL _cmd, NSRect proposedBounds) {
+  NSRect result = ((NSRect(*)(id, SEL, NSRect))sOrigConstrainBoundsRect)(self, _cmd, proposedBounds);
+
+  NSClipView *clipView = (NSClipView *)self;
   NSScrollView *sv = (NSScrollView *)clipView.superview;
-  if (![sv isKindOfClass:[NSScrollView class]]) return;
-
-  NSView *documentView = sv.documentView;
-  if (!documentView) return;
-
-  NSRect docFrame = documentView.frame;
-  NSRect clipBounds = clipView.bounds;
-  CGFloat maxX = MAX(0, docFrame.size.width - clipBounds.size.width);
-  CGFloat maxY = MAX(0, docFrame.size.height - clipBounds.size.height);
-
-  CGFloat clampedX = MAX(-kMaxOverscroll, MIN(clipBounds.origin.x, maxX + kMaxOverscroll));
-  CGFloat clampedY = MAX(-kMaxOverscroll, MIN(clipBounds.origin.y, maxY + kMaxOverscroll));
-
-  if (!sv.hasHorizontalScroller) {
-    clampedX = MAX(0, MIN(clipBounds.origin.x, maxX));
+  if (![sv isKindOfClass:[NSScrollView class]] || !isRNScrollView(sv)) {
+    return result;
   }
 
-  if (clampedX != clipBounds.origin.x || clampedY != clipBounds.origin.y) {
-    sIsClamping = YES;
-    [clipView scrollToPoint:NSMakePoint(clampedX, clampedY)];
-    [sv reflectScrolledClipView:clipView];
-    sIsClamping = NO;
+  NSView *documentView = sv.documentView;
+  if (!documentView) return result;
+
+  NSRect docFrame = documentView.frame;
+  CGFloat maxX = MAX(0, docFrame.size.width - proposedBounds.size.width);
+  CGFloat maxY = MAX(0, docFrame.size.height - proposedBounds.size.height);
+
+  result.origin.x = MAX(0, MIN(result.origin.x, maxX));
+  result.origin.y = MAX(0, MIN(result.origin.y, maxY));
+  return result;
+}
+
+// ---- Fix 2: setDocumentView swizzle ----
+// Clear autoresizingMask at creation time to prevent it from fighting Fabric's layout.
+static IMP sOrigSetDocumentView = NULL;
+
+static void swizzled_setDocumentView(id self, SEL _cmd, NSView *view) {
+  ((void(*)(id, SEL, NSView *))sOrigSetDocumentView)(self, _cmd, view);
+  if (view && isRNScrollView(self)) {
+    NSAutoresizingMaskOptions mask = view.autoresizingMask;
+    if (mask & (NSViewWidthSizable | NSViewHeightSizable)) {
+      view.autoresizingMask = mask & ~(NSViewWidthSizable | NSViewHeightSizable);
+    }
   }
 }
 
+// ---- Fix 3: scrollWheel swizzle ----
 // Strip horizontal deltas on scroll views without a horizontal scroller.
+// Disable vertical elasticity for RN scroll views.
 static IMP sOrigScrollWheel = NULL;
 
 static void swizzled_scrollWheel(id self, SEL _cmd, NSEvent *event) {
   NSScrollView *sv = (NSScrollView *)self;
   sv.horizontalScrollElasticity = NSScrollElasticityNone;
-  sv.verticalScrollElasticity = NSScrollElasticityAllowed;
+
+  if (isRNScrollView(sv)) {
+    sv.verticalScrollElasticity = NSScrollElasticityNone;
+  }
 
   if (!sv.hasHorizontalScroller && event.scrollingDeltaX != 0.0) {
     CGEventRef cgEvent = CGEventCreateCopy(event.CGEvent);
@@ -89,36 +113,69 @@ static void swizzled_scrollWheel(id self, SEL _cmd, NSEvent *event) {
   ((void(*)(id, SEL, NSEvent *))sOrigScrollWheel)(self, _cmd, event);
 }
 
-// Enable bounds change notifications on clip views during layout.
+// ---- Fix 4: layout swizzle ----
+// Enable bounds change notifications, enforce document view sizing.
 static IMP sOrigNSScrollViewLayout = NULL;
 
 static void swizzled_NSScrollView_layout(id self, SEL _cmd) {
   ((void(*)(id, SEL))sOrigNSScrollViewLayout)(self, _cmd);
-  NSClipView *clipView = ((NSScrollView *)self).contentView;
+  NSScrollView *sv = (NSScrollView *)self;
+  NSClipView *clipView = sv.contentView;
   if (clipView && !clipView.postsBoundsChangedNotifications) {
     clipView.postsBoundsChangedNotifications = YES;
+  }
+
+  if (isRNScrollView(sv)) {
+    NSView *docView = sv.documentView;
+    if (docView) {
+      // Belt-and-suspenders: clear autoresizingMask in case setDocumentView swizzle missed it
+      NSAutoresizingMaskOptions mask = docView.autoresizingMask;
+      if (mask & (NSViewWidthSizable | NSViewHeightSizable)) {
+        docView.autoresizingMask = mask & ~(NSViewWidthSizable | NSViewHeightSizable);
+      }
+
+      // Ensure document view is at least as tall as the clip view
+      NSRect clipFrame = clipView.frame;
+      NSRect docFrame = docView.frame;
+      if (docFrame.size.height < clipFrame.size.height) {
+        docFrame.size.height = clipFrame.size.height;
+        docView.frame = docFrame;
+      }
+    }
   }
 }
 
 __attribute__((constructor))
 static void installScrollFix(void) {
+  sRNScrollViewClass = NSClassFromString(@"RCTEnhancedScrollView");
+
   disableResponsiveScrollingOnAllClasses();
 
+  // Swizzle constrainBoundsRect: on RCTClipView (which overrides NSClipView's version)
+  // to prevent invalid scroll positions from being set.
+  Class rctClipViewClass = NSClassFromString(@"RCTClipView");
+  if (rctClipViewClass) {
+    Method constrainMethod = class_getInstanceMethod(rctClipViewClass, @selector(constrainBoundsRect:));
+    sOrigConstrainBoundsRect = method_getImplementation(constrainMethod);
+    method_setImplementation(constrainMethod, (IMP)swizzled_constrainBoundsRect);
+  } else {
+    Method constrainMethod = class_getInstanceMethod([NSClipView class], @selector(constrainBoundsRect:));
+    sOrigConstrainBoundsRect = method_getImplementation(constrainMethod);
+    method_setImplementation(constrainMethod, (IMP)swizzled_constrainBoundsRect);
+  }
+
+  // Swizzle setDocumentView: on NSScrollView — clears autoresizingMask at creation
+  Method docViewMethod = class_getInstanceMethod([NSScrollView class], @selector(setDocumentView:));
+  sOrigSetDocumentView = method_getImplementation(docViewMethod);
+  method_setImplementation(docViewMethod, (IMP)swizzled_setDocumentView);
+
+  // Swizzle scrollWheel: on NSScrollView — strips horizontal deltas, disables elasticity
   Method m = class_getInstanceMethod([NSScrollView class], @selector(scrollWheel:));
   sOrigScrollWheel = method_getImplementation(m);
   method_setImplementation(m, (IMP)swizzled_scrollWheel);
 
+  // Swizzle layout on NSScrollView — enforces document view sizing
   Method layoutMethod = class_getInstanceMethod([NSScrollView class], @selector(layout));
   sOrigNSScrollViewLayout = method_getImplementation(layoutMethod);
   method_setImplementation(layoutMethod, (IMP)swizzled_NSScrollView_layout);
-
-  [[NSNotificationCenter defaultCenter]
-    addObserverForName:NSViewBoundsDidChangeNotification
-                object:nil
-                 queue:nil
-            usingBlock:^(NSNotification *note) {
-    if ([note.object isKindOfClass:[NSClipView class]]) {
-      clampClipView((NSClipView *)note.object);
-    }
-  }];
 }

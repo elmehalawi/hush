@@ -92,8 +92,8 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       }));
       setAttachments(prev => [...prev, ...newAttachments]);
 
-      // Generate thumbnails in parallel and batch-update state
-      const thumbnailPromises = newAttachments.map(async (att) => {
+      // Generate thumbnails in background and update as they complete
+      for (const att of newAttachments) {
         let thumbnailPath: string | undefined;
         try {
           if (att.type === 'image' && PresageModule) {
@@ -106,19 +106,11 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
         } catch {
           // ignore thumbnail errors
         }
-        return {path: att.path, thumbnailPath};
-      });
-      const results = await Promise.all(thumbnailPromises);
-      const thumbMap = new Map(
-        results.filter(r => r.thumbnailPath).map(r => [r.path, r.thumbnailPath!]),
-      );
-      if (thumbMap.size > 0) {
-        setAttachments(prev =>
-          prev.map(a => {
-            const thumb = thumbMap.get(a.path);
-            return thumb ? {...a, thumbnailPath: thumb} : a;
-          }),
-        );
+        if (thumbnailPath) {
+          setAttachments(prev =>
+            prev.map(a => a.path === att.path ? {...a, thumbnailPath} : a),
+          );
+        }
       }
     }, []);
 

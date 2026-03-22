@@ -43,7 +43,7 @@ function formatTimestamp(ts: number): string {
   return date.toLocaleDateString([], {month: 'numeric', day: 'numeric'});
 }
 
-export const ChannelItem = React.memo(function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelItemProps) {
+export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelItemProps) {
   const timeLabel = useMemo(
     () => (channel.lastMessageTimestamp ? formatTimestamp(channel.lastMessageTimestamp) : null),
     [channel.lastMessageTimestamp],
@@ -133,7 +133,7 @@ export const ChannelItem = React.memo(function ChannelItem({channel, isSelected,
       </View>
     </Pressable>
   );
-});
+}
 
 const styles = StyleSheet.create({
   container: {
