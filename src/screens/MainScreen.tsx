@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {View, StyleSheet, PanResponder, NativeModules, NativeEventEmitter, Platform} from 'react-native';
-import {useSignalStore, Message} from '../store/signalStore';
+import {useSignalStore} from '../store/signalStore';
 import {ChannelList} from '../components/ChannelList';
 import {ChatView} from '../components/ChatView';
 import {MessageInput, MessageInputHandle} from '../components/MessageInput';
@@ -22,7 +22,6 @@ const SIDEBAR_MIN = 100;
 const SIDEBAR_MAX = 500;
 const SIDEBAR_MARGIN = 4;
 const COLLAPSE_THRESHOLD = 120;
-const emptyMessages: Message[] = [];
 
 interface MainScreenProps {
   onSendMessage: (channelId: string, text: string, attachmentPaths?: string[]) => void;
@@ -33,9 +32,7 @@ interface MainScreenProps {
 export function MainScreen({onSendMessage, onSelectChannel, onReact}: MainScreenProps) {
   const channels = useSignalStore(state => state.channels);
   const selectedChannelId = useSignalStore(state => state.selectedChannelId);
-  const channelMessages = useSignalStore(state =>
-    state.selectedChannelId ? state.messages[state.selectedChannelId] || emptyMessages : emptyMessages,
-  );
+  const messages = useSignalStore(state => state.messages);
   const setSelectedChannelId = useSignalStore(state => state.setSelectedChannelId);
 
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
@@ -45,6 +42,7 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact}: MainScreen
   const inputRef = useRef<MessageInputHandle>(null);
 
   const selectedChannel = channels.find(c => c.id === selectedChannelId) || null;
+  const channelMessages = selectedChannelId ? messages[selectedChannelId] || [] : [];
 
   const panResponder = useRef(
     PanResponder.create({

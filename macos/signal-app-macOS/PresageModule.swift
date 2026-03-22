@@ -398,7 +398,6 @@ class PresageModule: RCTEventEmitter {
                         "address": session.address,
                         "deviceCount": session.deviceCount,
                         "contactName": session.contactName,
-                        "isSelf": session.isSelf,
                     ]
                 }
                 resolver(dicts)
@@ -688,7 +687,7 @@ class PresageModule: RCTEventEmitter {
 
     private func startProgressTimer() {
         audioProgressTimer?.invalidate()
-        audioProgressTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+        audioProgressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self, let player = self.audioPlayer, let path = self.currentAudioFilePath else { return }
             self.sendEventIfListening("onAudioProgress", body: [
                 "currentTime": player.currentTime,
@@ -839,22 +838,14 @@ class PresageModule: RCTEventEmitter {
     /// Look up a contact photo from macOS Contacts by phone number (preferred) or name (fallback).
     /// Writes the image to the avatars directory and returns the file path.
     private func findContactPhoto(phoneNumber: String?, name: String, channelId: String) -> String? {
-        // Check / request access on first call — use CNContactStore.authorizationStatus
-        // to avoid blocking with a semaphore
+        // Check / request access on first call
         if contactsAccessGranted == nil {
-            let status = CNContactStore.authorizationStatus(for: .contacts)
-            switch status {
-            case .authorized:
-                contactsAccessGranted = true
-            case .notDetermined:
-                // Request asynchronously; skip contact photos this time
-                contactStore.requestAccess(for: .contacts) { granted, _ in
-                    self.contactsAccessGranted = granted
-                }
-                return nil
-            default:
-                contactsAccessGranted = false
+            let semaphore = DispatchSemaphore(value: 0)
+            contactStore.requestAccess(for: .contacts) { granted, _ in
+                self.contactsAccessGranted = granted
+                semaphore.signal()
             }
+            semaphore.wait()
         }
         guard contactsAccessGranted == true else { return nil }
 
@@ -935,24 +926,14 @@ class PresageModule: RCTEventEmitter {
         dict["height"] = attachment.height.map { NSNumber(value: $0) }
         dict["size"] = attachment.size.map { NSNumber(value: $0) }
 
-        // For video attachments, only return cached thumbnail (non-blocking).
-        // If not cached yet, generate in background — it will be available next load.
+        // Generate thumbnail for video attachments
         if attachment.contentType.hasPrefix("video/"), let videoPath = attachment.filePath {
-            let thumbPath = videoPath + ".thumb.jpg"
-            if FileManager.default.fileExists(atPath: thumbPath) {
-                dict["thumbnailPath"] = thumbPath
-            } else {
-                // Generate thumbnail asynchronously for future use
-                DispatchQueue.global(qos: .utility).async {
-                    self.generateVideoThumbnail(videoPath: videoPath)
-                }
-            }
+            dict["thumbnailPath"] = generateVideoThumbnail(videoPath: videoPath)
         }
 
         return dict
     }
 
-    @discardableResult
     private func generateVideoThumbnail(videoPath: String) -> String? {
         let thumbPath = videoPath + ".thumb.jpg"
         if FileManager.default.fileExists(atPath: thumbPath) {
