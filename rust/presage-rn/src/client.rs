@@ -238,8 +238,8 @@ impl SignalClient {
 
     /// Get the list of all channels (contacts and groups)
     pub fn get_channels(&self) -> Result<Vec<Channel>, SignalError> {
-        let manager_guard = self.manager.read();
-        let manager = manager_guard.as_ref().ok_or(SignalError::NotLinked)?;
+        let mut manager_guard = self.manager.write();
+        let manager = manager_guard.as_mut().ok_or(SignalError::NotLinked)?;
         let avatars_dir = self.data_dir.join("avatars");
         let _ = std::fs::create_dir_all(&avatars_dir);
 
@@ -247,128 +247,140 @@ impl SignalClient {
         local.block_on(&self.runtime, async {
             let mut channels = Vec::new();
 
-            // Get contacts
-            if let Ok(contacts_iter) = manager.store().contacts().await {
-                for contact_result in contacts_iter {
-                    if let Ok(contact) = contact_result {
-                        if contact.name.is_empty() {
-                            continue;
-                        }
+            // Query threads table directly via rusqlite to discover ALL conversations,
+            // not just those with synced contacts/groups.
+            let conn = rusqlite::Connection::open_with_flags(
+                &self.store_path,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+            )
+            .map_err(|e| SignalError::StorageError {
+                message: format!("Failed to open DB for thread scan: {}", e),
+            })?;
 
-                        let channel_id = contact.uuid.to_string();
-                        let avatar_file = avatars_dir.join(&channel_id);
+            let mut stmt = conn
+                .prepare("SELECT id, group_master_key, recipient_id FROM threads")
+                .map_err(|e| SignalError::StorageError {
+                    message: format!("Failed to query threads: {}", e),
+                })?;
 
-                        // Check if avatar is already on disk
-                        let mut avatar_path = if avatar_file.exists() {
-                            Some(avatar_file.to_string_lossy().to_string())
-                        } else {
-                            None
-                        };
-
-                        // If not on disk, try reading from the store cache
-                        if avatar_path.is_none() {
-                            // Resolve profile key: try contact field first, then store
-                            let profile_key = if let Ok(key_bytes) =
-                                <Vec<u8> as TryInto<[u8; 32]>>::try_into(
-                                    contact.profile_key.clone(),
-                                ) {
-                                Some(ProfileKey::create(key_bytes))
-                            } else {
-                                let sid: ServiceId = Aci::from(contact.uuid).into();
-                                manager
-                                    .store()
-                                    .profile_key(&sid)
-                                    .await
-                                    .ok()
-                                    .flatten()
-                            };
-
-                            if let Some(profile_key) = profile_key {
-                                if let Ok(Some(avatar_bytes)) =
-                                    manager.store().profile_avatar(contact.uuid, profile_key).await
-                                {
-                                    if !avatar_bytes.is_empty() {
-                                        if std::fs::write(&avatar_file, &avatar_bytes).is_ok() {
-                                            avatar_path =
-                                                Some(avatar_file.to_string_lossy().to_string());
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        channels.push(Channel {
-                            id: channel_id,
-                            name: contact.name.clone(),
-                            is_group: false,
-                            unread_count: 0,
-                            last_message: None,
-                            last_message_timestamp: None,
-                            avatar_path,
-                            phone_number: contact
-                                .phone_number
-                                .as_ref()
-                                .map(|p| p.to_string()),
-                        });
-                    }
-                }
+            struct ThreadRow {
+                group_master_key: Option<Vec<u8>>,
+                recipient_id: Option<Vec<u8>>,
             }
 
-            // Get groups
-            match manager.store().groups().await {
-                Ok(groups_iter) => {
-                    let mut group_count = 0u32;
-                    for group_result in groups_iter {
-                        match group_result {
-                            Ok((master_key_bytes, group)) => {
-                                let group_id = hex::encode(&master_key_bytes);
-                                let avatar_file = avatars_dir.join(&group_id);
+            let thread_rows: Vec<ThreadRow> = stmt
+                .query_map([], |row| {
+                    Ok(ThreadRow {
+                        group_master_key: row.get(1)?,
+                        recipient_id: row.get(2)?,
+                    })
+                })
+                .map_err(|e| SignalError::StorageError {
+                    message: format!("Failed to iterate threads: {}", e),
+                })?
+                .filter_map(|r| r.ok())
+                .collect();
 
-                                // Check if avatar is already on disk
-                                let mut avatar_path = if avatar_file.exists() {
-                                    Some(avatar_file.to_string_lossy().to_string())
-                                } else {
-                                    None
-                                };
+            // Done with rusqlite — drop connection before entering presage store calls
+            drop(stmt);
+            drop(conn);
 
-                                // If not on disk, try reading from the store cache
-                                if avatar_path.is_none() {
-                                    if let Ok(Some(avatar_bytes)) =
-                                        manager.store().group_avatar(master_key_bytes).await
-                                    {
-                                        if !avatar_bytes.is_empty() {
-                                            if std::fs::write(&avatar_file, &avatar_bytes).is_ok()
-                                            {
-                                                avatar_path = Some(
-                                                    avatar_file.to_string_lossy().to_string(),
-                                                );
-                                            }
-                                        }
-                                    }
+            for thread_row in &thread_rows {
+                if let Some(master_key_bytes) = &thread_row.group_master_key {
+                    // Group thread
+                    if master_key_bytes.len() != 32 {
+                        continue;
+                    }
+                    let key: [u8; 32] = master_key_bytes.as_slice().try_into().unwrap();
+                    let group_id = hex::encode(&key);
+
+                    let name = match manager.store().group(key).await {
+                        Ok(Some(g)) => g.title,
+                        _ => group_id.clone(),
+                    };
+
+                    let avatar_file = avatars_dir.join(&group_id);
+                    let mut avatar_path = if avatar_file.exists() {
+                        Some(avatar_file.to_string_lossy().to_string())
+                    } else {
+                        None
+                    };
+
+                    if avatar_path.is_none() {
+                        if let Ok(Some(avatar_bytes)) =
+                            manager.store().group_avatar(key).await
+                        {
+                            if !avatar_bytes.is_empty() {
+                                if std::fs::write(&avatar_file, &avatar_bytes).is_ok() {
+                                    avatar_path =
+                                        Some(avatar_file.to_string_lossy().to_string());
                                 }
-
-                                info!("Found group: '{}' (id: {})", group.title, group_id);
-                                channels.push(Channel {
-                                    id: group_id,
-                                    name: group.title,
-                                    is_group: true,
-                                    unread_count: 0,
-                                    last_message: None,
-                                    last_message_timestamp: None,
-                                    avatar_path,
-                                    phone_number: None,
-                                });
-                                group_count += 1;
-                            }
-                            Err(e) => {
-                                error!("Failed to read group: {e}");
                             }
                         }
                     }
-                    info!("Loaded {group_count} groups");
-                }
-                Err(e) => {
-                    error!("Failed to fetch groups from store: {e}");
+
+                    channels.push(Channel {
+                        id: group_id,
+                        name,
+                        is_group: true,
+                        unread_count: 0,
+                        last_message: None,
+                        last_message_timestamp: None,
+                        avatar_path,
+                        phone_number: None,
+                    });
+                } else if let Some(recipient_id_bytes) = &thread_row.recipient_id {
+                    // Contact thread — recipient_id is stored as a 16-byte UUID blob
+                    let uuid = match Uuid::from_slice(recipient_id_bytes) {
+                        Ok(u) => u,
+                        Err(_) => continue,
+                    };
+                    let channel_id = uuid.to_string();
+                    let service_id = ServiceId::from(Aci::from(uuid));
+
+                    let (name, phone_number) =
+                        resolve_contact_name(manager, uuid, &service_id).await;
+
+                    let avatar_file = avatars_dir.join(&channel_id);
+                    let mut avatar_path = if avatar_file.exists() {
+                        Some(avatar_file.to_string_lossy().to_string())
+                    } else {
+                        None
+                    };
+
+                    // If not on disk, try reading from the store cache
+                    if avatar_path.is_none() {
+                        let profile_key = manager
+                            .store()
+                            .profile_key(&service_id)
+                            .await
+                            .ok()
+                            .flatten();
+
+                        if let Some(profile_key) = profile_key {
+                            if let Ok(Some(avatar_bytes)) =
+                                manager.store().profile_avatar(uuid, profile_key).await
+                            {
+                                if !avatar_bytes.is_empty() {
+                                    if std::fs::write(&avatar_file, &avatar_bytes).is_ok() {
+                                        avatar_path =
+                                            Some(avatar_file.to_string_lossy().to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    channels.push(Channel {
+                        id: channel_id,
+                        name,
+                        is_group: false,
+                        unread_count: 0,
+                        last_message: None,
+                        last_message_timestamp: None,
+                        avatar_path,
+                        phone_number,
+                    });
                 }
             }
 
@@ -1085,12 +1097,10 @@ impl SignalClient {
                                                     } else { None };
                                                     (name, avatar, None)
                                                 } else {
-                                                    // Contact: look up by UUID
+                                                    // Contact: look up by UUID with profile fallback
                                                     let (name, phone) = if let Ok(uuid) = channel_id.parse::<Uuid>() {
-                                                        match manager_for_attachments.store().contact_by_id(&ServiceId::from(Aci::from(uuid))).await {
-                                                            Ok(Some(c)) => (c.name.clone(), c.phone_number.as_ref().map(|p| p.to_string())),
-                                                            _ => (String::new(), None),
-                                                        }
+                                                        let sid = ServiceId::from(Aci::from(uuid));
+                                                        resolve_contact_name_readonly(&manager_for_attachments, uuid, &sid).await
                                                     } else { (String::new(), None) };
                                                     let avatar_file = avatars_dir.join(&channel_id);
                                                     let avatar = if avatar_file.exists() {
@@ -1595,6 +1605,93 @@ fn process_content(
         }
         _ => None,
     }
+}
+
+/// Resolve a contact's display name with fallback chain:
+/// 1. Contact name from contacts table
+/// 2. Cached profile name (given_name + family_name) from profiles table
+/// 3. Fetch profile from Signal servers (requires &mut manager) and cache it
+/// 4. UUID string as final fallback
+///
+/// Also returns phone number if available from the contact record.
+async fn resolve_contact_name(
+    manager: &mut PresageManager,
+    uuid: Uuid,
+    service_id: &ServiceId,
+) -> (String, Option<String>) {
+    // Try contact name first
+    if let Ok(Some(contact)) = manager.store().contact_by_id(service_id).await {
+        if !contact.name.is_empty() {
+            return (
+                contact.name.clone(),
+                contact.phone_number.as_ref().map(|p| p.to_string()),
+            );
+        }
+    }
+
+    // Try cached profile name, or fetch from network
+    if let Ok(Some(profile_key)) = manager.store().profile_key(service_id).await {
+        // Check local cache first
+        if let Ok(Some(profile)) = manager.store().profile(uuid, profile_key).await {
+            if let Some(profile_name) = &profile.name {
+                let name = profile_name.to_string();
+                if !name.is_empty() {
+                    return (name, None);
+                }
+            }
+        }
+
+        // Not cached — fetch from Signal servers (also saves to store)
+        match manager.retrieve_profile_by_uuid(uuid, profile_key).await {
+            Ok(profile) => {
+                if let Some(profile_name) = &profile.name {
+                    let name = profile_name.to_string();
+                    if !name.is_empty() {
+                        return (name, None);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Failed to fetch profile for {}: {}", uuid, e);
+            }
+        }
+    }
+
+    // Final fallback: UUID string
+    (uuid.to_string(), None)
+}
+
+/// Read-only variant that only checks local store (no network fetch).
+/// Used in the receive loop where we only have a shared reference.
+async fn resolve_contact_name_readonly(
+    manager: &PresageManager,
+    uuid: Uuid,
+    service_id: &ServiceId,
+) -> (String, Option<String>) {
+    // Try contact name first
+    if let Ok(Some(contact)) = manager.store().contact_by_id(service_id).await {
+        if !contact.name.is_empty() {
+            return (
+                contact.name.clone(),
+                contact.phone_number.as_ref().map(|p| p.to_string()),
+            );
+        }
+    }
+
+    // Try cached profile name
+    if let Ok(Some(profile_key)) = manager.store().profile_key(service_id).await {
+        if let Ok(Some(profile)) = manager.store().profile(uuid, profile_key).await {
+            if let Some(profile_name) = &profile.name {
+                let name = profile_name.to_string();
+                if !name.is_empty() {
+                    return (name, None);
+                }
+            }
+        }
+    }
+
+    // Final fallback: UUID string
+    (uuid.to_string(), None)
 }
 
 /// Load read state from disk, returning empty map on any error.
