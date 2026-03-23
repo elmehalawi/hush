@@ -543,7 +543,7 @@ impl SignalClient {
             if let Ok(iter) = manager.store().messages(&thread, ..).await {
                 for result in iter {
                     if let Ok(content) = result {
-                        match process_content(&content, my_user_id) {
+                        match process_content(&content, my_user_id, Some(&channel_id)) {
                             Some(ProcessedContent::Message(msg, pointers)) => {
                                 messages_with_pointers.push((msg, pointers));
                             }
@@ -1041,7 +1041,7 @@ impl SignalClient {
                                         let result = stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
                                             match received {
                                                 presage::model::messages::Received::Content(content) => {
-                                                    process_content(&content, my_user_id)
+                                                    process_content(&content, my_user_id, None)
                                                 }
                                                 presage::model::messages::Received::QueueEmpty => {
                                                     info!("Message queue is empty");
@@ -1493,9 +1493,12 @@ fn channel_id_from_dm(dm: &DataMessage, fallback_uuid: Uuid) -> Option<String> {
 }
 
 /// Process incoming content and convert to our Message type or a reaction event.
+/// `fallback_channel_id` is used when the content doesn't carry a destination
+/// (e.g. stored SynchronizeMessage blobs that lack destination_service_id).
 fn process_content(
     content: &Content,
     my_user_id: Uuid,
+    fallback_channel_id: Option<&str>,
 ) -> Option<ProcessedContent> {
     let sender_service_id = content.metadata.sender;
     let sender_uuid = sender_service_id.raw_uuid();
@@ -1555,6 +1558,8 @@ fn process_content(
                                 group_v2.master_key.as_ref().map(hex::encode)?
                             } else if let Some(dest) = &sent.destination_service_id {
                                 dest.clone()
+                            } else if let Some(fallback) = fallback_channel_id {
+                                fallback.to_string()
                             } else {
                                 return None;
                             };
@@ -1580,6 +1585,8 @@ fn process_content(
                         group_v2.master_key.as_ref().map(hex::encode)?
                     } else if let Some(dest) = &sent.destination_service_id {
                         dest.clone()
+                    } else if let Some(fallback) = fallback_channel_id {
+                        fallback.to_string()
                     } else {
                         return None;
                     };
