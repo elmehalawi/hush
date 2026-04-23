@@ -1,5 +1,5 @@
-import React, {useState, useCallback, useRef} from 'react';
-import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme} from 'react-native';
+import React, {useState, useCallback, useRef, useEffect} from 'react';
+import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme, ActivityIndicator} from 'react-native';
 import {Message, Attachment, Reaction, useSignalStore} from '../store/signalStore';
 import {ReactionBar} from './ReactionBar';
 import {AudioAttachmentView} from './AudioAttachmentView';
@@ -16,6 +16,7 @@ interface MessageBubbleProps {
   isGroup?: boolean;
   onReact?: (emoji: string, targetTimestamp: number, remove: boolean) => void;
   userId?: string | null;
+  onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
 }
 
 const MAX_BUBBLE_WIDTH = Dimensions.get('window').width * 0.75;
@@ -82,16 +83,43 @@ function isAudioType(contentType: string) {
 function AttachmentView({
   attachment,
   isOutgoing,
+  onRetry,
 }: {
   attachment: Attachment;
   isOutgoing: boolean;
+  onRetry?: () => void;
 }) {
   const rightClickedRef = useRef(false);
+  const [showRetry, setShowRetry] = useState(false);
+
+  // Show retry button after 15s if still no filePath
+  useEffect(() => {
+    if (attachment.filePath) {
+      setShowRetry(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowRetry(true), 15000);
+    return () => clearTimeout(timer);
+  }, [attachment.filePath]);
 
   if (!attachment.filePath) {
     return (
       <View style={styles.failedAttachment}>
-        <Text style={styles.failedAttachmentText}>Failed to load media</Text>
+        {showRetry ? (
+          <>
+            <Text style={styles.failedAttachmentText}>Download failed</Text>
+            {onRetry && (
+              <Pressable onPress={onRetry} style={styles.retryButton}>
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </Pressable>
+            )}
+          </>
+        ) : (
+          <>
+            <ActivityIndicator size="small" color="#999" />
+            <Text style={[styles.failedAttachmentText, {marginTop: 4}]}>Downloading...</Text>
+          </>
+        )}
       </View>
     );
   }
@@ -204,7 +232,7 @@ function ReactionsRow({
   );
 }
 
-export function MessageBubble({message, isGroup, onReact, userId}: MessageBubbleProps) {
+export function MessageBubble({message, isGroup, onReact, userId, onRetryDownload}: MessageBubbleProps) {
   const colorScheme = useColorScheme();
   const incomingBubbleBg = colorScheme === 'dark' ? '#2A2A2C' : '#e0e0e0';
   const isOutgoing = message.isOutgoing;
@@ -316,6 +344,11 @@ export function MessageBubble({message, isGroup, onReact, userId}: MessageBubble
               key={index}
               attachment={attachment}
               isOutgoing={isOutgoing}
+              onRetry={
+                onRetryDownload && !attachment.filePath
+                  ? () => onRetryDownload(message.channelId, message.id, message.attachments.indexOf(attachment))
+                  : undefined
+              }
             />
           ))}
         </View>
@@ -520,6 +553,18 @@ const styles = StyleSheet.create({
   failedAttachmentText: {
     fontSize: 12,
     color: '#999',
+  },
+  retryButton: {
+    marginTop: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.15)',
+  },
+  retryButtonText: {
+    fontSize: 12,
+    color: '#2196f3',
+    fontWeight: '500',
   },
   audioMeta: {
     paddingHorizontal: 4,

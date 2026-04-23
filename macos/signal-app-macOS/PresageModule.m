@@ -59,6 +59,12 @@ RCT_EXTERN_METHOD(resetSession:(NSString *)channelId
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(retryDownload:(NSString *)channelId
+                  messageId:(NSString *)messageId
+                  attachmentIndex:(int)attachmentIndex
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(fetchAllAvatars:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 

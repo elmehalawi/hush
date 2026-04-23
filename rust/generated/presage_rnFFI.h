@@ -300,6 +300,13 @@ typedef void (*UniffiCallbackInterfaceMessageListenerMethod3)(uint64_t, RustBuff
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD4
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD4
+typedef void (*UniffiCallbackInterfaceMessageListenerMethod4)(uint64_t, RustBuffer, RustBuffer, uint32_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LINKING_CALLBACK
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LINKING_CALLBACK
 typedef struct UniffiVTableCallbackInterfaceLinkingCallback {
@@ -317,6 +324,7 @@ typedef struct UniffiVTableCallbackInterfaceMessageListener {
     UniffiCallbackInterfaceMessageListenerMethod1 _Nonnull onReaction;
     UniffiCallbackInterfaceMessageListenerMethod2 _Nonnull onChannelUpdated;
     UniffiCallbackInterfaceMessageListenerMethod3 _Nonnull onError;
+    UniffiCallbackInterfaceMessageListenerMethod4 _Nonnull onAttachmentDownloaded;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceMessageListener;
 
@@ -353,7 +361,7 @@ RustBuffer uniffi_presage_rn_fn_method_signalclient_get_channels(void*_Nonnull p
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_GET_MESSAGES
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_GET_MESSAGES
-RustBuffer uniffi_presage_rn_fn_method_signalclient_get_messages(void*_Nonnull ptr, RustBuffer channel_id, uint32_t _limit, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_presage_rn_fn_method_signalclient_get_messages(void*_Nonnull ptr, RustBuffer channel_id, uint32_t limit, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_GET_USER_ID
@@ -374,6 +382,11 @@ void uniffi_presage_rn_fn_method_signalclient_mark_as_read(void*_Nonnull ptr, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_RESET_SESSION
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_RESET_SESSION
 void uniffi_presage_rn_fn_method_signalclient_reset_session(void*_Nonnull ptr, RustBuffer channel_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_RETRY_DOWNLOAD
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_RETRY_DOWNLOAD
+void uniffi_presage_rn_fn_method_signalclient_retry_download(void*_Nonnull ptr, RustBuffer channel_id, RustBuffer message_id, uint32_t attachment_index, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SEND_MESSAGE
@@ -749,6 +762,12 @@ uint16_t uniffi_presage_rn_checksum_method_signalclient_reset_session(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_RETRY_DOWNLOAD
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_RETRY_DOWNLOAD
+uint16_t uniffi_presage_rn_checksum_method_signalclient_retry_download(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SEND_MESSAGE
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SEND_MESSAGE
 uint16_t uniffi_presage_rn_checksum_method_signalclient_send_message(void
@@ -836,6 +855,12 @@ uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_channel_updated(vo
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_ERROR
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_ERROR
 uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_error(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_ATTACHMENT_DOWNLOADED
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_ATTACHMENT_DOWNLOADED
+uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_attachment_downloaded(void
     
 );
 #endif

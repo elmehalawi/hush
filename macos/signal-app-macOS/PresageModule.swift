@@ -48,7 +48,7 @@ class PresageModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onMessage", "onReaction", "onChannelUpdated", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions"]
+        return ["onMessage", "onReaction", "onChannelUpdated", "onAttachmentDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions"]
     }
 
     override func startObserving() {
@@ -331,6 +331,16 @@ class PresageModule: RCTEventEmitter {
             },
             onError: { [weak self] error in
                 self?.sendEventIfListening("onError", body: ["message": error])
+            },
+            onAttachmentDownloaded: { [weak self] channelId, messageId, attachmentIndex, attachment in
+                guard let self = self else { return }
+                var body: [String: Any] = [
+                    "channelId": channelId,
+                    "messageId": messageId,
+                    "attachmentIndex": NSNumber(value: attachmentIndex),
+                ]
+                body["attachment"] = self.attachmentToDict(attachment)
+                self.sendEventIfListening("onAttachmentDownloaded", body: body)
             }
         )
 
@@ -352,6 +362,23 @@ class PresageModule: RCTEventEmitter {
         }
         client.stopReceiving()
         resolver(nil)
+    }
+
+    @objc(retryDownload:messageId:attachmentIndex:resolver:rejecter:)
+    func retryDownload(_ channelId: String, messageId: String, attachmentIndex: UInt32, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let client = client else {
+            rejecter("NOT_INITIALIZED", "Client not initialized", nil)
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try client.retryDownload(channelId: channelId, messageId: messageId, attachmentIndex: attachmentIndex)
+                resolver(nil)
+            } catch {
+                rejecter("RETRY_ERROR", "Failed to retry download: \(error.localizedDescription)", error)
+            }
+        }
     }
 
     @objc(markAsRead:upToTimestamp:senderUuid:timestamps:resolver:rejecter:)
@@ -1126,12 +1153,14 @@ class MessageListenerImpl: MessageListener {
     private let onReactionHandler: (ReactionEvent) -> Void
     private let onChannelUpdatedHandler: (Channel) -> Void
     private let onErrorHandler: (String) -> Void
+    private let onAttachmentDownloadedHandler: (String, String, UInt32, Attachment) -> Void
 
-    init(onMessage: @escaping (Message) -> Void, onReaction: @escaping (ReactionEvent) -> Void, onChannelUpdated: @escaping (Channel) -> Void, onError: @escaping (String) -> Void) {
+    init(onMessage: @escaping (Message) -> Void, onReaction: @escaping (ReactionEvent) -> Void, onChannelUpdated: @escaping (Channel) -> Void, onError: @escaping (String) -> Void, onAttachmentDownloaded: @escaping (String, String, UInt32, Attachment) -> Void) {
         self.onMessageHandler = onMessage
         self.onReactionHandler = onReaction
         self.onChannelUpdatedHandler = onChannelUpdated
         self.onErrorHandler = onError
+        self.onAttachmentDownloadedHandler = onAttachmentDownloaded
     }
 
     func onMessage(message: Message) {
@@ -1155,6 +1184,12 @@ class MessageListenerImpl: MessageListener {
     func onError(error: String) {
         DispatchQueue.main.async {
             self.onErrorHandler(error)
+        }
+    }
+
+    func onAttachmentDownloaded(channelId: String, messageId: String, attachmentIndex: UInt32, attachment: Attachment) {
+        DispatchQueue.main.async {
+            self.onAttachmentDownloadedHandler(channelId, messageId, attachmentIndex, attachment)
         }
     }
 }

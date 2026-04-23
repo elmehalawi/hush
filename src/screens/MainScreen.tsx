@@ -27,9 +27,10 @@ interface MainScreenProps {
   onSendMessage: (channelId: string, text: string, attachmentPaths?: string[]) => void;
   onSelectChannel: (channelId: string) => void;
   onReact?: (channelId: string, emoji: string, targetTimestamp: number, remove: boolean) => void;
+  onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
 }
 
-export function MainScreen({onSendMessage, onSelectChannel, onReact}: MainScreenProps) {
+export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDownload}: MainScreenProps) {
   const channels = useSignalStore(state => state.channels);
   const selectedChannelId = useSignalStore(state => state.selectedChannelId);
   const messages = useSignalStore(state => state.messages);
@@ -144,6 +145,7 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact}: MainScreen
           channel={selectedChannel}
           messages={channelMessages}
           onReact={onReact}
+          onRetryDownload={onRetryDownload}
         />
       </DropTargetView>
 
