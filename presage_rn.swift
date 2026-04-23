@@ -541,6 +541,13 @@ public protocol SignalClientProtocol: AnyObject {
     func resetSession(channelId: String) throws
 
     /**
+     * Retry downloading a specific attachment for a message.
+     * Re-reads the message from the store by timestamp, extracts the pointer,
+     * and spawns a background download.
+     */
+    func retryDownload(channelId: String, messageId: String, attachmentIndex: UInt32) throws
+
+    /**
      * Send a text message to a channel
      */
     func sendMessage(channelId: String, text: String) throws -> Message
@@ -720,6 +727,19 @@ open class SignalClient:
     open func resetSession(channelId: String) throws { try rustCallWithError(FfiConverterTypeSignalError.lift) {
         uniffi_presage_rn_fn_method_signalclient_reset_session(self.uniffiClonePointer(),
                                                                FfiConverterString.lower(channelId), $0)
+    }
+    }
+
+    /**
+     * Retry downloading a specific attachment for a message.
+     * Re-reads the message from the store by timestamp, extracts the pointer,
+     * and spawns a background download.
+     */
+    open func retryDownload(channelId: String, messageId: String, attachmentIndex: UInt32) throws { try rustCallWithError(FfiConverterTypeSignalError.lift) {
+        uniffi_presage_rn_fn_method_signalclient_retry_download(self.uniffiClonePointer(),
+                                                                FfiConverterString.lower(channelId),
+                                                                FfiConverterString.lower(messageId),
+                                                                FfiConverterUInt32.lower(attachmentIndex), $0)
     }
     }
 
@@ -2134,6 +2154,11 @@ public protocol MessageListener: AnyObject {
      * Called when an error occurs during message receiving
      */
     func onError(error: String)
+
+    /**
+     * Called when a background attachment download completes
+     */
+    func onAttachmentDownloaded(channelId: String, messageId: String, attachmentIndex: UInt32, attachment: Attachment)
 }
 
 // Put the implementation in a struct so we don't pollute the top-level namespace
@@ -2223,6 +2248,35 @@ private enum UniffiCallbackInterfaceMessageListener {
                 }
                 return try uniffiObj.onError(
                     error: FfiConverterString.lift(error)
+                )
+            }
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onAttachmentDownloaded: { (
+            uniffiHandle: UInt64,
+            channelId: RustBuffer,
+            messageId: RustBuffer,
+            attachmentIndex: UInt32,
+            attachment: RustBuffer,
+            _: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMessageListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.onAttachmentDownloaded(
+                    channelId: FfiConverterString.lift(channelId),
+                    messageId: FfiConverterString.lift(messageId),
+                    attachmentIndex: FfiConverterUInt32.lift(attachmentIndex),
+                    attachment: FfiConverterTypeAttachment.lift(attachment)
                 )
             }
 
@@ -2563,7 +2617,7 @@ private var initializationResult: InitializationResult = {
     if uniffi_presage_rn_checksum_method_signalclient_get_channels() != 33227 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_presage_rn_checksum_method_signalclient_get_messages() != 26144 {
+    if uniffi_presage_rn_checksum_method_signalclient_get_messages() != 17383 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_get_user_id() != 54671 {
@@ -2576,6 +2630,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_reset_session() != 12309 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_signalclient_retry_download() != 35225 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_send_message() != 4543 {
@@ -2621,6 +2678,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_messagelistener_on_error() != 18718 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_messagelistener_on_attachment_downloaded() != 6634 {
         return InitializationResult.apiChecksumMismatch
     }
 

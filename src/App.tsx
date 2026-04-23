@@ -30,6 +30,7 @@ function App(): React.JSX.Element {
     sendReaction,
     startReceiving,
     markAsRead,
+    retryDownload,
   } = useSignalClient();
 
   const handleSelectChannel = useCallback(
@@ -121,7 +122,7 @@ function App(): React.JSX.Element {
   // Linked - show main screen
   return (
     <View style={styles.container}>
-      <MainScreen onSendMessage={sendMessage} onSelectChannel={handleSelectChannel} onReact={sendReaction} />
+      <MainScreen onSendMessage={sendMessage} onSelectChannel={handleSelectChannel} onReact={sendReaction} onRetryDownload={retryDownload} />
     </View>
   );
 }

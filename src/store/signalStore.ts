@@ -77,6 +77,12 @@ interface SignalStore {
   updateChannel: (channel: Channel) => void;
   markChannelAsRead: (channelId: string) => void;
   incrementUnread: (channelId: string) => void;
+  updateAttachment: (
+    channelId: string,
+    messageId: string,
+    attachmentIndex: number,
+    attachment: Attachment,
+  ) => void;
 }
 
 export const useSignalStore = create<SignalStore>((set, get) => ({
@@ -219,5 +225,34 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
       };
       set({channels: newChannels});
     }
+  },
+
+  updateAttachment: (
+    channelId: string,
+    messageId: string,
+    attachmentIndex: number,
+    attachment: Attachment,
+  ) => {
+    const {messages} = get();
+    const channelMessages = messages[channelId];
+    if (!channelMessages) return;
+
+    const msgIndex = channelMessages.findIndex(m => m.id === messageId);
+    if (msgIndex < 0) return;
+
+    const msg = channelMessages[msgIndex];
+    if (attachmentIndex >= msg.attachments.length) return;
+
+    const newAttachments = [...msg.attachments];
+    newAttachments[attachmentIndex] = attachment;
+
+    const updatedMessages = [...channelMessages];
+    updatedMessages[msgIndex] = {...msg, attachments: newAttachments};
+    set({
+      messages: {
+        ...messages,
+        [channelId]: updatedMessages,
+      },
+    });
   },
 }));

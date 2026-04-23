@@ -1,6 +1,6 @@
 //! Signal client implementation wrapping Presage
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -47,6 +47,10 @@ pub struct SignalClient {
     is_receiving: Arc<AtomicBool>,
     /// Per-channel last-read timestamp, persisted to read_state.json
     read_state: Arc<RwLock<HashMap<String, u64>>>,
+    /// Shared listener reference for background attachment downloads
+    listener: Arc<RwLock<Option<Arc<dyn MessageListener>>>>,
+    /// Set of cache keys currently being downloaded (dedup concurrent downloads)
+    inflight_downloads: Arc<RwLock<HashSet<String>>>,
 }
 
 #[uniffi::export]
@@ -116,6 +120,8 @@ impl SignalClient {
             user_id: RwLock::new(user_id),
             is_receiving: Arc::new(AtomicBool::new(false)),
             read_state: Arc::new(RwLock::new(read_state)),
+            listener: Arc::new(RwLock::new(None)),
+            inflight_downloads: Arc::new(RwLock::new(HashSet::new())),
         }))
     }
 
@@ -511,13 +517,16 @@ impl SignalClient {
     pub fn get_messages(
         &self,
         channel_id: String,
-        _limit: u32,
+        limit: u32,
     ) -> Result<Vec<Message>, SignalError> {
         let manager_guard = self.manager.read();
         let manager = manager_guard.as_ref().ok_or(SignalError::NotLinked)?;
         let my_user_id = self.user_id.read().ok_or(SignalError::NotLinked)?;
         let attachments_dir = self.data_dir.join("attachments");
         let _ = std::fs::create_dir_all(&attachments_dir);
+        let listener = self.listener.read().clone();
+        let inflight = self.inflight_downloads.clone();
+        let runtime_handle = self.runtime.handle().clone();
 
         let local = tokio::task::LocalSet::new();
         local.block_on(&self.runtime, async {
@@ -541,11 +550,16 @@ impl SignalClient {
             let mut reaction_events = Vec::new();
 
             if let Ok(iter) = manager.store().messages(&thread, ..).await {
+                // Messages come DESC (newest first); take `limit` newest
+                let limit = limit as usize;
                 for result in iter {
                     if let Ok(content) = result {
                         match process_content(&content, my_user_id, Some(&channel_id)) {
                             Some(ProcessedContent::Message(msg, pointers)) => {
                                 messages_with_pointers.push((msg, pointers));
+                                if limit > 0 && messages_with_pointers.len() >= limit {
+                                    break;
+                                }
                             }
                             Some(ProcessedContent::Reaction(reaction)) => {
                                 reaction_events.push(reaction);
@@ -556,23 +570,55 @@ impl SignalClient {
                 }
             }
 
-            // Download attachments
+            // Check attachment cache (no network) and spawn background downloads for uncached
+            let is_group = channel_id.len() == 64;
+            let mut sender_name_cache: HashMap<String, Option<String>> = HashMap::new();
             let mut messages = Vec::new();
             for (mut msg, pointers) in messages_with_pointers {
                 if !pointers.is_empty() {
-                    for pointer in &pointers {
-                        let attachment =
-                            download_and_save_attachment(manager, pointer, &attachments_dir).await;
+                    for (idx, pointer) in pointers.iter().enumerate() {
+                        let (attachment, cache_key) =
+                            check_attachment_cache(pointer, &attachments_dir);
+
+                        // If not cached and we have a listener, spawn background download
+                        if attachment.file_path.is_none() {
+                            if let Some(ref listener) = listener {
+                                spawn_background_download(
+                                    &runtime_handle,
+                                    manager.clone(),
+                                    pointer.clone(),
+                                    attachments_dir.clone(),
+                                    channel_id.clone(),
+                                    msg.id.clone(),
+                                    idx as u32,
+                                    listener.clone(),
+                                    inflight.clone(),
+                                    cache_key,
+                                );
+                            }
+                        }
                         msg.attachments.push(attachment);
                     }
+                }
+                // Resolve sender name for incoming group messages
+                if is_group && !msg.is_outgoing {
+                    let sid = &msg.sender_id;
+                    if !sender_name_cache.contains_key(sid) {
+                        let name = if let Ok(uuid) = sid.parse::<Uuid>() {
+                            let service_id = ServiceId::from(Aci::from(uuid));
+                            let (n, _) = resolve_contact_name_readonly(manager, uuid, &service_id).await;
+                            if n.is_empty() { None } else { Some(n) }
+                        } else {
+                            None
+                        };
+                        sender_name_cache.insert(sid.clone(), name);
+                    }
+                    msg.sender_name = sender_name_cache.get(sid).cloned().flatten();
                 }
                 messages.push(msg);
             }
 
             // Aggregate reactions onto their target messages.
-            // A reaction with remove=true cancels a previous reaction from the same sender.
-            // We process reactions in order (newest first from DB) and build per-message state.
-            // Key: (target_timestamp) -> HashMap<sender_id, emoji>
             let mut reaction_map: HashMap<u64, HashMap<String, String>> = HashMap::new();
             for evt in &reaction_events {
                 let entry = reaction_map
@@ -999,8 +1045,13 @@ impl SignalClient {
             }
         };
 
+        // Wrap listener in Arc and store for shared access (get_messages, retry_download)
+        let listener: Arc<dyn MessageListener> = Arc::from(listener);
+        *self.listener.write() = Some(listener.clone());
+
         let stop_flag = self.stop_flag.clone();
         let is_receiving = self.is_receiving.clone();
+        let self_listener = self.listener.clone();
         let manager_for_stream = manager.clone();
         let manager_for_attachments = manager.clone();
         let attachments_dir = self.data_dir.join("attachments");
@@ -1009,6 +1060,7 @@ impl SignalClient {
         let _ = std::fs::create_dir_all(&avatars_dir);
         let runtime_handle = self.runtime.handle().clone();
         let read_state = self.read_state.clone();
+        let inflight = self.inflight_downloads.clone();
 
         std::thread::Builder::new()
             .name("signal-receive".to_string())
@@ -1019,6 +1071,7 @@ impl SignalClient {
 
                 stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
                     let local = tokio::task::LocalSet::new();
+                    let runtime_handle_inner = runtime_handle.clone();
                     runtime_handle.block_on(local.run_until(async move {
                         info!("Starting message receive loop");
 
@@ -1060,20 +1113,32 @@ impl SignalClient {
                                             continue;
                                         }
 
-                                        // Download attachments outside stacker (async I/O)
+                                        // Check cache only (no blocking downloads)
                                         let (mut message, pointers) = match result {
                                             Some(ProcessedContent::Message(msg, ptrs)) => (msg, ptrs),
                                             _ => continue,
                                         };
 
                                         {
-                                            for pointer in &pointers {
-                                                let attachment = download_and_save_attachment(
-                                                    &manager_for_attachments,
-                                                    pointer,
-                                                    &attachments_dir,
-                                                )
-                                                .await;
+                                            for (idx, pointer) in pointers.iter().enumerate() {
+                                                let (attachment, cache_key) =
+                                                    check_attachment_cache(pointer, &attachments_dir);
+
+                                                // Spawn background download for uncached
+                                                if attachment.file_path.is_none() {
+                                                    spawn_background_download(
+                                                        &runtime_handle_inner,
+                                                        manager_for_attachments.clone(),
+                                                        pointer.clone(),
+                                                        attachments_dir.clone(),
+                                                        message.channel_id.clone(),
+                                                        message.id.clone(),
+                                                        idx as u32,
+                                                        listener.clone(),
+                                                        inflight.clone(),
+                                                        cache_key,
+                                                    );
+                                                }
                                                 message.attachments.push(attachment);
                                             }
 
@@ -1109,8 +1174,17 @@ impl SignalClient {
                                                     (name, avatar, phone)
                                                 };
 
-                                                // Set sender_name on the message for notifications
-                                                if !name.is_empty() {
+                                                // Set sender_name on the message
+                                                if is_group {
+                                                    // For group messages, resolve the individual sender's name
+                                                    if let Ok(sender_uuid) = message.sender_id.parse::<Uuid>() {
+                                                        let sender_sid = ServiceId::from(Aci::from(sender_uuid));
+                                                        let (sender_name, _) = resolve_contact_name_readonly(&manager_for_attachments, sender_uuid, &sender_sid).await;
+                                                        if !sender_name.is_empty() {
+                                                            message.sender_name = Some(sender_name);
+                                                        }
+                                                    }
+                                                } else if !name.is_empty() {
                                                     message.sender_name = Some(name.clone());
                                                 }
 
@@ -1155,6 +1229,8 @@ impl SignalClient {
 
                 // Clear the guard so a new receive thread can be spawned
                 is_receiving.store(false, Ordering::SeqCst);
+                // Clear the shared listener
+                *self_listener.write() = None;
             })
             .map_err(|e| {
                 self.is_receiving.store(false, Ordering::SeqCst);
@@ -1169,6 +1245,8 @@ impl SignalClient {
     /// Stop receiving messages
     pub fn stop_receiving(&self) {
         self.stop_flag.store(true, Ordering::SeqCst);
+        // Clear the shared listener (in-flight tasks hold their own Arc clones)
+        *self.listener.write() = None;
         info!("Stop receiving requested");
     }
 
@@ -1473,6 +1551,227 @@ impl SignalClient {
             })
         })
     }
+    /// Retry downloading a specific attachment for a message.
+    /// Re-reads the message from the store by timestamp, extracts the pointer,
+    /// and spawns a background download.
+    pub fn retry_download(
+        &self,
+        channel_id: String,
+        message_id: String,
+        attachment_index: u32,
+    ) -> Result<(), SignalError> {
+        let manager_guard = self.manager.read();
+        let manager = manager_guard.as_ref().ok_or(SignalError::NotLinked)?;
+        let listener_guard = self.listener.read();
+        let listener = listener_guard.as_ref().ok_or(SignalError::InternalError {
+            message: "No active listener — call startReceiving first".to_string(),
+        })?.clone();
+        let attachments_dir = self.data_dir.join("attachments");
+        let _ = std::fs::create_dir_all(&attachments_dir);
+        let inflight = self.inflight_downloads.clone();
+        let runtime_handle = self.runtime.handle().clone();
+
+        let local = tokio::task::LocalSet::new();
+        local.block_on(&self.runtime, async {
+            let thread = if channel_id.len() == 64 {
+                let key_bytes = hex::decode(&channel_id).map_err(|_| SignalError::ParseError {
+                    message: "Invalid group ID".to_string(),
+                })?;
+                let key: [u8; 32] = key_bytes.try_into().map_err(|_| SignalError::ParseError {
+                    message: "Invalid group key length".to_string(),
+                })?;
+                Thread::Group(key)
+            } else {
+                let uuid: Uuid = channel_id.parse().map_err(|_| SignalError::ParseError {
+                    message: "Invalid UUID".to_string(),
+                })?;
+                Thread::Contact(ServiceId::from(Aci::from(uuid)))
+            };
+
+            // Find the message by timestamp (message_id == timestamp string)
+            let target_ts: u64 = message_id.parse().map_err(|_| SignalError::ParseError {
+                message: "Invalid message ID (expected timestamp)".to_string(),
+            })?;
+
+            if let Ok(iter) = manager.store().messages(&thread, ..).await {
+                for result in iter {
+                    if let Ok(content) = result {
+                        if content.metadata.timestamp == target_ts {
+                            // Extract the attachment pointer
+                            let pointers = match &content.body {
+                                ContentBody::DataMessage(dm) => &dm.attachments,
+                                ContentBody::SynchronizeMessage(sync) => {
+                                    if let Some(sent) = &sync.sent {
+                                        if let Some(dm) = &sent.message {
+                                            &dm.attachments
+                                        } else {
+                                            return Err(SignalError::InternalError {
+                                                message: "No data message in sync".to_string(),
+                                            });
+                                        }
+                                    } else {
+                                        return Err(SignalError::InternalError {
+                                            message: "No sent message in sync".to_string(),
+                                        });
+                                    }
+                                }
+                                _ => {
+                                    return Err(SignalError::InternalError {
+                                        message: "Unexpected content body type".to_string(),
+                                    });
+                                }
+                            };
+
+                            let idx = attachment_index as usize;
+                            if idx >= pointers.len() {
+                                return Err(SignalError::InternalError {
+                                    message: format!(
+                                        "Attachment index {} out of range ({})",
+                                        idx,
+                                        pointers.len()
+                                    ),
+                                });
+                            }
+
+                            let pointer = &pointers[idx];
+                            let (_, cache_key) = check_attachment_cache(pointer, &attachments_dir);
+
+                            spawn_background_download(
+                                &runtime_handle,
+                                manager.clone(),
+                                pointer.clone(),
+                                attachments_dir,
+                                channel_id,
+                                message_id,
+                                attachment_index,
+                                listener,
+                                inflight,
+                                cache_key,
+                            );
+
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+
+            Err(SignalError::InternalError {
+                message: format!("Message {} not found in channel {}", message_id, channel_id),
+            })
+        })
+    }
+}
+
+/// Check the filesystem cache for an attachment. Returns (Attachment, cache_key).
+/// `file_path` is `Some` if cached on disk, `None` otherwise. No network call.
+fn check_attachment_cache(
+    pointer: &AttachmentPointer,
+    attachments_dir: &std::path::Path,
+) -> (Attachment, String) {
+    let content_type = pointer
+        .content_type
+        .clone()
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    let file_name = pointer.file_name.clone();
+    let width = pointer.width;
+    let height = pointer.height;
+    let size = pointer.size;
+
+    let cache_key = if let Some(digest) = &pointer.digest {
+        hex::encode(digest)
+    } else {
+        match &pointer.attachment_identifier {
+            Some(AttachmentIdentifier::CdnId(id)) => format!("cdn_{}", id),
+            Some(AttachmentIdentifier::CdnKey(key)) => {
+                format!("key_{}", key.replace('/', "_"))
+            }
+            None => format!(
+                "unknown_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+            ),
+        }
+    };
+
+    let ext = extension_from_content_type(&content_type);
+    let file_path = attachments_dir.join(format!("{}.{}", cache_key, ext));
+
+    let attachment = Attachment {
+        content_type,
+        file_path: if file_path.exists() {
+            Some(file_path.to_string_lossy().to_string())
+        } else {
+            None
+        },
+        file_name,
+        width,
+        height,
+        size,
+    };
+
+    (attachment, cache_key)
+}
+
+/// Spawn a background tokio task to download an attachment and notify the listener.
+fn spawn_background_download(
+    runtime_handle: &tokio::runtime::Handle,
+    manager: PresageManager,
+    pointer: AttachmentPointer,
+    attachments_dir: PathBuf,
+    channel_id: String,
+    message_id: String,
+    attachment_index: u32,
+    listener: Arc<dyn MessageListener>,
+    inflight: Arc<RwLock<HashSet<String>>>,
+    cache_key: String,
+) {
+    // Check and insert into inflight set atomically
+    {
+        let mut set = inflight.write();
+        if set.contains(&cache_key) {
+            return; // Already downloading
+        }
+        set.insert(cache_key.clone());
+    }
+
+    runtime_handle.spawn(async move {
+        // Re-check cache (another task may have completed)
+        let content_type = pointer
+            .content_type
+            .clone()
+            .unwrap_or_else(|| "application/octet-stream".to_string());
+        let ext = extension_from_content_type(&content_type);
+        let file_path = attachments_dir.join(format!("{}.{}", cache_key, ext));
+
+        let attachment = if file_path.exists() {
+            Attachment {
+                content_type,
+                file_path: Some(file_path.to_string_lossy().to_string()),
+                file_name: pointer.file_name.clone(),
+                width: pointer.width,
+                height: pointer.height,
+                size: pointer.size,
+            }
+        } else {
+            download_and_save_attachment(&manager, &pointer, &attachments_dir).await
+        };
+
+        // Remove from inflight set
+        {
+            let mut set = inflight.write();
+            set.remove(&cache_key);
+        }
+
+        // Notify listener
+        listener.on_attachment_downloaded(
+            channel_id,
+            message_id,
+            attachment_index,
+            attachment,
+        );
+    });
 }
 
 /// Result of processing a Content message

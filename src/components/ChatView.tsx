@@ -10,9 +10,10 @@ interface ChatViewProps {
   channel: Channel | null;
   messages: Message[];
   onReact?: (channelId: string, emoji: string, targetTimestamp: number, remove: boolean) => void;
+  onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
 }
 
-export function ChatView({channel, messages, onReact}: ChatViewProps) {
+export function ChatView({channel, messages, onReact, onRetryDownload}: ChatViewProps) {
   useColorScheme(); // subscribe to appearance changes so DynamicColorMacOS values update
   const scrollViewRef = useRef<ScrollView>(null);
   const userId = useSignalStore(state => state.userId);
@@ -54,7 +55,7 @@ export function ChatView({channel, messages, onReact}: ChatViewProps) {
           </View>
         ) : (
           messages.map(message => (
-            <MessageBubble key={message.id} message={message} isGroup={channel.isGroup} onReact={handleReact} userId={userId} />
+            <MessageBubble key={message.id} message={message} isGroup={channel.isGroup} onReact={handleReact} userId={userId} onRetryDownload={onRetryDownload} />
           ))
         )}
       </ScrollView>

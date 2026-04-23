@@ -125,6 +125,7 @@ export function useSignalClient() {
   const addReaction = useSignalStore(state => state.addReaction);
   const updateChannel = useSignalStore(state => state.updateChannel);
   const markChannelAsRead = useSignalStore(state => state.markChannelAsRead);
+  const updateAttachment = useSignalStore(state => state.updateAttachment);
 
   // Initialize client
   const initialize = useCallback(async () => {
@@ -372,6 +373,20 @@ export function useSignalClient() {
     [],
   );
 
+  // Retry downloading a specific attachment
+  const retryDownload = useCallback(
+    async (channelId: string, messageId: string, attachmentIndex: number) => {
+      if (!PresageModule || !isInitialized.current) return;
+
+      try {
+        await PresageModule.retryDownload(channelId, messageId, attachmentIndex);
+      } catch (error) {
+        console.error('Failed to retry download:', error);
+      }
+    },
+    [],
+  );
+
   // Set up event listeners ONCE on mount
   useEffect(() => {
     console.log('Setting up event listeners, presageEventEmitter:', !!presageEventEmitter);
@@ -434,6 +449,19 @@ export function useSignalClient() {
           });
         }
       }),
+      presageEventEmitter.addListener('onAttachmentDownloaded', (event: {
+        channelId: string;
+        messageId: string;
+        attachmentIndex: number;
+        attachment: NativeAttachment;
+      }) => {
+        updateAttachment(
+          event.channelId,
+          event.messageId,
+          event.attachmentIndex,
+          convertAttachment(event.attachment),
+        );
+      }),
       presageEventEmitter.addListener('onError', (event: {message: string}) => {
         console.error('Signal error:', event.message);
         // If we're in linking state, update to failed
@@ -467,5 +495,6 @@ export function useSignalClient() {
     startReceiving,
     stopReceiving,
     markAsRead,
+    retryDownload,
   };
 }

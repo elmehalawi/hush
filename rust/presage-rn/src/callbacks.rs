@@ -1,6 +1,6 @@
 //! Callback interfaces for receiving messages and events
 
-use crate::types::{Channel, Message, ReactionEvent};
+use crate::types::{Attachment, Channel, Message, ReactionEvent};
 
 /// Callback interface for receiving real-time updates from Signal
 #[uniffi::export(callback_interface)]
@@ -16,6 +16,15 @@ pub trait MessageListener: Send + Sync {
 
     /// Called when an error occurs during message receiving
     fn on_error(&self, error: String);
+
+    /// Called when a background attachment download completes
+    fn on_attachment_downloaded(
+        &self,
+        channel_id: String,
+        message_id: String,
+        attachment_index: u32,
+        attachment: Attachment,
+    );
 }
 
 /// Callback interface for the device linking process
