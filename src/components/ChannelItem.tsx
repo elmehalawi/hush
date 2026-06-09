@@ -3,6 +3,7 @@ import {View, Text, Pressable, StyleSheet, Image, NativeModules, useColorScheme}
 import {Channel} from '../store/signalStore';
 import {GlassView} from './GlassView';
 import {colors} from '../theme/colors';
+import {useWindowFocused} from '../hooks/useWindowFocused';
 
 const {PresageModule} = NativeModules;
 
@@ -45,6 +46,8 @@ function formatTimestamp(ts: number): string {
 
 export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelItemProps) {
   useColorScheme(); // subscribe to appearance changes so DynamicColorMacOS values update
+  const windowFocused = useWindowFocused();
+  const activeSelected = isSelected && windowFocused;
   const timeLabel = useMemo(
     () => (channel.lastMessageTimestamp ? formatTimestamp(channel.lastMessageTimestamp) : null),
     [channel.lastMessageTimestamp],
@@ -59,7 +62,7 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
   if (collapsed) {
     return (
       <Pressable
-        style={[styles.collapsedContainer, isSelected && styles.selected]}
+        style={[styles.collapsedContainer, isSelected && (activeSelected ? styles.selectedFocused : styles.selected)]}
         onPress={() => onSelect(channel.id)}
         onPressIn={handlePressIn}>
         <View style={[styles.avatar, styles.avatarCollapsed]}>
@@ -88,7 +91,7 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
 
   return (
     <Pressable
-      style={[styles.container, isSelected && styles.selected]}
+      style={[styles.container, isSelected && (activeSelected ? styles.selectedFocused : styles.selected)]}
       onPress={() => onSelect(channel.id)}
       onPressIn={handlePressIn}>
       <View style={styles.avatar}>
@@ -108,25 +111,25 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
       </View>
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={[styles.name, isSelected && styles.nameSelected]} numberOfLines={1}>
+          <Text style={[styles.name, activeSelected && styles.nameFocusedSelected]} numberOfLines={1}>
             {channel.name}
           </Text>
           {timeLabel && (
-            <Text style={[styles.timestamp, isSelected && styles.timestampSelected]}>
+            <Text style={[styles.timestamp, activeSelected && styles.timestampFocusedSelected]}>
               {timeLabel}
             </Text>
           )}
         </View>
         <View style={styles.secondRow}>
           {channel.lastMessage ? (
-            <Text style={[styles.preview, isSelected && styles.previewSelected]} numberOfLines={1}>
+            <Text style={[styles.preview, activeSelected && styles.previewFocusedSelected]} numberOfLines={1}>
               {channel.lastMessage}
             </Text>
           ) : (
             <View style={styles.previewSpacer} />
           )}
           {channel.unreadCount > 0 && (
-            <View style={styles.badge}>
+            <View style={[styles.badge, activeSelected && styles.badgeFocusedSelected]}>
               <Text style={styles.badgeText}>{channel.unreadCount}</Text>
             </View>
           )}
@@ -153,6 +156,9 @@ const styles = StyleSheet.create({
   },
   selected: {
     backgroundColor: colors.sidebarSelected,
+  },
+  selectedFocused: {
+    backgroundColor: '#0058D0',
   },
   avatar: {
     width: 40,
@@ -197,7 +203,8 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     flexShrink: 0,
   },
-  timestampSelected: {
+  timestampFocusedSelected: {
+    color: 'rgba(255, 255, 255, 0.6)',
   },
   secondRow: {
     flexDirection: 'row',
@@ -229,10 +236,15 @@ const styles = StyleSheet.create({
   previewSpacer: {
     flex: 1,
   },
-  nameSelected: {
+  nameFocusedSelected: {
+    color: '#FFFFFF',
     fontWeight: '600',
   },
-  previewSelected: {
+  previewFocusedSelected: {
+    color: 'rgba(255, 255, 255, 0.75)',
+  },
+  badgeFocusedSelected: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
   collapsedBadge: {
     position: 'absolute',
