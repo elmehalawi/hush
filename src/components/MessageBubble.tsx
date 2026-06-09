@@ -7,7 +7,7 @@ import {colors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
 
-function openQuickLook(filePath: string) {
+function openMediaPreview(filePath: string) {
   PresageModule?.previewFile(filePath);
 }
 
@@ -141,7 +141,7 @@ function AttachmentView({
       rightClickedRef.current = false;
       return;
     }
-    openQuickLook(attachment.filePath!);
+    openMediaPreview(attachment.filePath!);
   };
 
   if (isImageType(attachment.contentType)) {
