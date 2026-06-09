@@ -55,9 +55,15 @@ export function ChatView({channel, messages, onReact, onRetryDownload}: ChatView
             <Text style={styles.noMessagesHint}>Send a message to start the conversation</Text>
           </View>
         ) : (
-          messages.map(message => (
-            <MessageBubble key={message.id} message={message} isGroup={channel.isGroup} onReact={handleReact} userId={userId} onRetryDownload={onRetryDownload} />
-          ))
+          messages.map((message, index) => {
+            const prevMessage = index > 0 ? messages[index - 1] : null;
+            const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
+            const isFirstInGroup = !prevMessage || prevMessage.senderId !== message.senderId || prevMessage.isOutgoing !== message.isOutgoing;
+            const isLastInGroup = !nextMessage || nextMessage.senderId !== message.senderId || nextMessage.isOutgoing !== message.isOutgoing;
+            return (
+              <MessageBubble key={message.id} message={message} isGroup={channel.isGroup} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} onReact={handleReact} userId={userId} onRetryDownload={onRetryDownload} />
+            );
+          })
         )}
       </ScrollView>
 
