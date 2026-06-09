@@ -14,6 +14,8 @@ function openMediaPreview(filePath: string) {
 interface MessageBubbleProps {
   message: Message;
   isGroup?: boolean;
+  isFirstInGroup?: boolean;
+  isLastInGroup?: boolean;
   onReact?: (emoji: string, targetTimestamp: number, remove: boolean) => void;
   userId?: string | null;
   onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
@@ -232,11 +234,13 @@ function ReactionsRow({
   );
 }
 
-export function MessageBubble({message, isGroup, onReact, userId, onRetryDownload}: MessageBubbleProps) {
+export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastInGroup = true, onReact, userId, onRetryDownload}: MessageBubbleProps) {
   const colorScheme = useColorScheme();
   const incomingBubbleBg = colorScheme === 'dark' ? '#2A2A2C' : '#e0e0e0';
   const isOutgoing = message.isOutgoing;
   const showSenderInfo = !!isGroup && !isOutgoing;
+  const showSenderName = showSenderInfo && isFirstInGroup;
+  const showAvatar = showSenderInfo && isLastInGroup;
   const [hovered, setHovered] = useState(false);
 
   // Find current user's existing reaction emoji on this message
@@ -394,20 +398,24 @@ export function MessageBubble({message, isGroup, onReact, userId, onRetryDownloa
       ]}>
       {showSenderInfo ? (
         <View style={styles.groupRow}>
-          <View style={styles.senderAvatarContainer}>
-            {senderAvatar ? (
-              <Image
-                source={{uri: `file://${senderAvatar}`}}
-                style={styles.senderAvatarImage}
-              />
-            ) : (
-              <View style={styles.senderAvatarFallback}>
-                <Text style={styles.senderAvatarText}>{senderInitial}</Text>
-              </View>
-            )}
-          </View>
+          {showAvatar ? (
+            <View style={styles.senderAvatarContainer}>
+              {senderAvatar ? (
+                <Image
+                  source={{uri: `file://${senderAvatar}`}}
+                  style={styles.senderAvatarImage}
+                />
+              ) : (
+                <View style={styles.senderAvatarFallback}>
+                  <Text style={styles.senderAvatarText}>{senderInitial}</Text>
+                </View>
+              )}
+            </View>
+          ) : (
+            <View style={styles.senderAvatarSpacer} />
+          )}
           <View style={styles.groupBubbleColumn}>
-            {message.senderName && (
+            {showSenderName && message.senderName && (
               <Text style={styles.senderName}>{message.senderName}</Text>
             )}
             {audioContent}
@@ -484,6 +492,10 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 12,
     fontWeight: '600',
+  },
+  senderAvatarSpacer: {
+    width: 28,
+    marginRight: 6,
   },
   groupBubbleColumn: {
     flexShrink: 1,
