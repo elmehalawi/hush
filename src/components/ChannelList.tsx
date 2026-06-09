@@ -1,8 +1,7 @@
-import React, {useMemo} from 'react';
-import {View, FlatList, Text, StyleSheet, useColorScheme} from 'react-native';
+import React, {useMemo, useState} from 'react';
+import {View, FlatList, Text, TextInput, StyleSheet, useColorScheme} from 'react-native';
 import {Channel} from '../store/signalStore';
 import {ChannelItem} from './ChannelItem';
-import {GradientBlurView} from './GradientBlurView';
 import {colors} from '../theme/colors';
 
 interface ChannelListProps {
@@ -13,21 +12,43 @@ interface ChannelListProps {
 }
 
 export function ChannelList({channels, selectedId, onSelect, collapsed}: ChannelListProps) {
-  useColorScheme(); // subscribe to appearance changes so DynamicColorMacOS values update
+  const isDark = useColorScheme() === 'dark';
+  const [searchText, setSearchText] = useState('');
+
   const sorted = useMemo(
     () => [...channels].sort((a, b) => (b.lastMessageTimestamp ?? 0) - (a.lastMessageTimestamp ?? 0)),
     [channels],
   );
 
+  const filtered = useMemo(() => {
+    if (!searchText.trim()) return sorted;
+    const query = searchText.toLowerCase();
+    return sorted.filter(c => c.name.toLowerCase().includes(query));
+  }, [sorted, searchText]);
+
   return (
     <View style={styles.container}>
+      {!collapsed && (
+        <View style={styles.searchContainer}>
+          <View style={styles.searchField}>
+            <Text style={styles.searchIcon}>⌕</Text>
+            <TextInput
+              style={[styles.searchInput, isDark && {color: '#EBEBF0'}]}
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholder="Search"
+              placeholderTextColor={isDark ? '#EBEBF04D' : '#9e9e9e'}
+            />
+          </View>
+        </View>
+      )}
       <FlatList
         style={styles.list}
         contentContainerStyle={[
           styles.listContent,
           collapsed && styles.listContentCollapsed,
         ]}
-        data={sorted}
+        data={filtered}
         keyExtractor={item => item.id}
         showsHorizontalScrollIndicator={false}
         renderItem={({item}) => (
@@ -41,12 +62,13 @@ export function ChannelList({channels, selectedId, onSelect, collapsed}: Channel
         ListEmptyComponent={
           <View style={styles.empty}>
             {!collapsed && (
-              <Text style={styles.emptyText}>No conversations yet</Text>
+              <Text style={styles.emptyText}>
+                {searchText.trim() ? 'No results' : 'No conversations yet'}
+              </Text>
             )}
           </View>
         }
       />
-      <GradientBlurView style={styles.topBlur} blurRadius={2} />
     </View>
   );
 }
@@ -54,26 +76,43 @@ export function ChannelList({channels, selectedId, onSelect, collapsed}: Channel
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    borderRadius: 20,
-    overflow: 'hidden',
+  },
+  searchContainer: {
+    paddingTop: 52,
+    paddingHorizontal: 10,
+    paddingBottom: 4,
+  },
+  searchField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.searchFieldBackground,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    height: 28,
+  },
+  searchIcon: {
+    fontSize: 14,
+    color: colors.tertiaryLabel,
+    marginRight: 4,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.label,
+    padding: 0,
+    backgroundColor: 'transparent',
   },
   list: {
     flex: 1,
   },
   listContent: {
-    paddingTop: 20,
-    paddingHorizontal: 8,
+    paddingTop: 4,
+    paddingHorizontal: 10,
   },
   listContentCollapsed: {
+    paddingTop: 52,
     paddingHorizontal: 4,
     alignItems: 'center',
-  },
-  topBlur: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 32,
   },
   empty: {
     flex: 1,

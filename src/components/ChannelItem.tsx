@@ -1,5 +1,5 @@
 import React, {useMemo, useCallback} from 'react';
-import {View, Text, Pressable, StyleSheet, Image, NativeModules} from 'react-native';
+import {View, Text, Pressable, StyleSheet, Image, NativeModules, useColorScheme} from 'react-native';
 import {Channel} from '../store/signalStore';
 import {GlassView} from './GlassView';
 import {colors} from '../theme/colors';
@@ -44,6 +44,7 @@ function formatTimestamp(ts: number): string {
 }
 
 export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelItemProps) {
+  useColorScheme(); // subscribe to appearance changes so DynamicColorMacOS values update
   const timeLabel = useMemo(
     () => (channel.lastMessageTimestamp ? formatTimestamp(channel.lastMessageTimestamp) : null),
     [channel.lastMessageTimestamp],
@@ -139,16 +140,19 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    padding: 10,
+    borderRadius: 8,
+    marginVertical: 1,
   },
   collapsedContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 8,
+    borderRadius: 8,
+    marginVertical: 1,
   },
   selected: {
-    backgroundColor: '#0058D0',
-    borderRadius: 14,
+    backgroundColor: colors.sidebarSelected,
   },
   avatar: {
     width: 40,
@@ -194,7 +198,6 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   timestampSelected: {
-    color: 'rgba(255, 255, 255, 0.6)',
   },
   secondRow: {
     flexDirection: 'row',
@@ -227,10 +230,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   nameSelected: {
-    color: '#FFFFFF',
+    fontWeight: '600',
   },
   previewSelected: {
-    color: 'rgba(255, 255, 255, 0.75)',
   },
   collapsedBadge: {
     position: 'absolute',
