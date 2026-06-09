@@ -793,6 +793,31 @@ class PresageModule: RCTEventEmitter {
         }
     }
 
+    // MARK: - Message Context Menu
+
+    @objc(showMessageContextMenu:)
+    func showMessageContextMenu(_ messageBody: String) {
+        DispatchQueue.main.async {
+            let menu = NSMenu()
+
+            let copyItem = NSMenuItem(title: "Copy", action: #selector(self.handleCopyMessageText(_:)), keyEquivalent: "")
+            copyItem.representedObject = messageBody
+            copyItem.target = self
+            menu.addItem(copyItem)
+
+            guard let window = NSApp.keyWindow, let contentView = window.contentView else { return }
+            let mouseInWindow = window.mouseLocationOutsideOfEventStream
+            let mouseInView = contentView.convert(mouseInWindow, from: nil)
+            menu.popUp(positioning: nil, at: mouseInView, in: contentView)
+        }
+    }
+
+    @objc private func handleCopyMessageText(_ sender: NSMenuItem) {
+        guard let text = sender.representedObject as? String else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
     // MARK: - File Context Menu
 
     @objc(showFileContextMenu:fileName:)

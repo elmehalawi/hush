@@ -367,6 +367,12 @@ export function MessageBubble({message, isGroup, onReact, userId, onRetryDownloa
     </>
   );
 
+  const handleBubblePressIn = useCallback((e: any) => {
+    if (e.nativeEvent?.button === 2 && message.body) {
+      PresageModule?.showMessageContextMenu(message.body);
+    }
+  }, [message.body]);
+
   const hasReactions = message.reactions.length > 0;
 
   const reactionsRow = (
@@ -405,7 +411,7 @@ export function MessageBubble({message, isGroup, onReact, userId, onRetryDownloa
               <Text style={styles.senderName}>{message.senderName}</Text>
             )}
             {audioContent}
-            {!audioOnly && <View style={bubbleStyle}>{bubbleContent}</View>}
+            {!audioOnly && <Pressable onPressIn={handleBubblePressIn}><View style={bubbleStyle}>{bubbleContent}</View></Pressable>}
             {audioOnly && <View style={styles.audioMeta}>{metaRow}</View>}
             {reactionsRow}
           </View>
@@ -413,7 +419,7 @@ export function MessageBubble({message, isGroup, onReact, userId, onRetryDownloa
       ) : (
         <>
           {audioContent}
-          {!audioOnly && <View style={bubbleStyle}>{bubbleContent}</View>}
+          {!audioOnly && <Pressable onPressIn={handleBubblePressIn}><View style={bubbleStyle}>{bubbleContent}</View></Pressable>}
           {audioOnly && <View style={styles.audioMeta}>{metaRow}</View>}
           {reactionsRow}
         </>
