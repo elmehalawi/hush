@@ -191,12 +191,19 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
       const newChannels = [...channels];
       // Merge: keep existing fields if new channel has empty/placeholder values
       const existing = newChannels[index];
+      // Don't overwrite a real name with a UUID-looking string
+      const isUuid = (s: string) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+      const newName =
+        channel.name && (!isUuid(channel.name) || !existing.name || isUuid(existing.name))
+          ? channel.name
+          : existing.name;
       newChannels[index] = {
         ...existing,
         lastMessage: channel.lastMessage || existing.lastMessage,
         lastMessageTimestamp: channel.lastMessageTimestamp || existing.lastMessageTimestamp,
         avatarPath: channel.avatarPath || existing.avatarPath,
-        name: channel.name || existing.name,
+        name: newName,
       };
       set({channels: newChannels});
     } else {

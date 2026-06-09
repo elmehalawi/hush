@@ -607,7 +607,8 @@ impl SignalClient {
                         let name = if let Ok(uuid) = sid.parse::<Uuid>() {
                             let service_id = ServiceId::from(Aci::from(uuid));
                             let (n, _) = resolve_contact_name_readonly(manager, uuid, &service_id).await;
-                            if n.is_empty() { None } else { Some(n) }
+                            // Only use the name if it's a real name, not a UUID fallback
+                            if n.is_empty() || n == uuid.to_string() { None } else { Some(n) }
                         } else {
                             None
                         };
@@ -1165,7 +1166,14 @@ impl SignalClient {
                                                     // Contact: look up by UUID with profile fallback
                                                     let (name, phone) = if let Ok(uuid) = channel_id.parse::<Uuid>() {
                                                         let sid = ServiceId::from(Aci::from(uuid));
-                                                        resolve_contact_name_readonly(&manager_for_attachments, uuid, &sid).await
+                                                        let (n, p) = resolve_contact_name_readonly(&manager_for_attachments, uuid, &sid).await;
+                                                        // If name is just the UUID fallback, use empty string
+                                                        // so the JS store keeps the existing resolved name
+                                                        if n == uuid.to_string() {
+                                                            (String::new(), p)
+                                                        } else {
+                                                            (n, p)
+                                                        }
                                                     } else { (String::new(), None) };
                                                     let avatar_file = avatars_dir.join(&channel_id);
                                                     let avatar = if avatar_file.exists() {
@@ -1180,7 +1188,8 @@ impl SignalClient {
                                                     if let Ok(sender_uuid) = message.sender_id.parse::<Uuid>() {
                                                         let sender_sid = ServiceId::from(Aci::from(sender_uuid));
                                                         let (sender_name, _) = resolve_contact_name_readonly(&manager_for_attachments, sender_uuid, &sender_sid).await;
-                                                        if !sender_name.is_empty() {
+                                                        // Only use the name if it's a real name, not a UUID fallback
+                                                        if !sender_name.is_empty() && sender_name != sender_uuid.to_string() {
                                                             message.sender_name = Some(sender_name);
                                                         }
                                                     }
