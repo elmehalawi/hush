@@ -4,10 +4,10 @@ import {useSignalStore} from '../store/signalStore';
 import {ChannelList} from '../components/ChannelList';
 import {ChatView} from '../components/ChatView';
 import {MessageInput, MessageInputHandle} from '../components/MessageInput';
-import {GlassView} from '../components/GlassView';
 import {GlassContainerView} from '../components/GlassContainerView';
 import {DropTargetView} from '../components/DropTargetView';
 import {SessionsModal} from '../components/SessionsModal';
+import {colors} from '../theme/colors';
 
 const {CommandPaletteModule, PresageModule} = NativeModules;
 const emitter = CommandPaletteModule
@@ -20,7 +20,6 @@ const presageEmitter = PresageModule
 const SIDEBAR_DEFAULT = 268;
 const SIDEBAR_MIN = 100;
 const SIDEBAR_MAX = 500;
-const SIDEBAR_MARGIN = 4;
 const COLLAPSE_THRESHOLD = 120;
 
 interface MainScreenProps {
@@ -64,7 +63,7 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
   ).current;
 
   const collapsed = sidebarWidth < COLLAPSE_THRESHOLD;
-  const chatLeft = sidebarWidth + SIDEBAR_MARGIN * 2;
+  const chatLeft = sidebarWidth + 1; // 1px for separator line
 
   const handleSelectChannel = useCallback(
     (id: string) => {
@@ -149,22 +148,23 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
         />
       </DropTargetView>
 
-      {/* Glass sidebar overlay */}
-      <GlassView
-        style={[styles.sidebar, {width: sidebarWidth}]}
-        cornerRadius={20}>
+      {/* Edge-to-edge sidebar */}
+      <View style={[styles.sidebar, {width: sidebarWidth}]}>
         <ChannelList
           channels={channels}
           selectedId={selectedChannelId}
           onSelect={handleSelectChannel}
           collapsed={collapsed}
         />
-      </GlassView>
+      </View>
+
+      {/* Sidebar separator */}
+      <View style={[styles.sidebarSeparator, {left: sidebarWidth}]} />
 
       {/* Resize handle */}
       <View
         {...panResponder.panHandlers}
-        style={[styles.resizeHandle, {left: sidebarWidth + SIDEBAR_MARGIN - 4}]}
+        style={[styles.resizeHandle, {left: sidebarWidth - 4}]}
       />
 
       {/* Glass input bar floating at bottom over chat area */}
@@ -194,14 +194,23 @@ const styles = StyleSheet.create({
   },
   sidebar: {
     position: 'absolute',
-    top: 4,
-    bottom: 4,
-    left: 4,
+    top: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: colors.sidebarBackground,
+  },
+  sidebarSeparator: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: colors.sidebarSeparator,
+    zIndex: 5,
   },
   resizeHandle: {
     position: 'absolute',
-    top: 4,
-    bottom: 4,
+    top: 0,
+    bottom: 0,
     width: 8,
     cursor: 'col-resize',
     zIndex: 10,
