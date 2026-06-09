@@ -2,7 +2,7 @@ import Foundation
 import Contacts
 import AVFoundation
 import AppKit
-import Quartz
+import AVKit
 import UserNotifications
 import Intents
 
@@ -868,17 +868,17 @@ class PresageModule: RCTEventEmitter {
 
     @objc private func handleOpenFile(_ sender: NSMenuItem) {
         guard let filePath = sender.representedObject as? String else { return }
-        self.quickLookCoordinator.previewFile(path: filePath)
+        self.mediaPreviewPanel.previewFile(path: filePath)
     }
 
-    // MARK: - Quick Look Preview
+    // MARK: - Media Preview
 
-    private let quickLookCoordinator = QuickLookCoordinator()
+    private let mediaPreviewPanel = MediaPreviewPanel()
 
     @objc(previewFile:)
     func previewFile(_ filePath: String) {
         DispatchQueue.main.async {
-            self.quickLookCoordinator.previewFile(path: filePath)
+            self.mediaPreviewPanel.previewFile(path: filePath)
         }
     }
 
@@ -1219,81 +1219,204 @@ class MessageListenerImpl: MessageListener {
     }
 }
 
-// MARK: - Quick Look
+// MARK: - Media Preview Panel
 
-private class KeyableWindow: NSWindow {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
-}
+class MediaPreviewPanel {
+    private var panel: NSPanel?
+    private var player: AVPlayer?
+    private var playerView: AVPlayerView?
+    private var imageView: NSImageView?
 
-class QuickLookCoordinator: NSViewController, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
-    private var fileURL: NSURL?
-    private var helperWindow: NSWindow?
-
-    init() {
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func loadView() {
-        self.view = NSView()
-    }
+    private static let imageTypes: Set<String> = [
+        "image/jpeg", "image/png", "image/gif", "image/webp",
+        "image/heic", "image/heif", "image/bmp", "image/tiff"
+    ]
+    private static let videoTypes: Set<String> = [
+        "video/mp4", "video/quicktime", "video/x-m4v", "video/mpeg",
+        "video/webm", "video/3gpp", "video/mov"
+    ]
 
     func previewFile(path: String) {
         guard FileManager.default.fileExists(atPath: path) else { return }
-        fileURL = NSURL(fileURLWithPath: path)
+        let url = URL(fileURLWithPath: path)
+        let ext = url.pathExtension.lowercased()
 
-        if helperWindow == nil {
-            let w = KeyableWindow(
-                contentRect: NSRect(x: -1, y: -1, width: 1, height: 1),
-                styleMask: [.borderless],
-                backing: .buffered,
-                defer: false
-            )
-            w.contentViewController = self
-            w.isReleasedWhenClosed = false
-            w.alphaValue = 0.01
-            helperWindow = w
-        }
-
-        helperWindow?.orderFront(nil)
-        helperWindow?.makeKey()
-        helperWindow?.makeFirstResponder(self.view)
-
-        guard let panel = QLPreviewPanel.shared() else { return }
-        panel.updateController()
-
-        if panel.isVisible {
-            panel.reloadData()
+        if isImage(ext: ext) {
+            showImage(url: url)
+        } else if isVideo(ext: ext) {
+            showVideo(url: url)
         } else {
-            panel.makeKeyAndOrderFront(nil)
+            // Fallback: try as image, then open externally
+            if NSImage(contentsOf: url) != nil {
+                showImage(url: url)
+            } else {
+                NSWorkspace.shared.open(url)
+            }
         }
     }
 
-    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
-        return true
+    private func isImage(ext: String) -> Bool {
+        return ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "tiff", "tif"].contains(ext)
     }
 
-    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
-        panel.dataSource = self
-        panel.delegate = self
+    private func isVideo(ext: String) -> Bool {
+        return ["mp4", "mov", "m4v", "mpeg", "mpg", "webm", "3gp", "avi", "mkv"].contains(ext)
     }
 
-    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
-        panel.dataSource = nil
-        panel.delegate = nil
-        helperWindow?.orderOut(nil)
+    // MARK: - Image
+
+    private func showImage(url: URL) {
+        guard let image = NSImage(contentsOf: url) else { return }
+
+        let imageSize = image.size
+        let screen = NSScreen.main ?? NSScreen.screens.first!
+        let maxW = screen.visibleFrame.width * 0.8
+        let maxH = screen.visibleFrame.height * 0.8
+
+        var w = imageSize.width
+        var h = imageSize.height
+
+        // Scale down if larger than screen bounds
+        if w > maxW || h > maxH {
+            let scale = min(maxW / w, maxH / h)
+            w = floor(w * scale)
+            h = floor(h * scale)
+        }
+
+        // Minimum size
+        w = max(w, 200)
+        h = max(h, 150)
+
+        let p = getOrCreatePanel(size: NSSize(width: w, height: h))
+
+        // Clean up previous content
+        cleanUpContent()
+
+        let iv = NSImageView(frame: p.contentView!.bounds)
+        iv.image = image
+        iv.imageScaling = .scaleProportionallyUpOrDown
+        iv.autoresizingMask = [.width, .height]
+        p.contentView?.addSubview(iv)
+        self.imageView = iv
+
+        p.title = url.lastPathComponent
+        showPanel(p)
     }
 
-    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
-        return fileURL != nil ? 1 : 0
+    // MARK: - Video
+
+    private func showVideo(url: URL) {
+        let asset = AVAsset(url: url)
+        let videoSize = asset.tracks(withMediaType: .video).first?.naturalSize ?? NSSize(width: 640, height: 480)
+
+        let screen = NSScreen.main ?? NSScreen.screens.first!
+        let maxW = screen.visibleFrame.width * 0.8
+        let maxH = screen.visibleFrame.height * 0.8
+
+        var w = videoSize.width
+        var h = videoSize.height
+
+        if w > maxW || h > maxH {
+            let scale = min(maxW / w, maxH / h)
+            w = floor(w * scale)
+            h = floor(h * scale)
+        }
+
+        w = max(w, 320)
+        h = max(h, 240)
+
+        let p = getOrCreatePanel(size: NSSize(width: w, height: h))
+
+        // Clean up previous content
+        cleanUpContent()
+
+        let avPlayer = AVPlayer(url: url)
+        let pv = AVPlayerView(frame: p.contentView!.bounds)
+        pv.player = avPlayer
+        pv.autoresizingMask = [.width, .height]
+        p.contentView?.addSubview(pv)
+        self.player = avPlayer
+        self.playerView = pv
+
+        p.title = url.lastPathComponent
+        showPanel(p)
+
+        avPlayer.play()
     }
 
-    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
-        return fileURL
+    // MARK: - Panel Management
+
+    private func getOrCreatePanel(size: NSSize) -> NSPanel {
+        if let existing = panel {
+            existing.setContentSize(size)
+            return existing
+        }
+
+        let screen = NSScreen.main ?? NSScreen.screens.first!
+        let x = screen.visibleFrame.midX - size.width / 2
+        let y = screen.visibleFrame.midY - size.height / 2
+
+        let p = NSPanel(
+            contentRect: NSRect(x: x, y: y, width: size.width, height: size.height),
+            styleMask: [.titled, .closable, .resizable, .utilityWindow, .hudWindow],
+            backing: .buffered,
+            defer: false
+        )
+        p.isReleasedWhenClosed = false
+        p.isFloatingPanel = true
+        p.hidesOnDeactivate = false
+        p.isMovableByWindowBackground = true
+        p.animationBehavior = .utilityWindow
+        p.titlebarAppearsTransparent = false
+        p.backgroundColor = .black
+        p.minSize = NSSize(width: 200, height: 150)
+
+        // Monitor Escape and Space keys
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak p] event in
+            guard let self = self, let panel = p, panel.isVisible else { return event }
+            if event.keyCode == 53 { // Escape
+                self.closePanel()
+                return nil
+            }
+            if event.keyCode == 49, self.player != nil { // Space
+                self.togglePlayPause()
+                return nil
+            }
+            return event
+        }
+
+        self.panel = p
+        return p
+    }
+
+    private func showPanel(_ p: NSPanel) {
+        p.center()
+        p.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func closePanel() {
+        cleanUpContent()
+        panel?.orderOut(nil)
+    }
+
+    private func cleanUpContent() {
+        player?.pause()
+        player = nil
+        playerView?.removeFromSuperview()
+        playerView = nil
+        imageView?.removeFromSuperview()
+        imageView = nil
+        panel?.contentView?.subviews.forEach { $0.removeFromSuperview() }
+    }
+
+    private func togglePlayPause() {
+        guard let player = player else { return }
+        if player.rate == 0 {
+            player.play()
+        } else {
+            player.pause()
+        }
     }
 }
 
