@@ -47,6 +47,7 @@ export function ChatView({channel, messages, onReact, onRetryDownload}: ChatView
         ref={scrollViewRef}
         style={styles.messages}
         contentContainerStyle={styles.messagesContent}
+        showsVerticalScrollIndicator={false}
       >
         {messages.length === 0 ? (
           <View style={styles.noMessages}>

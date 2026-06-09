@@ -7,9 +7,9 @@
 // 1. RCTScrollViewComponentView sets autoresizingMask = FlexibleWidth|FlexibleHeight
 //    on the document view, which fights with Fabric's frame management and causes
 //    the document view to auto-resize to the clip view's size, corrupting content size.
-// 2. Scroll events arrive with phase=0 (NSEventPhaseNone), so NSScrollView's elastic
-//    bounce-back never triggers, causing overscroll to get permanently stuck.
-// 3. constrainBoundsRect: must enforce strict [0, max] range for RN scroll views.
+//    Fixed via setDocumentView: and layout swizzles that clear the mask.
+// 2. With the autoresizingMask fix in place, vertical elasticity (rubber banding)
+//    is enabled for native-feeling scroll behavior.
 
 static BOOL swizzled_responsiveScrolling_NO(id self, SEL _cmd) {
   return NO;
@@ -43,29 +43,14 @@ static BOOL isRNScrollView(id sv) {
 }
 
 // ---- Fix 1: constrainBoundsRect swizzle ----
-// Enforce strict bounds [0, max] on clip views inside RN scroll views.
-// This PREVENTS invalid scroll positions rather than fixing them after the fact.
+// Pass through to the original implementation. The autoresizingMask fixes
+// (setDocumentView / layout swizzles) prevent the content-size corruption that
+// originally required strict [0, max] clamping. Removing the clamp lets
+// NSScrollView handle elastic overscroll naturally.
 static IMP sOrigConstrainBoundsRect = NULL;
 
 static NSRect swizzled_constrainBoundsRect(id self, SEL _cmd, NSRect proposedBounds) {
-  NSRect result = ((NSRect(*)(id, SEL, NSRect))sOrigConstrainBoundsRect)(self, _cmd, proposedBounds);
-
-  NSClipView *clipView = (NSClipView *)self;
-  NSScrollView *sv = (NSScrollView *)clipView.superview;
-  if (![sv isKindOfClass:[NSScrollView class]] || !isRNScrollView(sv)) {
-    return result;
-  }
-
-  NSView *documentView = sv.documentView;
-  if (!documentView) return result;
-
-  NSRect docFrame = documentView.frame;
-  CGFloat maxX = MAX(0, docFrame.size.width - proposedBounds.size.width);
-  CGFloat maxY = MAX(0, docFrame.size.height - proposedBounds.size.height);
-
-  result.origin.x = MAX(0, MIN(result.origin.x, maxX));
-  result.origin.y = MAX(0, MIN(result.origin.y, maxY));
-  return result;
+  return ((NSRect(*)(id, SEL, NSRect))sOrigConstrainBoundsRect)(self, _cmd, proposedBounds);
 }
 
 // ---- Fix 2: setDocumentView swizzle ----
@@ -84,7 +69,7 @@ static void swizzled_setDocumentView(id self, SEL _cmd, NSView *view) {
 
 // ---- Fix 3: scrollWheel swizzle ----
 // Strip horizontal deltas on scroll views without a horizontal scroller.
-// Disable vertical elasticity for RN scroll views.
+// Enable vertical elasticity (rubber banding) for RN scroll views.
 static IMP sOrigScrollWheel = NULL;
 
 static void swizzled_scrollWheel(id self, SEL _cmd, NSEvent *event) {
@@ -92,7 +77,7 @@ static void swizzled_scrollWheel(id self, SEL _cmd, NSEvent *event) {
   sv.horizontalScrollElasticity = NSScrollElasticityNone;
 
   if (isRNScrollView(sv)) {
-    sv.verticalScrollElasticity = NSScrollElasticityNone;
+    sv.verticalScrollElasticity = NSScrollElasticityAllowed;
   }
 
   if (!sv.hasHorizontalScroller && event.scrollingDeltaX != 0.0) {
