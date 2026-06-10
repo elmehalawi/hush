@@ -246,8 +246,8 @@ function DoubleCheckIcon({color}: {color: string}) {
 
 export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastInGroup = true, onReact, userId, onRetryDownload, showReadReceipt}: MessageBubbleProps) {
   const colorScheme = useColorScheme();
-  const incomingBubbleBg = colorScheme === 'dark' ? '#252528' : '#E9E9EB';
-  const outgoingBubbleBg = colorScheme === 'dark' ? '#1A7FCC' : '#3A9DF5';
+  const incomingBubbleBg = colorScheme === 'dark' ? '#3A3A3D' : '#E9E9EB';
+  const outgoingBubbleBg = colorScheme === 'dark' ? '#2E6FA3' : '#3A9DF5';
   const isOutgoing = message.isOutgoing;
   const showSenderInfo = !!isGroup && !isOutgoing;
   const showSenderName = showSenderInfo && isFirstInGroup;
