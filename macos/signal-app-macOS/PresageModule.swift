@@ -48,7 +48,7 @@ class PresageModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onMessage", "onReaction", "onChannelUpdated", "onAttachmentDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions"]
+        return ["onMessage", "onReaction", "onReadReceipt", "onChannelUpdated", "onAttachmentDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions"]
     }
 
     override func startObserving() {
@@ -316,6 +316,12 @@ class PresageModule: RCTEventEmitter {
             },
             onReaction: { [weak self] reaction in
                 self?.sendEventIfListening("onReaction", body: self?.reactionEventToDict(reaction))
+            },
+            onReadReceipt: { [weak self] senderId, timestamps in
+                self?.sendEventIfListening("onReadReceipt", body: [
+                    "senderId": senderId,
+                    "timestamps": timestamps.map { NSNumber(value: $0) }
+                ])
             },
             onChannelUpdated: { [weak self] channel in
                 self?.avatarCacheLock.lock()
@@ -1176,13 +1182,15 @@ class LinkingCallbackImpl: LinkingCallback {
 class MessageListenerImpl: MessageListener {
     private let onMessageHandler: (Message) -> Void
     private let onReactionHandler: (ReactionEvent) -> Void
+    private let onReadReceiptHandler: (String, [UInt64]) -> Void
     private let onChannelUpdatedHandler: (Channel) -> Void
     private let onErrorHandler: (String) -> Void
     private let onAttachmentDownloadedHandler: (String, String, UInt32, Attachment) -> Void
 
-    init(onMessage: @escaping (Message) -> Void, onReaction: @escaping (ReactionEvent) -> Void, onChannelUpdated: @escaping (Channel) -> Void, onError: @escaping (String) -> Void, onAttachmentDownloaded: @escaping (String, String, UInt32, Attachment) -> Void) {
+    init(onMessage: @escaping (Message) -> Void, onReaction: @escaping (ReactionEvent) -> Void, onReadReceipt: @escaping (String, [UInt64]) -> Void, onChannelUpdated: @escaping (Channel) -> Void, onError: @escaping (String) -> Void, onAttachmentDownloaded: @escaping (String, String, UInt32, Attachment) -> Void) {
         self.onMessageHandler = onMessage
         self.onReactionHandler = onReaction
+        self.onReadReceiptHandler = onReadReceipt
         self.onChannelUpdatedHandler = onChannelUpdated
         self.onErrorHandler = onError
         self.onAttachmentDownloadedHandler = onAttachmentDownloaded
@@ -1197,6 +1205,12 @@ class MessageListenerImpl: MessageListener {
     func onReaction(reaction: ReactionEvent) {
         DispatchQueue.main.async {
             self.onReactionHandler(reaction)
+        }
+    }
+
+    func onReadReceipt(senderId: String, timestamps: [UInt64]) {
+        DispatchQueue.main.async {
+            self.onReadReceiptHandler(senderId, timestamps)
         }
     }
 

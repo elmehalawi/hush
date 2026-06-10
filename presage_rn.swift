@@ -2151,6 +2151,11 @@ public protocol MessageListener: AnyObject {
     func onChannelUpdated(channel: Channel)
 
     /**
+     * Called when a read receipt is received (the contact read our messages)
+     */
+    func onReadReceipt(senderId: String, timestamps: [UInt64])
+
+    /**
      * Called when an error occurs during message receiving
      */
     func onError(error: String)
@@ -2225,6 +2230,31 @@ private enum UniffiCallbackInterfaceMessageListener {
                 }
                 return try uniffiObj.onChannelUpdated(
                     channel: FfiConverterTypeChannel.lift(channel)
+                )
+            }
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onReadReceipt: { (
+            uniffiHandle: UInt64,
+            senderId: RustBuffer,
+            timestamps: RustBuffer,
+            _: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMessageListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.onReadReceipt(
+                    senderId: FfiConverterString.lift(senderId),
+                    timestamps: FfiConverterSequenceUInt64.lift(timestamps)
                 )
             }
 
@@ -2677,10 +2707,13 @@ private var initializationResult: InitializationResult = {
     if uniffi_presage_rn_checksum_method_messagelistener_on_channel_updated() != 13262 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_presage_rn_checksum_method_messagelistener_on_error() != 18718 {
+    if uniffi_presage_rn_checksum_method_messagelistener_on_read_receipt() != 27021 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_presage_rn_checksum_method_messagelistener_on_attachment_downloaded() != 6634 {
+    if uniffi_presage_rn_checksum_method_messagelistener_on_error() != 50510 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_messagelistener_on_attachment_downloaded() != 54381 {
         return InitializationResult.apiChecksumMismatch
     }
 

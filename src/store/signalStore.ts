@@ -83,6 +83,7 @@ interface SignalStore {
     attachmentIndex: number,
     attachment: Attachment,
   ) => void;
+  markMessagesAsRead: (timestamps: number[]) => void;
 }
 
 export const useSignalStore = create<SignalStore>((set, get) => ({
@@ -261,5 +262,32 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
         [channelId]: updatedMessages,
       },
     });
+  },
+
+  markMessagesAsRead: (timestamps: number[]) => {
+    const {messages} = get();
+    const tsSet = new Set(timestamps);
+    let changed = false;
+    const updatedMessages: Record<string, Message[]> = {...messages};
+
+    for (const channelId of Object.keys(updatedMessages)) {
+      const channelMessages = updatedMessages[channelId];
+      let channelChanged = false;
+      const newMessages = channelMessages.map(m => {
+        if (m.isOutgoing && tsSet.has(m.timestamp) && m.status !== 'read') {
+          channelChanged = true;
+          return {...m, status: 'read' as const};
+        }
+        return m;
+      });
+      if (channelChanged) {
+        updatedMessages[channelId] = newMessages;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      set({messages: updatedMessages});
+    }
   },
 }));

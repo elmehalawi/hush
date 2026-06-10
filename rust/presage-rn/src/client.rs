@@ -564,6 +564,7 @@ impl SignalClient {
                             Some(ProcessedContent::Reaction(reaction)) => {
                                 reaction_events.push(reaction);
                             }
+                            Some(ProcessedContent::ReadReceipt { .. }) => {}
                             None => {}
                         }
                     }
@@ -1111,6 +1112,12 @@ impl SignalClient {
                                         // Handle reaction events
                                         if let Some(ProcessedContent::Reaction(reaction_event)) = &result {
                                             listener.on_reaction(reaction_event.clone());
+                                            continue;
+                                        }
+
+                                        // Handle read receipts
+                                        if let Some(ProcessedContent::ReadReceipt { sender_id, timestamps }) = &result {
+                                            listener.on_read_receipt(sender_id.clone(), timestamps.clone());
                                             continue;
                                         }
 
@@ -1789,6 +1796,8 @@ enum ProcessedContent {
     Message(Message, Vec<AttachmentPointer>),
     /// A reaction on an existing message
     Reaction(ReactionEvent),
+    /// A read receipt from a contact (timestamps of our messages they read)
+    ReadReceipt { sender_id: String, timestamps: Vec<u64> },
 }
 
 /// Extract channel_id from a DataMessage (group context or sender UUID)
@@ -1917,6 +1926,18 @@ fn process_content(
                 }
             }
             None
+        }
+        ContentBody::ReceiptMessage(receipt) => {
+            let is_read = receipt.r#type == Some(receipt_message::Type::Read as i32);
+            if is_read && !receipt.timestamp.is_empty() {
+                info!("Received read receipt from {} for {} timestamps", sender_uuid, receipt.timestamp.len());
+                Some(ProcessedContent::ReadReceipt {
+                    sender_id: sender_uuid.to_string(),
+                    timestamps: receipt.timestamp.clone(),
+                })
+            } else {
+                None
+            }
         }
         _ => None,
     }
