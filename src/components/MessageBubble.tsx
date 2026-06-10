@@ -19,6 +19,7 @@ interface MessageBubbleProps {
   onReact?: (emoji: string, targetTimestamp: number, remove: boolean) => void;
   userId?: string | null;
   onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
+  showReadReceipt?: boolean;
 }
 
 const MAX_BUBBLE_WIDTH = Dimensions.get('window').width * 0.75;
@@ -234,9 +235,19 @@ function ReactionsRow({
   );
 }
 
-export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastInGroup = true, onReact, userId, onRetryDownload}: MessageBubbleProps) {
+function DoubleCheckIcon({color}: {color: string}) {
+  return (
+    <View style={{flexDirection: 'row', alignItems: 'center'}}>
+      <Text style={{fontSize: 12, color}}>{'\u2713'}</Text>
+      <Text style={{fontSize: 12, color, marginLeft: -4}}>{'\u2713'}</Text>
+    </View>
+  );
+}
+
+export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastInGroup = true, onReact, userId, onRetryDownload, showReadReceipt}: MessageBubbleProps) {
   const colorScheme = useColorScheme();
-  const incomingBubbleBg = colorScheme === 'dark' ? '#2A2A2C' : '#e0e0e0';
+  const incomingBubbleBg = colorScheme === 'dark' ? '#252528' : '#E9E9EB';
+  const outgoingBubbleBg = colorScheme === 'dark' ? '#1A7FCC' : '#3A9DF5';
   const isOutgoing = message.isOutgoing;
   const showSenderInfo = !!isGroup && !isOutgoing;
   const showSenderName = showSenderInfo && isFirstInGroup;
@@ -275,57 +286,34 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   const hasMedia = mediaAttachments.length > 0;
   const audioOnly = hasAudio && !hasBody && !hasAttachments;
 
-  const formatTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-  };
-
-  const getStatusIcon = () => {
-    switch (message.status) {
-      case 'sending':
-        return '\u23F3';
-      case 'sent':
-        return '\u2713';
-      case 'delivered':
-        return '\u2713\u2713';
-      case 'read':
-        return '\u2713\u2713';
-      case 'failed':
-        return '\u26A0';
-      default:
-        return '';
-    }
-  };
-
   const bubbleStyle = [
     styles.bubble,
-    isOutgoing ? styles.bubbleOutgoing : [styles.bubbleIncoming, {backgroundColor: incomingBubbleBg}],
+    isOutgoing ? [styles.bubbleOutgoing, {backgroundColor: outgoingBubbleBg}] : [styles.bubbleIncoming, {backgroundColor: incomingBubbleBg}],
     hasMedia && styles.bubbleWithMedia,
     showSenderInfo && styles.bubbleInGroup,
   ];
 
-  const metaRow = (
-    <View style={[styles.meta, hasMedia && !hasBody && styles.metaOverMedia]}>
-      <Text
-        style={[
-          styles.time,
-          isOutgoing && styles.timeOutgoing,
-          hasMedia && !hasBody && styles.timeOverMedia,
-        ]}>
-        {formatTime(message.timestamp)}
-      </Text>
-      {isOutgoing && (
-        <Text
-          style={[
-            styles.status,
-            message.status === 'read' && styles.statusRead,
-            hasMedia && !hasBody && styles.statusOverMedia,
-          ]}>
-          {getStatusIcon()}
-        </Text>
+  const readReceiptColor = colorScheme === 'dark' ? 'rgba(255,255,255,0.4)' : '#8E8E93';
+
+  const statusBelow = isOutgoing ? (
+    <>
+      {message.status === 'sending' && (
+        <View style={[styles.belowBubbleStatus, styles.belowBubbleStatusOutgoing]}>
+          <Text style={styles.sendingText}>{'\u23F3'}</Text>
+        </View>
       )}
-    </View>
-  );
+      {message.status === 'failed' && (
+        <View style={[styles.belowBubbleStatus, styles.belowBubbleStatusOutgoing]}>
+          <Text style={styles.failedText}>{'\u26A0'} Failed</Text>
+        </View>
+      )}
+      {showReadReceipt && (
+        <View style={[styles.belowBubbleStatus, styles.belowBubbleStatusOutgoing]}>
+          <Text style={[styles.readText, {color: readReceiptColor}]}>Read</Text>
+        </View>
+      )}
+    </>
+  ) : null;
 
   const audioContent = hasAudio ? (
     <View>
@@ -367,7 +355,6 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
           [No content]
         </Text>
       )}
-      {!audioOnly && metaRow}
     </>
   );
 
@@ -420,16 +407,16 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
             )}
             {audioContent}
             {!audioOnly && <Pressable onPressIn={handleBubblePressIn}><View style={bubbleStyle}>{bubbleContent}</View></Pressable>}
-            {audioOnly && <View style={styles.audioMeta}>{metaRow}</View>}
             {reactionsRow}
+            {statusBelow}
           </View>
         </View>
       ) : (
         <>
           {audioContent}
           {!audioOnly && <Pressable onPressIn={handleBubblePressIn}><View style={bubbleStyle}>{bubbleContent}</View></Pressable>}
-          {audioOnly && <View style={styles.audioMeta}>{metaRow}</View>}
           {reactionsRow}
+          {statusBelow}
         </>
       )}
       {hovered && onReact && !isOutgoing && (
@@ -509,8 +496,9 @@ const styles = StyleSheet.create({
   },
   bubble: {
     maxWidth: '75%',
-    padding: 10,
-    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 18,
   },
   bubbleOutgoing: {
     backgroundColor: '#2196f3',
@@ -584,9 +572,24 @@ const styles = StyleSheet.create({
     color: '#2196f3',
     fontWeight: '500',
   },
-  audioMeta: {
+  belowBubbleStatus: {
+    marginTop: 2,
     paddingHorizontal: 4,
-    marginTop: 1,
+  },
+  belowBubbleStatusOutgoing: {
+    alignItems: 'flex-end',
+  },
+  sendingText: {
+    fontSize: 11,
+    color: '#8E8E93',
+  },
+  failedText: {
+    fontSize: 11,
+    color: '#FF3B30',
+  },
+  readText: {
+    fontSize: 10,
+    fontWeight: '600',
   },
   fileAttachment: {
     flexDirection: 'row',
@@ -614,10 +617,10 @@ const styles = StyleSheet.create({
   },
   bodyBelowMedia: {
     paddingHorizontal: 7,
-    paddingTop: 6,
+    paddingTop: 4,
   },
   body: {
-    fontSize: 15,
+    fontSize: 13,
     color: colors.incomingBody,
   },
   bodyOutgoing: {
@@ -625,44 +628,6 @@ const styles = StyleSheet.create({
   },
   link: {
     textDecorationLine: 'underline',
-  },
-  meta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: 4,
-    paddingHorizontal: 4,
-  },
-  metaOverMedia: {
-    position: 'absolute',
-    bottom: 6,
-    right: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginTop: 0,
-  },
-  time: {
-    fontSize: 11,
-    color: '#757575',
-  },
-  timeOutgoing: {
-    color: 'rgba(255, 255, 255, 0.7)',
-  },
-  timeOverMedia: {
-    color: 'rgba(255, 255, 255, 0.9)',
-  },
-  status: {
-    fontSize: 12,
-    marginLeft: 4,
-    color: 'rgba(255, 255, 255, 0.7)',
-  },
-  statusRead: {
-    color: '#4fc3f7',
-  },
-  statusOverMedia: {
-    color: 'rgba(255, 255, 255, 0.9)',
   },
   reactionBarOverlay: {
     position: 'absolute',

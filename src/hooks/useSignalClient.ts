@@ -126,6 +126,7 @@ export function useSignalClient() {
   const updateChannel = useSignalStore(state => state.updateChannel);
   const markChannelAsRead = useSignalStore(state => state.markChannelAsRead);
   const updateAttachment = useSignalStore(state => state.updateAttachment);
+  const markMessagesAsRead = useSignalStore(state => state.markMessagesAsRead);
 
   // Initialize client
   const initialize = useCallback(async () => {
@@ -435,6 +436,9 @@ export function useSignalClient() {
           targetTimestamp: event.targetTimestamp,
           remove: event.remove,
         });
+      }),
+      presageEventEmitter.addListener('onReadReceipt', (event: {senderId: string; timestamps: number[]}) => {
+        markMessagesAsRead(event.timestamps);
       }),
       presageEventEmitter.addListener('onChannelUpdated', (channel: NativeChannel) => {
         updateChannel(convertChannel(channel));

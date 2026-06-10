@@ -6,6 +6,38 @@ import {GlassView} from './GlassView';
 import {GradientBlurView} from './GradientBlurView';
 import {colors} from '../theme/colors';
 
+function formatTimeSeparator(timestamp: number, previousTimestamp: number | null): {datePart: string | null; time: string} {
+  const now = new Date();
+  const date = new Date(timestamp);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const messageDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  const time = date.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+
+  const previousDate = previousTimestamp ? new Date(previousTimestamp) : null;
+  const previousDay = previousDate
+    ? new Date(previousDate.getFullYear(), previousDate.getMonth(), previousDate.getDate())
+    : null;
+  const sameDay = previousDay && messageDay.getTime() === previousDay.getTime();
+
+  if (sameDay) {
+    return {datePart: null, time};
+  }
+
+  if (messageDay.getTime() === today.getTime()) {
+    return {datePart: 'Today', time};
+  } else if (messageDay.getTime() === yesterday.getTime()) {
+    return {datePart: 'Yesterday', time};
+  } else {
+    const diffDays = Math.floor((today.getTime() - messageDay.getTime()) / 86400000);
+    if (diffDays < 7) {
+      return {datePart: date.toLocaleDateString([], {weekday: 'long'}), time};
+    }
+    return {datePart: date.toLocaleDateString([], {month: 'short', day: 'numeric'}), time};
+  }
+}
+
 interface ChatViewProps {
   channel: Channel | null;
   messages: Message[];
@@ -55,15 +87,42 @@ export function ChatView({channel, messages, onReact, onRetryDownload}: ChatView
             <Text style={styles.noMessagesHint}>Send a message to start the conversation</Text>
           </View>
         ) : (
-          messages.map((message, index) => {
-            const prevMessage = index > 0 ? messages[index - 1] : null;
-            const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
-            const isFirstInGroup = !prevMessage || prevMessage.senderId !== message.senderId || prevMessage.isOutgoing !== message.isOutgoing;
-            const isLastInGroup = !nextMessage || nextMessage.senderId !== message.senderId || nextMessage.isOutgoing !== message.isOutgoing;
-            return (
-              <MessageBubble key={message.id} message={message} isGroup={channel.isGroup} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} onReact={handleReact} userId={userId} onRetryDownload={onRetryDownload} />
-            );
-          })
+          (() => {
+            let lastReadIndex = -1;
+            for (let i = messages.length - 1; i >= 0; i--) {
+              if (messages[i].isOutgoing && messages[i].status === 'read') {
+                lastReadIndex = i;
+                break;
+              }
+            }
+            return messages.map((message, index) => {
+              const prevMessage = index > 0 ? messages[index - 1] : null;
+              const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
+              const isFirstInGroup = !prevMessage || prevMessage.senderId !== message.senderId || prevMessage.isOutgoing !== message.isOutgoing;
+              const isLastInGroup = !nextMessage || nextMessage.senderId !== message.senderId || nextMessage.isOutgoing !== message.isOutgoing;
+
+              const showTimeSeparator = !prevMessage ||
+                (message.timestamp - prevMessage.timestamp) > 15 * 60 * 1000;
+
+              return (
+                <React.Fragment key={message.id}>
+                  {showTimeSeparator && (() => {
+                    const {datePart, time} = formatTimeSeparator(message.timestamp, prevMessage?.timestamp ?? null);
+                    return (
+                      <View style={styles.timeSeparator}>
+                        <Text style={styles.timeSeparatorText}>
+                          {datePart && <Text style={styles.timeSeparatorDate}>{datePart}</Text>}
+                          {datePart && ` at `}
+                          {time}
+                        </Text>
+                      </View>
+                    );
+                  })()}
+                  <MessageBubble message={message} isGroup={channel.isGroup} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} onReact={handleReact} userId={userId} onRetryDownload={onRetryDownload} showReadReceipt={index === lastReadIndex} />
+                </React.Fragment>
+              );
+            });
+          })()
         )}
       </ScrollView>
 
@@ -169,6 +228,19 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.label,
     textAlign: 'center',
+  },
+  timeSeparator: {
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  timeSeparatorText: {
+    fontSize: 10,
+    color: colors.secondaryLabel,
+    fontWeight: '400',
+  },
+  timeSeparatorDate: {
+    fontWeight: '600',
   },
   noMessages: {
     flex: 1,

@@ -14,6 +14,9 @@ pub trait MessageListener: Send + Sync {
     /// Called when a channel's metadata is updated (new message, name change, etc.)
     fn on_channel_updated(&self, channel: Channel);
 
+    /// Called when a read receipt is received (the contact read our messages)
+    fn on_read_receipt(&self, sender_id: String, timestamps: Vec<u64>);
+
     /// Called when an error occurs during message receiving
     fn on_error(&self, error: String);
 
