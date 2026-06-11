@@ -1,6 +1,6 @@
 import React, {useState, useCallback, useRef, useEffect} from 'react';
 import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme, ActivityIndicator} from 'react-native';
-import {Message, Attachment, Reaction, useSignalStore} from '../store/signalStore';
+import {Message, Attachment, Mention, Reaction, useSignalStore} from '../store/signalStore';
 import {ReactionBar} from './ReactionBar';
 import {AudioAttachmentView} from './AudioAttachmentView';
 import {colors} from '../theme/colors';
@@ -44,29 +44,84 @@ function getImageDimensions(attachment: Attachment) {
 
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
 
-function LinkifiedText({text, isOutgoing}: {text: string; isOutgoing: boolean}) {
-  const parts = text.split(URL_REGEX);
-  if (parts.length === 1) {
+function LinkifiedText({text, isOutgoing, mentions}: {text: string; isOutgoing: boolean; mentions?: Mention[]}) {
+  // Build a set of mention ranges for quick lookup
+  const mentionRanges = (mentions || []).map(m => ({
+    start: m.start,
+    end: m.start + m.length,
+    name: m.name,
+  }));
+
+  // Split text into segments: plain text, URLs, and mentions
+  type Segment = {type: 'text'; value: string} | {type: 'url'; value: string} | {type: 'mention'; value: string};
+  const segments: Segment[] = [];
+  let cursor = 0;
+
+  // First, identify mention positions
+  const mentionPositions: {start: number; end: number; text: string}[] = [];
+  for (const m of mentionRanges) {
+    if (m.start >= 0 && m.end <= text.length) {
+      mentionPositions.push({start: m.start, end: m.end, text: text.slice(m.start, m.end)});
+    }
+  }
+  mentionPositions.sort((a, b) => a.start - b.start);
+
+  // Build segments splitting by mentions first, then URLs within text segments
+  for (const mp of mentionPositions) {
+    if (mp.start > cursor) {
+      segments.push({type: 'text', value: text.slice(cursor, mp.start)});
+    }
+    segments.push({type: 'mention', value: mp.text});
+    cursor = mp.end;
+  }
+  if (cursor < text.length) {
+    segments.push({type: 'text', value: text.slice(cursor)});
+  }
+
+  // Now split text segments by URLs
+  const finalSegments: Segment[] = [];
+  for (const seg of segments) {
+    if (seg.type !== 'text') {
+      finalSegments.push(seg);
+      continue;
+    }
+    const urlParts = seg.value.split(URL_REGEX);
+    for (const part of urlParts) {
+      if (URL_REGEX.test(part)) {
+        finalSegments.push({type: 'url', value: part});
+      } else if (part) {
+        finalSegments.push({type: 'text', value: part});
+      }
+    }
+  }
+
+  if (finalSegments.length === 1 && finalSegments[0].type === 'text') {
     return (
       <Text style={[styles.body, isOutgoing && styles.bodyOutgoing]}>
         {text}
       </Text>
     );
   }
+
   return (
     <Text style={[styles.body, isOutgoing && styles.bodyOutgoing]}>
-      {parts.map((part, i) =>
-        URL_REGEX.test(part) ? (
-          <Text
-            key={i}
-            style={styles.link}
-            onPress={() => Linking.openURL(part)}>
-            {part}
-          </Text>
-        ) : (
-          part
-        ),
-      )}
+      {finalSegments.map((seg, i) => {
+        if (seg.type === 'url') {
+          return (
+            <Text key={i} style={styles.link} onPress={() => Linking.openURL(seg.value)}>
+              {seg.value}
+            </Text>
+          );
+        }
+        if (seg.type === 'mention') {
+          return (
+            <Text key={i} style={[styles.mentionText, isOutgoing && styles.mentionTextOutgoing]}>
+              {seg.value}
+            </Text>
+          );
+        }
+        return seg.value;
+      })}
     </Text>
   );
 }
@@ -347,7 +402,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
       )}
       {hasBody && (
         <View style={hasMedia ? styles.bodyBelowMedia : undefined}>
-          <LinkifiedText text={message.body!} isOutgoing={isOutgoing} />
+          <LinkifiedText text={message.body!} isOutgoing={isOutgoing} mentions={message.mentions} />
         </View>
       )}
       {!hasBody && !hasAttachments && !hasAudio && (
@@ -628,6 +683,13 @@ const styles = StyleSheet.create({
   },
   link: {
     textDecorationLine: 'underline',
+  },
+  mentionText: {
+    fontWeight: '600',
+    color: '#2196f3',
+  },
+  mentionTextOutgoing: {
+    color: 'rgba(255, 255, 255, 0.9)',
   },
   reactionBarOverlay: {
     position: 'absolute',

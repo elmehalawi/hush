@@ -1164,6 +1164,111 @@ public func FfiConverterTypeChannel_lower(_ value: Channel) -> RustBuffer {
 }
 
 /**
+ * A mention of a user within a message body
+ */
+public struct Mention {
+    /**
+     * Character offset in body where the mention starts
+     */
+    public var start: UInt32
+    /**
+     * Number of characters replaced (always 1 for \uFFFC placeholder)
+     */
+    public var length: UInt32
+    /**
+     * UUID of the mentioned user
+     */
+    public var uuid: String
+    /**
+     * Resolved display name of the mentioned user
+     */
+    public var name: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Character offset in body where the mention starts
+         */ start: UInt32,
+        /**
+            * Number of characters replaced (always 1 for \uFFFC placeholder)
+            */ length: UInt32,
+        /**
+            * UUID of the mentioned user
+            */ uuid: String,
+        /**
+            * Resolved display name of the mentioned user
+            */ name: String
+    ) {
+        self.start = start
+        self.length = length
+        self.uuid = uuid
+        self.name = name
+    }
+}
+
+extension Mention: Equatable, Hashable {
+    public static func == (lhs: Mention, rhs: Mention) -> Bool {
+        if lhs.start != rhs.start {
+            return false
+        }
+        if lhs.length != rhs.length {
+            return false
+        }
+        if lhs.uuid != rhs.uuid {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(start)
+        hasher.combine(length)
+        hasher.combine(uuid)
+        hasher.combine(name)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMention: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Mention {
+        return
+            try Mention(
+                start: FfiConverterUInt32.read(from: &buf),
+                length: FfiConverterUInt32.read(from: &buf),
+                uuid: FfiConverterString.read(from: &buf),
+                name: FfiConverterString.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: Mention, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.start, into: &buf)
+        FfiConverterUInt32.write(value.length, into: &buf)
+        FfiConverterString.write(value.uuid, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMention_lift(_ buf: RustBuffer) throws -> Mention {
+    return try FfiConverterTypeMention.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMention_lower(_ value: Mention) -> RustBuffer {
+    return FfiConverterTypeMention.lower(value)
+}
+
+/**
  * Represents a single message
  */
 public struct Message {
@@ -1207,6 +1312,10 @@ public struct Message {
      * Emoji reactions on this message
      */
     public var reactions: [Reaction]
+    /**
+     * Mentions of other users in the message body
+     */
+    public var mentions: [Mention]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1240,7 +1349,10 @@ public struct Message {
             */ attachments: [Attachment],
         /**
             * Emoji reactions on this message
-            */ reactions: [Reaction]
+            */ reactions: [Reaction],
+        /**
+            * Mentions of other users in the message body
+            */ mentions: [Mention]
     ) {
         self.id = id
         self.channelId = channelId
@@ -1252,6 +1364,7 @@ public struct Message {
         self.status = status
         self.attachments = attachments
         self.reactions = reactions
+        self.mentions = mentions
     }
 }
 
@@ -1287,6 +1400,9 @@ extension Message: Equatable, Hashable {
         if lhs.reactions != rhs.reactions {
             return false
         }
+        if lhs.mentions != rhs.mentions {
+            return false
+        }
         return true
     }
 
@@ -1301,6 +1417,7 @@ extension Message: Equatable, Hashable {
         hasher.combine(status)
         hasher.combine(attachments)
         hasher.combine(reactions)
+        hasher.combine(mentions)
     }
 }
 
@@ -1320,7 +1437,8 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
                 isOutgoing: FfiConverterBool.read(from: &buf),
                 status: FfiConverterTypeMessageStatus.read(from: &buf),
                 attachments: FfiConverterSequenceTypeAttachment.read(from: &buf),
-                reactions: FfiConverterSequenceTypeReaction.read(from: &buf)
+                reactions: FfiConverterSequenceTypeReaction.read(from: &buf),
+                mentions: FfiConverterSequenceTypeMention.read(from: &buf)
             )
     }
 
@@ -1335,6 +1453,7 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
         FfiConverterTypeMessageStatus.write(value.status, into: &buf)
         FfiConverterSequenceTypeAttachment.write(value.attachments, into: &buf)
         FfiConverterSequenceTypeReaction.write(value.reactions, into: &buf)
+        FfiConverterSequenceTypeMention.write(value.mentions, into: &buf)
     }
 }
 
@@ -2542,6 +2661,31 @@ private struct FfiConverterSequenceTypeChannel: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             try seq.append(FfiConverterTypeChannel.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private struct FfiConverterSequenceTypeMention: FfiConverterRustBuffer {
+    typealias SwiftType = [Mention]
+
+    public static func write(_ value: [Mention], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMention.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Mention] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Mention]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            try seq.append(FfiConverterTypeMention.read(from: &buf))
         }
         return seq
     }

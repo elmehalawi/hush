@@ -24,7 +24,7 @@ use uuid::Uuid;
 
 use crate::callbacks::{LinkingCallback, MessageListener};
 use crate::error::SignalError;
-use crate::types::{Attachment, Channel, Message, MessageStatus, Reaction, ReactionEvent, SessionInfo};
+use crate::types::{Attachment, Channel, Mention, Message, MessageStatus, Reaction, ReactionEvent, SessionInfo};
 
 type PresageManager = presage::Manager<SqliteStore, Registered>;
 
@@ -463,26 +463,35 @@ impl SignalClient {
 
                             if !got_last {
                                 channel.last_message_timestamp = Some(ts);
-                                let (body, attachments) = match &content.body {
+                                let (body, attachments, body_ranges) = match &content.body {
                                     ContentBody::DataMessage(dm) => {
-                                        (dm.body.clone(), &dm.attachments)
+                                        (dm.body.clone(), &dm.attachments, &dm.body_ranges)
                                     }
                                     ContentBody::SynchronizeMessage(sync) => {
                                         if let Some(sent) = &sync.sent {
                                             if let Some(dm) = &sent.message {
-                                                (dm.body.clone(), &dm.attachments)
+                                                (dm.body.clone(), &dm.attachments, &dm.body_ranges)
                                             } else {
-                                                (None, &vec![] as &Vec<AttachmentPointer>)
+                                                (None, &vec![] as &Vec<AttachmentPointer>, &vec![] as &Vec<presage::proto::BodyRange>)
                                             }
                                         } else {
-                                            (None, &vec![] as &Vec<AttachmentPointer>)
+                                            (None, &vec![] as &Vec<AttachmentPointer>, &vec![] as &Vec<presage::proto::BodyRange>)
                                         }
                                     }
-                                    _ => (None, &vec![] as &Vec<AttachmentPointer>),
+                                    _ => (None, &vec![] as &Vec<AttachmentPointer>, &vec![] as &Vec<presage::proto::BodyRange>),
                                 };
-                                channel.last_message = body.or_else(|| {
+                                let mut last_msg = body.or_else(|| {
                                     attachment_preview_text(attachments)
                                 });
+                                // Replace U+FFFC mention placeholders in preview text
+                                if let Some(ref text) = last_msg {
+                                    let raw = extract_mentions(body_ranges);
+                                    if !raw.is_empty() {
+                                        let mut resolved = resolve_mentions(&raw, manager).await;
+                                        last_msg = Some(replace_mention_placeholders(text, &mut resolved));
+                                    }
+                                }
+                                channel.last_message = last_msg;
                                 got_last = true;
                             }
 
@@ -555,8 +564,8 @@ impl SignalClient {
                 for result in iter {
                     if let Ok(content) = result {
                         match process_content(&content, my_user_id, Some(&channel_id)) {
-                            Some(ProcessedContent::Message(msg, pointers)) => {
-                                messages_with_pointers.push((msg, pointers));
+                            Some(ProcessedContent::Message(msg, pointers, raw_mentions)) => {
+                                messages_with_pointers.push((msg, pointers, raw_mentions));
                                 if limit > 0 && messages_with_pointers.len() >= limit {
                                     break;
                                 }
@@ -575,7 +584,7 @@ impl SignalClient {
             let is_group = channel_id.len() == 64;
             let mut sender_name_cache: HashMap<String, Option<String>> = HashMap::new();
             let mut messages = Vec::new();
-            for (mut msg, pointers) in messages_with_pointers {
+            for (mut msg, pointers, raw_mentions) in messages_with_pointers {
                 if !pointers.is_empty() {
                     for (idx, pointer) in pointers.iter().enumerate() {
                         let (attachment, cache_key) =
@@ -616,6 +625,15 @@ impl SignalClient {
                         sender_name_cache.insert(sid.clone(), name);
                     }
                     msg.sender_name = sender_name_cache.get(sid).cloned().flatten();
+                }
+                // Resolve mentions and replace U+FFFC placeholders in body
+                if !raw_mentions.is_empty() {
+                    let mut resolved = resolve_mentions(&raw_mentions, manager).await;
+                    if let Some(ref body) = msg.body {
+                        let new_body = replace_mention_placeholders(body, &mut resolved);
+                        msg.body = Some(new_body);
+                    }
+                    msg.mentions = resolved;
                 }
                 messages.push(msg);
             }
@@ -748,6 +766,7 @@ impl SignalClient {
                 status: MessageStatus::Sent,
                 attachments: vec![],
                 reactions: vec![],
+                mentions: vec![],
             })
         })
         })
@@ -903,6 +922,7 @@ impl SignalClient {
                     status: MessageStatus::Sent,
                     attachments,
                     reactions: vec![],
+                    mentions: vec![],
                 })
             })
         })
@@ -1122,8 +1142,8 @@ impl SignalClient {
                                         }
 
                                         // Check cache only (no blocking downloads)
-                                        let (mut message, pointers) = match result {
-                                            Some(ProcessedContent::Message(msg, ptrs)) => (msg, ptrs),
+                                        let (mut message, pointers, raw_mentions) = match result {
+                                            Some(ProcessedContent::Message(msg, ptrs, raw_mentions)) => (msg, ptrs, raw_mentions),
                                             _ => continue,
                                         };
 
@@ -1148,6 +1168,16 @@ impl SignalClient {
                                                     );
                                                 }
                                                 message.attachments.push(attachment);
+                                            }
+
+                                            // Resolve mentions and replace U+FFFC placeholders
+                                            if !raw_mentions.is_empty() {
+                                                let mut resolved = resolve_mentions(&raw_mentions, &manager_for_attachments).await;
+                                                if let Some(ref body) = message.body {
+                                                    let new_body = replace_mention_placeholders(body, &mut resolved);
+                                                    message.body = Some(new_body);
+                                                }
+                                                message.mentions = resolved;
                                             }
 
                                             // For incoming messages, look up sender name and emit channel update
@@ -1792,8 +1822,9 @@ fn spawn_background_download(
 
 /// Result of processing a Content message
 enum ProcessedContent {
-    /// A regular user-visible message (with attachment pointers to download)
-    Message(Message, Vec<AttachmentPointer>),
+    /// A regular user-visible message (with attachment pointers to download,
+    /// and raw mentions as (start, length, uuid) tuples)
+    Message(Message, Vec<AttachmentPointer>, Vec<(u32, u32, String)>),
     /// A reaction on an existing message
     Reaction(ReactionEvent),
     /// A read receipt from a contact (timestamps of our messages they read)
@@ -1807,6 +1838,93 @@ fn channel_id_from_dm(dm: &DataMessage, fallback_uuid: Uuid) -> Option<String> {
     } else {
         Some(fallback_uuid.to_string())
     }
+}
+
+/// Extract mention data from body_ranges.
+/// Returns a list of (start, length, uuid_string) tuples for mention ranges.
+fn extract_mentions(body_ranges: &[presage::proto::BodyRange]) -> Vec<(u32, u32, String)> {
+    use presage::proto::body_range::AssociatedValue;
+    let mut mentions = Vec::new();
+    for range in body_ranges {
+        let start = range.start.unwrap_or(0);
+        let length = range.length.unwrap_or(1);
+        if let Some(ref av) = range.associated_value {
+            let uuid_str = match av {
+                AssociatedValue::MentionAci(s) => Some(s.clone()),
+                AssociatedValue::MentionAciBinary(bytes) => {
+                    Uuid::from_slice(bytes).ok().map(|u| u.to_string())
+                }
+                _ => None,
+            };
+            if let Some(uuid) = uuid_str {
+                mentions.push((start, length, uuid));
+            }
+        }
+    }
+    mentions
+}
+
+/// Resolve raw mention tuples into Mention structs by looking up display names.
+async fn resolve_mentions(
+    raw: &[(u32, u32, String)],
+    manager: &PresageManager,
+) -> Vec<Mention> {
+    let mut resolved = Vec::with_capacity(raw.len());
+    for (start, length, uuid_str) in raw {
+        let name = if let Ok(uuid) = uuid_str.parse::<Uuid>() {
+            let sid = ServiceId::from(Aci::from(uuid));
+            let (n, _) = resolve_contact_name_readonly(manager, uuid, &sid).await;
+            if n.is_empty() || n == uuid.to_string() {
+                uuid_str.clone()
+            } else {
+                n
+            }
+        } else {
+            uuid_str.clone()
+        };
+        resolved.push(Mention {
+            start: *start,
+            length: *length,
+            uuid: uuid_str.clone(),
+            name,
+        });
+    }
+    resolved
+}
+
+/// Replace U+FFFC placeholder characters in body text with @Name for each mention.
+/// Mentions must be sorted by start position. Adjusts mention start positions in-place
+/// to account for the replacement.
+fn replace_mention_placeholders(body: &str, mentions: &mut [Mention]) -> String {
+    if mentions.is_empty() {
+        return body.to_string();
+    }
+    // Sort by start position descending so replacements don't shift earlier offsets
+    mentions.sort_by(|a, b| b.start.cmp(&a.start));
+    let mut chars: Vec<char> = body.chars().collect();
+    for mention in mentions.iter() {
+        let start = mention.start as usize;
+        let length = mention.length as usize;
+        if start < chars.len() {
+            let replacement: Vec<char> = format!("@{}", mention.name).chars().collect();
+            let end = (start + length).min(chars.len());
+            chars.splice(start..end, replacement);
+        }
+    }
+    // Now re-sort ascending and fix up start positions
+    mentions.sort_by(|a, b| a.start.cmp(&b.start));
+    // Recalculate start offsets based on the new string
+    let result: String = chars.into_iter().collect();
+    let mut offset: i64 = 0;
+    for mention in mentions.iter_mut() {
+        let old_start = mention.start as i64;
+        mention.start = (old_start + offset) as u32;
+        let replacement_len = format!("@{}", mention.name).len() as i64;
+        let original_len = mention.length as i64;
+        offset += replacement_len - original_len;
+        mention.length = replacement_len as u32;
+    }
+    result
 }
 
 /// Process incoming content and convert to our Message type or a reaction event.
@@ -1848,6 +1966,7 @@ fn process_content(
             let body = dm.body.clone();
             let pointers = dm.attachments.clone();
             let channel_id = channel_id_from_dm(dm, sender_uuid)?;
+            let raw_mentions = extract_mentions(&dm.body_ranges);
 
             Some(ProcessedContent::Message(
                 Message {
@@ -1861,8 +1980,10 @@ fn process_content(
                     status: MessageStatus::Delivered,
                     attachments: vec![],
                     reactions: vec![],
+                    mentions: vec![],
                 },
                 pointers,
+                raw_mentions,
             ))
         }
         ContentBody::SynchronizeMessage(sync) => {
@@ -1897,6 +2018,7 @@ fn process_content(
 
                     let body = dm.body.clone();
                     let pointers = dm.attachments.clone();
+                    let raw_mentions = extract_mentions(&dm.body_ranges);
 
                     let channel_id = if let Some(group_v2) = &dm.group_v2 {
                         group_v2.master_key.as_ref().map(hex::encode)?
@@ -1920,8 +2042,10 @@ fn process_content(
                             status: MessageStatus::Sent,
                             attachments: vec![],
                             reactions: vec![],
+                            mentions: vec![],
                         },
                         pointers,
+                        raw_mentions,
                     ));
                 }
             }

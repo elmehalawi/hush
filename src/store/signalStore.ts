@@ -27,6 +27,13 @@ export interface Reaction {
   targetTimestamp: number;
 }
 
+export interface Mention {
+  start: number;
+  length: number;
+  uuid: string;
+  name: string;
+}
+
 export interface Message {
   id: string;
   channelId: string;
@@ -38,6 +45,7 @@ export interface Message {
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   attachments: Attachment[];
   reactions: Reaction[];
+  mentions: Mention[];
 }
 
 export type LinkingState =
