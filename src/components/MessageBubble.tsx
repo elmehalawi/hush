@@ -475,14 +475,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
         </>
       )}
       {hovered && onReact && !isOutgoing && (
-        <View style={[
-          styles.reactionBarOverlay,
-          isOutgoing
-            ? styles.reactionBarOverlayOutgoing
-            : showSenderInfo
-              ? styles.reactionBarOverlayIncomingGroup
-              : styles.reactionBarOverlayIncoming,
-        ]}>
+        <View style={styles.reactionBarOverlay}>
           <ReactionBar onReact={handleReact} existingReactionEmoji={myReaction?.emoji} />
         </View>
       )}
@@ -693,17 +686,11 @@ const styles = StyleSheet.create({
   },
   reactionBarOverlay: {
     position: 'absolute',
+    right: 8,
+    top: 0,
     bottom: 0,
+    justifyContent: 'center',
     zIndex: 10,
-  },
-  reactionBarOverlayOutgoing: {
-    right: 12,
-  },
-  reactionBarOverlayIncoming: {
-    left: 12,
-  },
-  reactionBarOverlayIncomingGroup: {
-    left: 46,
   },
   reactionsContainer: {
     flexDirection: 'row',
