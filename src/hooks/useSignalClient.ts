@@ -1,6 +1,6 @@
 import {useEffect, useRef, useCallback} from 'react';
 import {NativeModules, NativeEventEmitter, Platform} from 'react-native';
-import {useSignalStore, Message, Channel, Attachment, Reaction, ReactionEvent} from '../store/signalStore';
+import {useSignalStore, Message, Channel, Attachment, Mention, Reaction, ReactionEvent} from '../store/signalStore';
 
 // Get the native module
 const {PresageModule} = NativeModules;
@@ -48,6 +48,13 @@ interface NativeReactionEvent {
   remove: boolean;
 }
 
+interface NativeMention {
+  start: number;
+  length: number;
+  uuid: string;
+  name: string;
+}
+
 interface NativeMessage {
   id: string;
   channelId: string;
@@ -59,6 +66,7 @@ interface NativeMessage {
   status: string;
   attachments: NativeAttachment[] | null;
   reactions: NativeReaction[] | null;
+  mentions: NativeMention[] | null;
 }
 
 // Convert native channel to store channel
@@ -109,6 +117,7 @@ function convertMessage(native: NativeMessage): Message {
     status: native.status as Message['status'],
     attachments: (native.attachments || []).map(convertAttachment),
     reactions: (native.reactions || []).map(convertReaction),
+    mentions: (native.mentions || []),
   };
 }
 

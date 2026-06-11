@@ -64,6 +64,19 @@ pub struct Reaction {
     pub target_timestamp: u64,
 }
 
+/// A mention of a user within a message body
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct Mention {
+    /// Character offset in body where the mention starts
+    pub start: u32,
+    /// Number of characters replaced (always 1 for \uFFFC placeholder)
+    pub length: u32,
+    /// UUID of the mentioned user
+    pub uuid: String,
+    /// Resolved display name of the mentioned user
+    pub name: String,
+}
+
 /// Represents a single message
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Message {
@@ -87,6 +100,8 @@ pub struct Message {
     pub attachments: Vec<Attachment>,
     /// Emoji reactions on this message
     pub reactions: Vec<Reaction>,
+    /// Mentions of other users in the message body
+    pub mentions: Vec<Mention>,
 }
 
 /// Message delivery status

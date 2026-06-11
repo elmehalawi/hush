@@ -1037,6 +1037,15 @@ class PresageModule: RCTEventEmitter {
         ]
     }
 
+    private func mentionToDict(_ mention: Mention) -> [String: Any?] {
+        return [
+            "start": NSNumber(value: mention.start),
+            "length": NSNumber(value: mention.length),
+            "uuid": mention.uuid,
+            "name": mention.name,
+        ]
+    }
+
     private func messageToDict(_ message: Message) -> [String: Any?] {
         var dict: [String: Any?] = [
             "id": message.id,
@@ -1050,6 +1059,7 @@ class PresageModule: RCTEventEmitter {
         dict["timestamp"] = NSNumber(value: message.timestamp)
         dict["attachments"] = message.attachments.map { attachmentToDict($0) }
         dict["reactions"] = message.reactions.map { reactionToDict($0) }
+        dict["mentions"] = message.mentions.map { mentionToDict($0) }
         return dict
     }
 
