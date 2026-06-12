@@ -51,6 +51,8 @@ pub struct SignalClient {
     listener: Arc<RwLock<Option<Arc<dyn MessageListener>>>>,
     /// Set of cache keys currently being downloaded (dedup concurrent downloads)
     inflight_downloads: Arc<RwLock<HashSet<String>>>,
+    /// Timestamps of outgoing messages confirmed read by recipients, persisted to read_receipts.json
+    read_receipt_timestamps: Arc<RwLock<HashSet<u64>>>,
 }
 
 #[uniffi::export]
@@ -110,6 +112,7 @@ impl SignalClient {
 
         // Load persisted read state
         let read_state = load_read_state(&data_dir);
+        let read_receipt_timestamps = load_read_receipts(&data_dir);
 
         Ok(Arc::new(Self {
             manager: RwLock::new(manager),
@@ -122,6 +125,7 @@ impl SignalClient {
             read_state: Arc::new(RwLock::new(read_state)),
             listener: Arc::new(RwLock::new(None)),
             inflight_downloads: Arc::new(RwLock::new(HashSet::new())),
+            read_receipt_timestamps: Arc::new(RwLock::new(read_receipt_timestamps)),
         }))
     }
 
@@ -664,6 +668,14 @@ impl SignalClient {
                 }
             }
 
+            // Apply persisted read receipt status to outgoing messages
+            let read_receipts = self.read_receipt_timestamps.read();
+            for msg in &mut messages {
+                if msg.is_outgoing && msg.status != MessageStatus::Read && read_receipts.contains(&msg.timestamp) {
+                    msg.status = MessageStatus::Read;
+                }
+            }
+
             // messages() returns DESC order; reverse to chronological
             messages.reverse();
             Ok(messages)
@@ -1076,6 +1088,8 @@ impl SignalClient {
         let self_listener = self.listener.clone();
         let manager_for_stream = manager.clone();
         let manager_for_attachments = manager.clone();
+        let read_receipt_timestamps = self.read_receipt_timestamps.clone();
+        let data_dir_for_receipts = self.data_dir.clone();
         let attachments_dir = self.data_dir.join("attachments");
         let _ = std::fs::create_dir_all(&attachments_dir);
         let avatars_dir = self.data_dir.join("avatars");
@@ -1135,8 +1149,15 @@ impl SignalClient {
                                             continue;
                                         }
 
-                                        // Handle read receipts
+                                        // Handle read receipts — persist timestamps and notify JS
                                         if let Some(ProcessedContent::ReadReceipt { sender_id, timestamps }) = &result {
+                                            {
+                                                let mut receipts = read_receipt_timestamps.write();
+                                                for ts in timestamps {
+                                                    receipts.insert(*ts);
+                                                }
+                                                save_read_receipts(&data_dir_for_receipts, &receipts);
+                                            }
                                             listener.on_read_receipt(sender_id.clone(), timestamps.clone());
                                             continue;
                                         }
@@ -2174,6 +2195,30 @@ fn save_read_state(data_dir: &std::path::Path, state: &HashMap<String, u64>) {
         }
         Err(e) => {
             warn!("Failed to serialize read state: {}", e);
+        }
+    }
+}
+
+/// Load persisted read receipt timestamps from disk, returning empty set on any error.
+fn load_read_receipts(data_dir: &std::path::Path) -> HashSet<u64> {
+    let path = data_dir.join("read_receipts.json");
+    match std::fs::read_to_string(&path) {
+        Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
+        Err(_) => HashSet::new(),
+    }
+}
+
+/// Persist read receipt timestamps to disk. Best-effort; errors are logged.
+fn save_read_receipts(data_dir: &std::path::Path, timestamps: &HashSet<u64>) {
+    let path = data_dir.join("read_receipts.json");
+    match serde_json::to_string(timestamps) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(&path, json) {
+                warn!("Failed to write read_receipts.json: {}", e);
+            }
+        }
+        Err(e) => {
+            warn!("Failed to serialize read receipts: {}", e);
         }
     }
 }
