@@ -353,6 +353,21 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
 
   const readReceiptColor = colorScheme === 'dark' ? 'rgba(255,255,255,0.4)' : '#8E8E93';
 
+  // Resolve read-by names for group chats
+  const channels = useSignalStore(state => state.channels);
+  const readReceiptLabel = (() => {
+    if (!showReadReceipt || !isGroup || message.readBy.length === 0) {
+      return 'Read';
+    }
+    const names = message.readBy
+      .map(uuid => channels.find(ch => ch.id === uuid)?.name)
+      .filter(Boolean);
+    if (names.length === 0) {
+      return 'Read';
+    }
+    return `Read by ${names.join(', ')}`;
+  })();
+
   const statusBelow = isOutgoing ? (
     <>
       {message.status === 'sending' && (
@@ -367,7 +382,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
       )}
       {showReadReceipt && (
         <View style={[styles.belowBubbleStatus, styles.belowBubbleStatusOutgoing]}>
-          <Text style={[styles.readText, {color: readReceiptColor}]}>Read</Text>
+          <Text style={[styles.readText, {color: readReceiptColor}]}>{readReceiptLabel}</Text>
         </View>
       )}
     </>

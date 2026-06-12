@@ -102,6 +102,8 @@ pub struct Message {
     pub reactions: Vec<Reaction>,
     /// Mentions of other users in the message body
     pub mentions: Vec<Mention>,
+    /// UUIDs of users who have read this message (outgoing only)
+    pub read_by: Vec<String>,
 }
 
 /// Message delivery status

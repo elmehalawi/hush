@@ -1231,6 +1231,7 @@ class PresageModule: RCTEventEmitter {
         dict["attachments"] = message.attachments.map { attachmentToDict($0) }
         dict["reactions"] = message.reactions.map { reactionToDict($0) }
         dict["mentions"] = message.mentions.map { mentionToDict($0) }
+        dict["readBy"] = message.readBy
         return dict
     }
 

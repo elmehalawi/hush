@@ -67,6 +67,7 @@ interface NativeMessage {
   attachments: NativeAttachment[] | null;
   reactions: NativeReaction[] | null;
   mentions: NativeMention[] | null;
+  readBy: string[] | null;
 }
 
 // Convert native channel to store channel
@@ -118,6 +119,7 @@ function convertMessage(native: NativeMessage): Message {
     attachments: (native.attachments || []).map(convertAttachment),
     reactions: (native.reactions || []).map(convertReaction),
     mentions: (native.mentions || []),
+    readBy: native.readBy || [],
   };
 }
 
@@ -447,7 +449,7 @@ export function useSignalClient() {
         });
       }),
       presageEventEmitter.addListener('onReadReceipt', (event: {senderId: string; timestamps: number[]}) => {
-        markMessagesAsRead(event.timestamps);
+        markMessagesAsRead(event.senderId, event.timestamps);
       }),
       presageEventEmitter.addListener('onChannelUpdated', (channel: NativeChannel) => {
         updateChannel(convertChannel(channel));

@@ -46,6 +46,7 @@ export interface Message {
   attachments: Attachment[];
   reactions: Reaction[];
   mentions: Mention[];
+  readBy: string[];
 }
 
 export type LinkingState =
@@ -91,7 +92,7 @@ interface SignalStore {
     attachmentIndex: number,
     attachment: Attachment,
   ) => void;
-  markMessagesAsRead: (timestamps: number[]) => void;
+  markMessagesAsRead: (senderId: string, timestamps: number[]) => void;
 }
 
 export const useSignalStore = create<SignalStore>((set, get) => ({
@@ -272,7 +273,7 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
     });
   },
 
-  markMessagesAsRead: (timestamps: number[]) => {
+  markMessagesAsRead: (senderId: string, timestamps: number[]) => {
     const {messages} = get();
     const tsSet = new Set(timestamps);
     let changed = false;
@@ -282,9 +283,16 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
       const channelMessages = updatedMessages[channelId];
       let channelChanged = false;
       const newMessages = channelMessages.map(m => {
-        if (m.isOutgoing && tsSet.has(m.timestamp) && m.status !== 'read') {
-          channelChanged = true;
-          return {...m, status: 'read' as const};
+        if (m.isOutgoing && tsSet.has(m.timestamp)) {
+          const alreadyHasReader = m.readBy.includes(senderId);
+          if (m.status !== 'read' || !alreadyHasReader) {
+            channelChanged = true;
+            return {
+              ...m,
+              status: 'read' as const,
+              readBy: alreadyHasReader ? m.readBy : [...m.readBy, senderId],
+            };
+          }
         }
         return m;
       });

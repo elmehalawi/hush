@@ -1316,6 +1316,10 @@ public struct Message {
      * Mentions of other users in the message body
      */
     public var mentions: [Mention]
+    /**
+     * UUIDs of users who have read this message (outgoing only)
+     */
+    public var readBy: [String]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1352,7 +1356,10 @@ public struct Message {
             */ reactions: [Reaction],
         /**
             * Mentions of other users in the message body
-            */ mentions: [Mention]
+            */ mentions: [Mention],
+        /**
+            * UUIDs of users who have read this message (outgoing only)
+            */ readBy: [String]
     ) {
         self.id = id
         self.channelId = channelId
@@ -1365,6 +1372,7 @@ public struct Message {
         self.attachments = attachments
         self.reactions = reactions
         self.mentions = mentions
+        self.readBy = readBy
     }
 }
 
@@ -1403,6 +1411,9 @@ extension Message: Equatable, Hashable {
         if lhs.mentions != rhs.mentions {
             return false
         }
+        if lhs.readBy != rhs.readBy {
+            return false
+        }
         return true
     }
 
@@ -1418,6 +1429,7 @@ extension Message: Equatable, Hashable {
         hasher.combine(attachments)
         hasher.combine(reactions)
         hasher.combine(mentions)
+        hasher.combine(readBy)
     }
 }
 
@@ -1438,7 +1450,8 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
                 status: FfiConverterTypeMessageStatus.read(from: &buf),
                 attachments: FfiConverterSequenceTypeAttachment.read(from: &buf),
                 reactions: FfiConverterSequenceTypeReaction.read(from: &buf),
-                mentions: FfiConverterSequenceTypeMention.read(from: &buf)
+                mentions: FfiConverterSequenceTypeMention.read(from: &buf),
+                readBy: FfiConverterSequenceString.read(from: &buf)
             )
     }
 
@@ -1454,6 +1467,7 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
         FfiConverterSequenceTypeAttachment.write(value.attachments, into: &buf)
         FfiConverterSequenceTypeReaction.write(value.reactions, into: &buf)
         FfiConverterSequenceTypeMention.write(value.mentions, into: &buf)
+        FfiConverterSequenceString.write(value.readBy, into: &buf)
     }
 }
 
