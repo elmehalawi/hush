@@ -1,0 +1,21 @@
+[package]
+name = "whisper-transcribe"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+name = "whisper_transcribe"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+
+[dependencies]
+uniffi = { version = "0.28", features = ["cli"] }
+mlx-whisper-rs = { git = "https://github.com/chrisliuqq/mlx-whisper-rs" }
+thiserror = "1"
+tracing = "0.1"
+
+[build-dependencies]
+uniffi = { version = "0.28", features = ["build"] }

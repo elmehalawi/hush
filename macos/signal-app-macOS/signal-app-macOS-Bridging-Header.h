@@ -9,5 +9,6 @@
 #import <React/RCTUIKit.h>
 #import <React/UIView+React.h>
 
-// UniFFI generated FFI header
+// UniFFI generated FFI headers
 #import "presage_rnFFI.h"
+#import "whisper_transcribeFFI.h"

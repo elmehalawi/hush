@@ -35,6 +35,8 @@
 		GLASS001A00000000000006 /* GlassButtonManager.m in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000006 /* GlassButtonManager.m */; };
 		SCRL001A00000000000001 /* ScrollFix.m in Sources */ = {isa = PBXBuildFile; fileRef = SCRL001F00000000000001 /* ScrollFix.m */; };
 		ICON001A00000000000001 /* HushIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = ICON001F00000000000001 /* HushIcon.icon */; };
+		WHSP001A00000000000001 /* whisper_transcribe.swift in Sources */ = {isa = PBXBuildFile; fileRef = WHSP001F00000000000001 /* whisper_transcribe.swift */; };
+		WHSP001A00000000000002 /* libwhisper_transcribe.a in Frameworks */ = {isa = PBXBuildFile; fileRef = WHSP001F00000000000002 /* libwhisper_transcribe.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -75,6 +77,9 @@
 		GLASS001F00000000000006 /* GlassButtonManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GlassButtonManager.m; sourceTree = "<group>"; };
 		ICON001F00000000000001 /* HushIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder; path = HushIcon.icon; sourceTree = "<group>"; };
 		SCRL001F00000000000001 /* ScrollFix.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ScrollFix.m; sourceTree = "<group>"; };
+		WHSP001F00000000000001 /* whisper_transcribe.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = whisper_transcribe.swift; sourceTree = "<group>"; };
+		WHSP001F00000000000002 /* libwhisper_transcribe.a */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = archive.ar; path = libwhisper_transcribe.a; sourceTree = "<group>"; };
+		WHSP001F00000000000003 /* whisper_transcribeFFI.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = whisper_transcribeFFI.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -91,6 +96,7 @@
 			files = (
 				42A2C1803AEA92B14FAD318A /* libPods-signal-app-macOS.a in Frameworks */,
 				F3C9B14F6A74289C100C59FD /* libpresage_rn.a in Frameworks */,
+				WHSP001A00000000000002 /* libwhisper_transcribe.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -188,6 +194,9 @@
 				FF4F3294F0B388BC62D496B0 /* presage_rn.swift */,
 				117182038BA723E288796968 /* presage_rnFFI.h */,
 				136E792A8A613D523E99B308 /* libpresage_rn.a */,
+				WHSP001F00000000000001 /* whisper_transcribe.swift */,
+				WHSP001F00000000000003 /* whisper_transcribeFFI.h */,
+				WHSP001F00000000000002 /* libwhisper_transcribe.a */,
 			);
 			name = Generated;
 			path = Generated;
@@ -418,6 +427,7 @@
 				SCRL001A00000000000001 /* ScrollFix.m in Sources */,
 				CCRN001A00000000000001 /* ContinuousCorners.m in Sources */,
 				61A07EBCE7FD3C2C3080354A /* presage_rn.swift in Sources */,
+				WHSP001A00000000000001 /* whisper_transcribe.swift in Sources */,
 				GLASS001A00000000000001 /* GlassEffectView.swift in Sources */,
 				GLASS001A00000000000002 /* GlassEffectViewManager.m in Sources */,
 				GLASS001A00000000000003 /* GlassContainerView.swift in Sources */,
@@ -515,6 +525,12 @@
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
+					"-framework",
+					Metal,
+					"-framework",
+					Accelerate,
+					"-framework",
+					MetalPerformanceShadersGraph,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = Hush;
@@ -550,6 +566,12 @@
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
+					"-framework",
+					Metal,
+					"-framework",
+					Accelerate,
+					"-framework",
+					MetalPerformanceShadersGraph,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = Hush;

@@ -1,0 +1,4 @@
+module whisper_transcribeFFI {
+    header "whisper_transcribeFFI.h"
+    export *
+}

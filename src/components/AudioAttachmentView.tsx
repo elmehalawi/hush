@@ -57,6 +57,9 @@ export function AudioAttachmentView({filePath, isOutgoing}: AudioAttachmentViewP
   const [playing, setPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [transcription, setTranscription] = useState<string | null>(null);
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
   const waveformRef = useRef<View>(null);
   const waveformWidthRef = useRef(0);
 
@@ -116,6 +119,21 @@ export function AudioAttachmentView({filePath, isOutgoing}: AudioAttachmentViewP
     [duration],
   );
 
+  const handleTranscribe = useCallback(() => {
+    if (transcription || transcribing) return;
+    setTranscribing(true);
+    setTranscriptionError(null);
+    PresageModule.transcribeAudio(filePath)
+      .then((result: any) => {
+        setTranscription(result.text);
+        setTranscribing(false);
+      })
+      .catch((err: any) => {
+        setTranscriptionError(err?.message || 'Transcription failed');
+        setTranscribing(false);
+      });
+  }, [filePath, transcription, transcribing]);
+
   const progress = duration > 0 ? currentTime / duration : 0;
   const displayTime = playing ? formatTime(currentTime) : formatTime(duration);
   const playedBars = Math.floor(progress * BAR_COUNT);
@@ -146,59 +164,93 @@ export function AudioAttachmentView({filePath, isOutgoing}: AudioAttachmentViewP
     ? 'rgba(255, 255, 255, 0.7)'
     : (isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.4)');
 
+  // Transcribe button color
+  const transcribeBtnColor = isOutgoing
+    ? 'rgba(255, 255, 255, 0.6)'
+    : (isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.3)');
+
+  // Transcription text color
+  const transcriptionTextColor = isOutgoing
+    ? 'rgba(255, 255, 255, 0.9)'
+    : (isDark ? '#EBEBF0' : '#1C1C1E');
+
   return (
     <View style={[styles.bubble, {backgroundColor: bubbleBg}, isOutgoing ? styles.bubbleOutgoing : styles.bubbleIncoming]}>
-      <Pressable onPress={handlePlayPause} style={[styles.playButton, {backgroundColor: playBtnBg}]}>
-        <Text style={[styles.playIcon, {color: playIconColor}]}>
-          {playing ? '\u23F8' : '\u25B6'}
-        </Text>
-      </Pressable>
-      <Pressable
-        onPress={handleSeek}
-        style={styles.waveformPressable}
-      >
-        <View
-          ref={waveformRef}
-          onLayout={(e) => {
-            waveformWidthRef.current = e.nativeEvent.layout.width;
-          }}
-          style={styles.waveformContainer}
+      <View style={styles.topRow}>
+        <Pressable onPress={handlePlayPause} style={[styles.playButton, {backgroundColor: playBtnBg}]}>
+          <Text style={[styles.playIcon, {color: playIconColor}]}>
+            {playing ? '\u23F8' : '\u25B6'}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={handleSeek}
+          style={styles.waveformPressable}
         >
-          {waveform.map((height, i) => (
-            <View
-              key={i}
-              style={[
-                styles.bar,
-                {
-                  height,
-                  backgroundColor: i < playedBars ? playedBarColor : unplayedBarColor,
-                },
-              ]}
-            />
-          ))}
+          <View
+            ref={waveformRef}
+            onLayout={(e) => {
+              waveformWidthRef.current = e.nativeEvent.layout.width;
+            }}
+            style={styles.waveformContainer}
+          >
+            {waveform.map((height, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.bar,
+                  {
+                    height,
+                    backgroundColor: i < playedBars ? playedBarColor : unplayedBarColor,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+        </Pressable>
+        <Text style={[styles.timeLabel, {color: timeColor}]}>{displayTime}</Text>
+        <Pressable
+          onPress={handleTranscribe}
+          style={[styles.transcribeButton, transcription ? styles.transcribeButtonActive : null]}
+          disabled={transcribing}
+        >
+          <Text style={[styles.transcribeButtonText, {color: transcribeBtnColor}, transcription ? {opacity: 1} : null]}>
+            {transcribing ? '\u2026' : 'Aa'}
+          </Text>
+        </Pressable>
+      </View>
+      {transcription ? (
+        <View style={[styles.transcriptionContainer, {borderTopColor: isOutgoing ? 'rgba(255,255,255,0.15)' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)')}]}>
+          <Text style={[styles.transcriptionText, {color: transcriptionTextColor}]}>{transcription}</Text>
         </View>
-      </Pressable>
-      <Text style={[styles.timeLabel, {color: timeColor}]}>{displayTime}</Text>
+      ) : null}
+      {transcriptionError ? (
+        <View style={styles.transcriptionContainer}>
+          <Text style={[styles.transcriptionText, {color: 'rgba(255,59,48,0.8)', fontSize: 11}]}>{transcriptionError}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   bubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 18,
     minWidth: 220,
-    maxWidth: 280,
-    gap: 10,
+    maxWidth: 300,
   },
   bubbleOutgoing: {
     borderBottomRightRadius: 4,
   },
   bubbleIncoming: {
     borderBottomLeftRadius: 4,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   playButton: {
     width: 30,
@@ -233,5 +285,27 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
     minWidth: 30,
     textAlign: 'right',
+  },
+  transcribeButton: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  transcribeButtonActive: {
+    opacity: 0.7,
+  },
+  transcribeButtonText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  transcriptionContainer: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  transcriptionText: {
+    fontSize: 13,
+    lineHeight: 18,
   },
 });

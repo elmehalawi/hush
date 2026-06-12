@@ -22,6 +22,9 @@ class PresageModule: RCTEventEmitter {
     private var audioProgressTimer: Timer?
     private var currentAudioFilePath: String?
 
+    // Transcription
+    private var transcriptionEngine: TranscriptionEngine?
+
     // Notifications
     private var notificationsAuthorized = false
     private var channelNameCache: [String: String] = [:]
@@ -745,6 +748,174 @@ class PresageModule: RCTEventEmitter {
             }
             self.stopAudioInternal()
         }
+    }
+
+    // MARK: - Transcription
+
+    @objc(prepareTranscriptionModel:rejecter:)
+    func prepareTranscriptionModel(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                if self.transcriptionEngine == nil {
+                    let assetsDir = (Bundle.main.resourcePath ?? "") + "/whisper-assets"
+                    let modelRepo = "mlx-community/whisper-large-v3-turbo"
+                    self.transcriptionEngine = TranscriptionEngine(assetsDir: assetsDir, modelRepo: modelRepo)
+                }
+                try self.transcriptionEngine?.prepareModel()
+                NSLog("PresageModule: Transcription model loaded successfully")
+                resolver(nil)
+            } catch {
+                NSLog("PresageModule: Failed to prepare transcription model: \(error)")
+                rejecter("TRANSCRIBE_MODEL_ERROR", "Failed to prepare transcription model: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
+    @objc(transcribeAudio:resolver:rejecter:)
+    func transcribeAudio(_ filePath: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Check cache first
+            let cacheFile = filePath + ".transcription.json"
+            if let cachedData = FileManager.default.contents(atPath: cacheFile),
+               let cached = try? JSONSerialization.jsonObject(with: cachedData) as? [String: Any] {
+                NSLog("PresageModule: Returning cached transcription for %@", filePath)
+                resolver(cached)
+                return
+            }
+
+            // Ensure engine is ready
+            if self.transcriptionEngine == nil || !(self.transcriptionEngine?.isModelLoaded() ?? false) {
+                do {
+                    if self.transcriptionEngine == nil {
+                        let assetsDir = (Bundle.main.resourcePath ?? "") + "/whisper-assets"
+                        let modelRepo = "mlx-community/whisper-large-v3-turbo"
+                        self.transcriptionEngine = TranscriptionEngine(assetsDir: assetsDir, modelRepo: modelRepo)
+                    }
+                    try self.transcriptionEngine?.prepareModel()
+                } catch {
+                    NSLog("PresageModule: Transcription model error: %@", "\(error)")
+                    rejecter("TRANSCRIBE_MODEL_ERROR", "Failed to load model: \(error.localizedDescription)", error)
+                    return
+                }
+            }
+
+            // Convert audio to WAV if needed
+            let wavPath: String
+            do {
+                wavPath = try self.convertToWav(filePath: filePath)
+            } catch {
+                NSLog("PresageModule: Audio convert error: %@", "\(error)")
+                rejecter("TRANSCRIBE_AUDIO_ERROR", "Failed to convert audio: \(error.localizedDescription)", error)
+                return
+            }
+
+            // Run transcription
+            do {
+                let result = try self.transcriptionEngine!.transcribeFile(audioPath: wavPath, language: nil)
+
+                let segments: [[String: Any]] = result.segments.map { seg in
+                    return [
+                        "start": seg.start,
+                        "end": seg.end,
+                        "text": seg.text,
+                    ]
+                }
+
+                let dict: [String: Any] = [
+                    "text": result.text,
+                    "language": result.language,
+                    "segments": segments,
+                ]
+
+                // Cache the result
+                if let jsonData = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted]) {
+                    FileManager.default.createFile(atPath: cacheFile, contents: jsonData)
+                }
+
+                // Clean up temp WAV if we created one
+                if wavPath != filePath {
+                    try? FileManager.default.removeItem(atPath: wavPath)
+                }
+
+                resolver(dict)
+            } catch {
+                // Clean up temp WAV if we created one
+                if wavPath != filePath {
+                    try? FileManager.default.removeItem(atPath: wavPath)
+                }
+                NSLog("PresageModule: Transcription error: %@", "\(error)")
+                rejecter("TRANSCRIBE_ERROR", "Transcription failed: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
+    @objc(isTranscriptionModelReady:rejecter:)
+    func isTranscriptionModelReady(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        resolver(transcriptionEngine?.isModelLoaded() ?? false)
+    }
+
+    /// Convert an audio file to 16kHz mono WAV using AVAssetReader.
+    /// Handles all container formats (M4A, AAC ADTS, MP3, OGG, etc.)
+    private func convertToWav(filePath: String) throws -> String {
+        let url = URL(fileURLWithPath: filePath)
+        let ext = url.pathExtension.lowercased()
+
+        // If already a WAV, return as-is
+        if ext == "wav" {
+            return filePath
+        }
+
+        let tmpDir = NSTemporaryDirectory()
+        let wavName = (filePath as NSString).lastPathComponent.replacingOccurrences(of: ".\(ext)", with: ".wav")
+        let wavPath = "\(tmpDir)\(wavName)_\(Int(Date().timeIntervalSince1970 * 1000)).wav"
+
+        let asset = AVAsset(url: url)
+        let reader = try AVAssetReader(asset: asset)
+
+        guard let audioTrack = asset.tracks(withMediaType: .audio).first else {
+            throw NSError(domain: "PresageModule", code: -1, userInfo: [NSLocalizedDescriptionKey: "No audio track in file"])
+        }
+
+        // Request 16kHz mono Float32 PCM output
+        let outputSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: 16000,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false,
+        ]
+
+        let trackOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: outputSettings)
+        reader.add(trackOutput)
+        reader.startReading()
+
+        // Write WAV output
+        let wavFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: true)!
+        let outputFile = try AVAudioFile(forWriting: URL(fileURLWithPath: wavPath), settings: wavFormat.settings)
+
+        while let sampleBuffer = trackOutput.copyNextSampleBuffer() {
+            let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer)!
+            var length = 0
+            var dataPointer: UnsafeMutablePointer<Int8>?
+            CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &dataPointer)
+
+            if let dataPointer = dataPointer, length > 0 {
+                let frameCount = AVAudioFrameCount(length / MemoryLayout<Float>.size)
+                if let pcmBuffer = AVAudioPCMBuffer(pcmFormat: wavFormat, frameCapacity: frameCount) {
+                    pcmBuffer.frameLength = frameCount
+                    memcpy(pcmBuffer.floatChannelData![0], dataPointer, length)
+                    try outputFile.write(from: pcmBuffer)
+                }
+            }
+        }
+
+        if reader.status == .failed {
+            throw reader.error ?? NSError(domain: "PresageModule", code: -3, userInfo: [NSLocalizedDescriptionKey: "AVAssetReader failed"])
+        }
+
+        return wavPath
     }
 
     // MARK: - Channel Context Menu

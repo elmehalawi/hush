@@ -6,6 +6,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUST_DIR="$SCRIPT_DIR/rust/presage-rn"
+WHISPER_RUST_DIR="$SCRIPT_DIR/rust/whisper-transcribe"
 MACOS_DIR="$SCRIPT_DIR/macos"
 GENERATED_DIR="$MACOS_DIR/Generated"
 
@@ -75,6 +76,7 @@ fi
 
 RUST_TARGET="aarch64-apple-darwin"
 DYLIB_PATH="$RUST_DIR/target/$RUST_TARGET/$RUST_PROFILE/libpresage_rn.dylib"
+WHISPER_DYLIB_PATH="$WHISPER_RUST_DIR/target/$RUST_TARGET/$RUST_PROFILE/libwhisper_transcribe.dylib"
 
 echo ""
 echo "=========================================="
@@ -88,6 +90,8 @@ if [ "$CLEAN" = true ]; then
 
     # Clean Rust
     cd "$RUST_DIR"
+    cargo clean 2>/dev/null || true
+    cd "$WHISPER_RUST_DIR"
     cargo clean 2>/dev/null || true
 
     # Clean Xcode derived data for this project
@@ -145,6 +149,42 @@ if [ -f "$STATIC_LIB" ]; then
     echo "  Copied: $GENERATED_DIR/libpresage_rn.a"
 else
     log_error "Static library not found at $STATIC_LIB"
+    exit 1
+fi
+
+# Step 2.6: Build whisper-transcribe Rust library
+log_step "Building whisper-transcribe library ($RUST_PROFILE, $RUST_TARGET)..."
+cd "$WHISPER_RUST_DIR"
+
+cargo build $RUST_FLAGS --target "$RUST_TARGET"
+
+if [ ! -f "$WHISPER_DYLIB_PATH" ]; then
+    log_error "whisper-transcribe build failed - dylib not found at $WHISPER_DYLIB_PATH"
+    exit 1
+fi
+
+echo "  Built: $WHISPER_DYLIB_PATH"
+
+# Step 2.7: Generate Swift bindings for whisper-transcribe
+log_step "Generating whisper-transcribe Swift bindings..."
+
+cd "$WHISPER_RUST_DIR"
+cargo run --bin uniffi-bindgen generate \
+    --library "$WHISPER_DYLIB_PATH" \
+    --language swift \
+    --out-dir "$GENERATED_DIR"
+
+echo "  Generated: $GENERATED_DIR/whisper_transcribe.swift"
+
+# Step 2.8: Copy whisper-transcribe static library
+log_step "Copying whisper-transcribe static library for Xcode linking..."
+WHISPER_STATIC_LIB="$WHISPER_RUST_DIR/target/$RUST_TARGET/$RUST_PROFILE/libwhisper_transcribe.a"
+
+if [ -f "$WHISPER_STATIC_LIB" ]; then
+    cp "$WHISPER_STATIC_LIB" "$GENERATED_DIR/"
+    echo "  Copied: $GENERATED_DIR/libwhisper_transcribe.a"
+else
+    log_error "whisper-transcribe static library not found at $WHISPER_STATIC_LIB"
     exit 1
 fi
 
@@ -214,10 +254,22 @@ if [ -d "$ICON_FILE" ]; then
     rm -rf "$APP_PATH/Contents/Resources/HushIcon.icon" 2>/dev/null || true
     echo "  App icon compiled and installed"
 
-    # Re-sign after modifying the bundle (ad-hoc)
-    codesign --force --deep --sign - "$APP_PATH"
-    echo "  Re-signed app bundle"
 fi
+
+# Step 4.6: Copy whisper assets into app bundle
+WHISPER_ASSETS_SRC="$SCRIPT_DIR/assets/whisper"
+if [ -d "$WHISPER_ASSETS_SRC" ]; then
+    log_step "Copying whisper assets into app bundle..."
+    WHISPER_ASSETS_DST="$APP_PATH/Contents/Resources/whisper-assets"
+    mkdir -p "$WHISPER_ASSETS_DST"
+    cp "$WHISPER_ASSETS_SRC"/*.tiktoken "$WHISPER_ASSETS_DST/" 2>/dev/null || true
+    cp "$WHISPER_ASSETS_SRC"/*.npy "$WHISPER_ASSETS_DST/" 2>/dev/null || true
+    echo "  Copied whisper assets to $WHISPER_ASSETS_DST"
+fi
+
+# Re-sign after modifying the bundle (ad-hoc)
+codesign --force --deep --sign - "$APP_PATH"
+echo "  Re-signed app bundle"
 
 echo ""
 echo -e "${GREEN}=========================================="
