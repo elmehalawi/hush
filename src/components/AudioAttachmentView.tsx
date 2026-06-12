@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useRef, useCallback} from 'react';
+import React, {useState, useEffect, useRef, useCallback, useMemo} from 'react';
 import {
   View,
   Text,
@@ -12,13 +12,38 @@ import {
 const {PresageModule} = NativeModules;
 const emitter = new NativeEventEmitter(PresageModule);
 
-const MACOS_BLUE = '#007AFF';
+const BAR_COUNT = 26;
+const BAR_WIDTH = 3;
+const BAR_GAP = 2;
+const BAR_MIN_HEIGHT = 3;
+const BAR_MAX_HEIGHT = 16;
 
 function formatTime(seconds: number): string {
   if (!isFinite(seconds) || seconds < 0) return '0:00';
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// Generate consistent waveform heights from a file path
+function generateWaveform(filePath: string): number[] {
+  let hash = 0;
+  for (let i = 0; i < filePath.length; i++) {
+    hash = ((hash << 5) - hash + filePath.charCodeAt(i)) | 0;
+  }
+  const bars: number[] = [];
+  for (let i = 0; i < BAR_COUNT; i++) {
+    // Simple LCG-style PRNG seeded from the hash
+    hash = (hash * 1103515245 + 12345) | 0;
+    const t = ((hash >>> 16) & 0x7fff) / 0x7fff;
+    // Shape it so the middle bars tend to be taller (bell-ish curve)
+    const center = BAR_COUNT / 2;
+    const dist = Math.abs(i - center) / center;
+    const envelope = 1 - dist * 0.4;
+    const height = BAR_MIN_HEIGHT + (BAR_MAX_HEIGHT - BAR_MIN_HEIGHT) * t * envelope;
+    bars.push(Math.round(height));
+  }
+  return bars;
 }
 
 interface AudioAttachmentViewProps {
@@ -32,8 +57,10 @@ export function AudioAttachmentView({filePath, isOutgoing}: AudioAttachmentViewP
   const [playing, setPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const barRef = useRef<View>(null);
-  const barWidthRef = useRef(0);
+  const waveformRef = useRef<View>(null);
+  const waveformWidthRef = useRef(0);
+
+  const waveform = useMemo(() => generateWaveform(filePath), [filePath]);
 
   useEffect(() => {
     PresageModule.getAudioDuration(filePath)
@@ -46,7 +73,6 @@ export function AudioAttachmentView({filePath, isOutgoing}: AudioAttachmentViewP
       if (event.filePath !== filePath) return;
       setCurrentTime(event.currentTime);
       setDuration(event.duration);
-      setPlaying(true);
     });
 
     const completeSub = emitter.addListener('onAudioComplete', (event: any) => {
@@ -81,8 +107,8 @@ export function AudioAttachmentView({filePath, isOutgoing}: AudioAttachmentViewP
   const handleSeek = useCallback(
     (event: any) => {
       const locationX = event.nativeEvent.locationX;
-      if (barWidthRef.current > 0 && duration > 0) {
-        const position = Math.max(0, Math.min(1, locationX / barWidthRef.current));
+      if (waveformWidthRef.current > 0 && duration > 0) {
+        const position = Math.max(0, Math.min(1, locationX / waveformWidthRef.current));
         PresageModule.seekAudio(position).catch(() => {});
         setCurrentTime(position * duration);
       }
@@ -92,111 +118,120 @@ export function AudioAttachmentView({filePath, isOutgoing}: AudioAttachmentViewP
 
   const progress = duration > 0 ? currentTime / duration : 0;
   const displayTime = playing ? formatTime(currentTime) : formatTime(duration);
+  const playedBars = Math.floor(progress * BAR_COUNT);
 
-  const glassBg = isOutgoing
-    ? 'rgba(255, 255, 255, 0.12)'
-    : isDark
-      ? 'rgba(255, 255, 255, 0.08)'
-      : 'rgba(0, 0, 0, 0.04)';
-  const glassBorder = isOutgoing
+  // Bubble colors matching the message bubbles
+  const bubbleBg = isOutgoing
+    ? (isDark ? '#2E6FA3' : '#3A9DF5')
+    : (isDark ? '#3A3A3D' : '#E9E9EB');
+
+  // Bar colors
+  const playedBarColor = isOutgoing
+    ? 'rgba(255, 255, 255, 0.9)'
+    : (isDark ? '#EBEBF0' : '#212121');
+  const unplayedBarColor = isOutgoing
+    ? 'rgba(255, 255, 255, 0.35)'
+    : (isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.15)');
+
+  // Play button
+  const playBtnBg = isOutgoing
     ? 'rgba(255, 255, 255, 0.2)'
-    : isDark
-      ? 'rgba(255, 255, 255, 0.1)'
-      : 'rgba(0, 0, 0, 0.06)';
-  const trackBg = isOutgoing
-    ? 'rgba(255, 255, 255, 0.15)'
-    : isDark
-      ? 'rgba(255, 255, 255, 0.1)'
-      : 'rgba(0, 0, 0, 0.06)';
-  const trackFillColor = isOutgoing
+    : (isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.07)');
+  const playIconColor = isOutgoing
+    ? '#FFFFFF'
+    : (isDark ? '#EBEBF0' : '#212121');
+
+  // Time color
+  const timeColor = isOutgoing
     ? 'rgba(255, 255, 255, 0.7)'
-    : 'rgba(255, 255, 255, 0.85)';
-  const trackBorderColor = isOutgoing
-    ? 'rgba(255, 255, 255, 0.25)'
-    : isDark
-      ? 'rgba(255, 255, 255, 0.12)'
-      : 'rgba(0, 0, 0, 0.08)';
-  const textColor = isOutgoing ? 'rgba(255, 255, 255, 0.8)' : MACOS_BLUE;
-  const buttonColor = isOutgoing ? 'white' : MACOS_BLUE;
+    : (isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.4)');
 
   return (
-    <View style={[styles.container, {backgroundColor: glassBg, borderColor: glassBorder}]}>
-      <Pressable onPress={handlePlayPause} style={styles.playButton}>
-        <Text style={[styles.playIcon, {color: buttonColor}]}>
+    <View style={[styles.bubble, {backgroundColor: bubbleBg}, isOutgoing ? styles.bubbleOutgoing : styles.bubbleIncoming]}>
+      <Pressable onPress={handlePlayPause} style={[styles.playButton, {backgroundColor: playBtnBg}]}>
+        <Text style={[styles.playIcon, {color: playIconColor}]}>
           {playing ? '\u23F8' : '\u25B6'}
         </Text>
       </Pressable>
-      <View style={styles.trackArea}>
-        <Pressable onPress={handleSeek} style={styles.trackPressable}>
-          <View
-            ref={barRef}
-            onLayout={(e) => {
-              barWidthRef.current = e.nativeEvent.layout.width;
-            }}
-            style={[styles.track, {backgroundColor: trackBg, borderColor: trackBorderColor}]}
-          >
+      <Pressable
+        onPress={handleSeek}
+        style={styles.waveformPressable}
+      >
+        <View
+          ref={waveformRef}
+          onLayout={(e) => {
+            waveformWidthRef.current = e.nativeEvent.layout.width;
+          }}
+          style={styles.waveformContainer}
+        >
+          {waveform.map((height, i) => (
             <View
+              key={i}
               style={[
-                styles.trackFill,
-                {width: `${progress * 100}%`, backgroundColor: trackFillColor},
+                styles.bar,
+                {
+                  height,
+                  backgroundColor: i < playedBars ? playedBarColor : unplayedBarColor,
+                },
               ]}
             />
-          </View>
-        </Pressable>
-        <Text style={[styles.timeLabel, {color: textColor}]}>{displayTime}</Text>
-      </View>
+          ))}
+        </View>
+      </Pressable>
+      <Text style={[styles.timeLabel, {color: timeColor}]}>{displayTime}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  bubble: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    minWidth: 200,
-    maxWidth: 260,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    minWidth: 220,
+    maxWidth: 280,
+    gap: 10,
+  },
+  bubbleOutgoing: {
+    borderBottomRightRadius: 4,
+  },
+  bubbleIncoming: {
+    borderBottomLeftRadius: 4,
   },
   playButton: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 6,
   },
   playIcon: {
-    fontSize: 14,
+    fontSize: 13,
+    marginLeft: 1,
   },
-  trackArea: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  trackPressable: {
+  waveformPressable: {
     flex: 1,
     justifyContent: 'center',
-    paddingVertical: 6,
+    paddingVertical: 4,
   },
-  track: {
-    height: 3,
-    borderRadius: 1.5,
+  waveformContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: BAR_GAP,
+    height: BAR_MAX_HEIGHT,
     overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
   },
-  trackFill: {
-    height: '100%',
+  bar: {
+    width: BAR_WIDTH,
     borderRadius: 1.5,
   },
   timeLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '500',
     fontVariant: ['tabular-nums'],
-    minWidth: 28,
+    minWidth: 30,
     textAlign: 'right',
   },
 });
