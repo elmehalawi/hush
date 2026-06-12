@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
-import {View, StyleSheet, PanResponder, NativeModules, NativeEventEmitter, Platform, useColorScheme} from 'react-native';
+import {View, StyleSheet, PanResponder, NativeModules, NativeEventEmitter, Platform} from 'react-native';
 import {useSignalStore} from '../store/signalStore';
 import {ChannelList} from '../components/ChannelList';
 import {ChatView} from '../components/ChatView';
@@ -7,7 +7,7 @@ import {MessageInput, MessageInputHandle} from '../components/MessageInput';
 import {GlassContainerView} from '../components/GlassContainerView';
 import {DropTargetView} from '../components/DropTargetView';
 import {SessionsModal} from '../components/SessionsModal';
-import {colors} from '../theme/colors';
+import {useColors} from '../theme/colors';
 
 const {CommandPaletteModule, PresageModule} = NativeModules;
 const emitter = CommandPaletteModule
@@ -30,7 +30,7 @@ interface MainScreenProps {
 }
 
 export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDownload}: MainScreenProps) {
-  useColorScheme(); // subscribe to appearance changes so DynamicColorMacOS values update
+  const c = useColors();
   const channels = useSignalStore(state => state.channels);
   const selectedChannelId = useSignalStore(state => state.selectedChannelId);
   const messages = useSignalStore(state => state.messages);
@@ -150,7 +150,7 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
       </DropTargetView>
 
       {/* Edge-to-edge sidebar */}
-      <View style={[styles.sidebar, {width: sidebarWidth}]}>
+      <View style={[styles.sidebar, {width: sidebarWidth, backgroundColor: c.sidebarBackground}]}>
         <ChannelList
           channels={channels}
           selectedId={selectedChannelId}
@@ -160,7 +160,7 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
       </View>
 
       {/* Sidebar separator */}
-      <View style={[styles.sidebarSeparator, {left: sidebarWidth}]} />
+      <View style={[styles.sidebarSeparator, {left: sidebarWidth, backgroundColor: c.sidebarSeparator}]} />
 
       {/* Resize handle */}
       <View
@@ -198,14 +198,12 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     left: 0,
-    backgroundColor: colors.sidebarBackground,
   },
   sidebarSeparator: {
     position: 'absolute',
     top: 0,
     bottom: 0,
     width: 1,
-    backgroundColor: colors.sidebarSeparator,
     zIndex: 5,
   },
   resizeHandle: {

@@ -3,7 +3,7 @@ import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeMod
 import {Message, Attachment, Mention, Reaction, useSignalStore} from '../store/signalStore';
 import {ReactionBar} from './ReactionBar';
 import {AudioAttachmentView} from './AudioAttachmentView';
-import {colors} from '../theme/colors';
+import {useColors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
 
@@ -45,6 +45,7 @@ function getImageDimensions(attachment: Attachment) {
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
 
 function LinkifiedText({text, isOutgoing, mentions}: {text: string; isOutgoing: boolean; mentions?: Mention[]}) {
+  const c = useColors();
   // Build a set of mention ranges for quick lookup
   const mentionRanges = (mentions || []).map(m => ({
     start: m.start,
@@ -97,14 +98,14 @@ function LinkifiedText({text, isOutgoing, mentions}: {text: string; isOutgoing: 
 
   if (finalSegments.length === 1 && finalSegments[0].type === 'text') {
     return (
-      <Text style={[styles.body, isOutgoing && styles.bodyOutgoing]}>
+      <Text style={[styles.body, {color: c.incomingBody}, isOutgoing && styles.bodyOutgoing]}>
         {text}
       </Text>
     );
   }
 
   return (
-    <Text style={[styles.body, isOutgoing && styles.bodyOutgoing]}>
+    <Text style={[styles.body, {color: c.incomingBody}, isOutgoing && styles.bodyOutgoing]}>
       {finalSegments.map((seg, i) => {
         if (seg.type === 'url') {
           return (
@@ -147,6 +148,7 @@ function AttachmentView({
   isOutgoing: boolean;
   onRetry?: () => void;
 }) {
+  const c = useColors();
   const rightClickedRef = useRef(false);
   const [showRetry, setShowRetry] = useState(false);
 
@@ -248,7 +250,7 @@ function AttachmentView({
       <View style={[styles.fileAttachment, isOutgoing && styles.fileAttachmentOutgoing]}>
         <Text style={[styles.fileIcon]}>{'📎'}</Text>
         <Text
-          style={[styles.fileName, isOutgoing && styles.fileNameOutgoing]}
+          style={[styles.fileName, {color: c.incomingBody}, isOutgoing && styles.fileNameOutgoing]}
           numberOfLines={2}>
           {attachment.fileName || 'File'}
         </Text>
@@ -301,6 +303,7 @@ function DoubleCheckIcon({color}: {color: string}) {
 
 export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastInGroup = true, onReact, userId, onRetryDownload, showReadReceipt}: MessageBubbleProps) {
   const colorScheme = useColorScheme();
+  const c = useColors();
   const incomingBubbleBg = colorScheme === 'dark' ? '#3A3A3D' : '#E9E9EB';
   const outgoingBubbleBg = colorScheme === 'dark' ? '#2E6FA3' : '#3A9DF5';
   const isOutgoing = message.isOutgoing;
@@ -406,7 +409,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
         </View>
       )}
       {!hasBody && !hasAttachments && !hasAudio && (
-        <Text style={[styles.body, isOutgoing && styles.bodyOutgoing]}>
+        <Text style={[styles.body, {color: c.incomingBody}, isOutgoing && styles.bodyOutgoing]}>
           [No content]
         </Text>
       )}
@@ -553,7 +556,6 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 4,
   },
   bubbleIncoming: {
-    backgroundColor: colors.incomingBubble,
     borderBottomLeftRadius: 4,
   },
   bubbleInGroup: {
@@ -657,7 +659,6 @@ const styles = StyleSheet.create({
   },
   fileName: {
     fontSize: 13,
-    color: colors.incomingBody,
     flex: 1,
   },
   fileNameOutgoing: {
@@ -669,7 +670,6 @@ const styles = StyleSheet.create({
   },
   body: {
     fontSize: 13,
-    color: colors.incomingBody,
   },
   bodyOutgoing: {
     color: 'white',

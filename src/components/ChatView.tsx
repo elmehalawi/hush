@@ -1,10 +1,10 @@
 import React, {useRef, useEffect, useCallback} from 'react';
-import {View, ScrollView, Text, StyleSheet, Image, useColorScheme} from 'react-native';
+import {View, ScrollView, Text, StyleSheet, Image} from 'react-native';
 import {Message, Channel, useSignalStore} from '../store/signalStore';
 import {MessageBubble} from './MessageBubble';
 import {GlassView} from './GlassView';
 import {GradientBlurView} from './GradientBlurView';
-import {colors} from '../theme/colors';
+import {useColors} from '../theme/colors';
 
 function formatTimeSeparator(timestamp: number, previousTimestamp: number | null): {datePart: string | null; time: string} {
   const now = new Date();
@@ -46,7 +46,7 @@ interface ChatViewProps {
 }
 
 export function ChatView({channel, messages, onReact, onRetryDownload}: ChatViewProps) {
-  useColorScheme(); // subscribe to appearance changes so DynamicColorMacOS values update
+  const c = useColors();
   const scrollViewRef = useRef<ScrollView>(null);
   const userId = useSignalStore(state => state.userId);
 
@@ -66,7 +66,7 @@ export function ChatView({channel, messages, onReact, onRetryDownload}: ChatView
   if (!channel) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyText}>Select a conversation to start messaging</Text>
+        <Text style={[styles.emptyText, {color: c.secondaryLabel}]}>Select a conversation to start messaging</Text>
       </View>
     );
   }
@@ -83,8 +83,8 @@ export function ChatView({channel, messages, onReact, onRetryDownload}: ChatView
       >
         {messages.length === 0 ? (
           <View style={styles.noMessages}>
-            <Text style={styles.noMessagesText}>No messages yet</Text>
-            <Text style={styles.noMessagesHint}>Send a message to start the conversation</Text>
+            <Text style={[styles.noMessagesText, {color: c.secondaryLabel}]}>No messages yet</Text>
+            <Text style={[styles.noMessagesHint, {color: c.tertiaryLabel}]}>Send a message to start the conversation</Text>
           </View>
         ) : (
           (() => {
@@ -110,7 +110,7 @@ export function ChatView({channel, messages, onReact, onRetryDownload}: ChatView
                     const {datePart, time} = formatTimeSeparator(message.timestamp, prevMessage?.timestamp ?? null);
                     return (
                       <View style={styles.timeSeparator}>
-                        <Text style={styles.timeSeparatorText}>
+                        <Text style={[styles.timeSeparatorText, {color: c.secondaryLabel}]}>
                           {datePart && <Text style={styles.timeSeparatorDate}>{datePart}</Text>}
                           {datePart && ` at `}
                           {time}
@@ -147,7 +147,7 @@ export function ChatView({channel, messages, onReact, onRetryDownload}: ChatView
           </View>
           <View style={styles.headerPill}>
             <GlassView style={StyleSheet.absoluteFill} cornerRadius={20} />
-            <Text style={styles.pillName} numberOfLines={1}>
+            <Text style={[styles.pillName, {color: c.label}]} numberOfLines={1}>
               {channel.name}
             </Text>
           </View>
@@ -170,7 +170,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: colors.secondaryLabel,
   },
   messages: {
     flex: 1,
@@ -226,7 +225,6 @@ const styles = StyleSheet.create({
   pillName: {
     fontSize: 12,
     fontWeight: '500',
-    color: colors.label,
     textAlign: 'center',
   },
   timeSeparator: {
@@ -236,7 +234,6 @@ const styles = StyleSheet.create({
   },
   timeSeparatorText: {
     fontSize: 10,
-    color: colors.secondaryLabel,
     fontWeight: '400',
   },
   timeSeparatorDate: {
@@ -250,11 +247,9 @@ const styles = StyleSheet.create({
   },
   noMessagesText: {
     fontSize: 15,
-    color: colors.secondaryLabel,
   },
   noMessagesHint: {
     fontSize: 13,
-    color: colors.tertiaryLabel,
     marginTop: 4,
   },
 });

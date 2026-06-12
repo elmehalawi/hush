@@ -1,8 +1,8 @@
 import React, {useMemo, useCallback} from 'react';
-import {View, Text, Pressable, StyleSheet, Image, NativeModules, useColorScheme} from 'react-native';
+import {View, Text, Pressable, StyleSheet, Image, NativeModules} from 'react-native';
 import {Channel} from '../store/signalStore';
 import {GlassView} from './GlassView';
-import {colors} from '../theme/colors';
+import {useColors} from '../theme/colors';
 import {useWindowFocused} from '../hooks/useWindowFocused';
 
 const {PresageModule} = NativeModules;
@@ -45,7 +45,7 @@ function formatTimestamp(ts: number): string {
 }
 
 export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelItemProps) {
-  useColorScheme(); // subscribe to appearance changes so DynamicColorMacOS values update
+  const c = useColors();
   const windowFocused = useWindowFocused();
   const activeSelected = isSelected && windowFocused;
   const timeLabel = useMemo(
@@ -62,7 +62,7 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
   if (collapsed) {
     return (
       <Pressable
-        style={[styles.collapsedContainer, isSelected && (activeSelected ? styles.selectedFocused : styles.selected)]}
+        style={[styles.collapsedContainer, isSelected && (activeSelected ? styles.selectedFocused : {backgroundColor: c.sidebarSelected})]}
         onPress={() => onSelect(channel.id)}
         onPressIn={handlePressIn}>
         <View style={[styles.avatar, styles.avatarCollapsed]}>
@@ -91,7 +91,7 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
 
   return (
     <Pressable
-      style={[styles.container, isSelected && (activeSelected ? styles.selectedFocused : styles.selected)]}
+      style={[styles.container, isSelected && (activeSelected ? styles.selectedFocused : {backgroundColor: c.sidebarSelected})]}
       onPress={() => onSelect(channel.id)}
       onPressIn={handlePressIn}>
       <View style={styles.avatar}>
@@ -111,18 +111,18 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
       </View>
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={[styles.name, activeSelected && styles.nameFocusedSelected]} numberOfLines={1}>
+          <Text style={[styles.name, {color: c.label}, activeSelected && styles.nameFocusedSelected]} numberOfLines={1}>
             {channel.name}
           </Text>
           {timeLabel && (
-            <Text style={[styles.timestamp, activeSelected && styles.timestampFocusedSelected]}>
+            <Text style={[styles.timestamp, {color: c.tertiaryLabel}, activeSelected && styles.timestampFocusedSelected]}>
               {timeLabel}
             </Text>
           )}
         </View>
         <View style={styles.secondRow}>
           {channel.lastMessage ? (
-            <Text style={[styles.preview, activeSelected && styles.previewFocusedSelected]} numberOfLines={1}>
+            <Text style={[styles.preview, {color: c.secondaryLabel}, activeSelected && styles.previewFocusedSelected]} numberOfLines={1}>
               {channel.lastMessage}
             </Text>
           ) : (
@@ -154,9 +154,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginVertical: 1,
   },
-  selected: {
-    backgroundColor: colors.sidebarSelected,
-  },
+  selected: {},
   selectedFocused: {
     backgroundColor: '#0058D0',
   },
@@ -194,12 +192,10 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 15,
     fontWeight: '500',
-    color: colors.label,
     flex: 1,
   },
   timestamp: {
     fontSize: 12,
-    color: colors.tertiaryLabel,
     marginLeft: 8,
     flexShrink: 0,
   },
@@ -230,7 +226,6 @@ const styles = StyleSheet.create({
   },
   preview: {
     fontSize: 13,
-    color: colors.secondaryLabel,
     flex: 1,
   },
   previewSpacer: {

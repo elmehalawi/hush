@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import {GlassView} from './GlassView';
-import {colors} from '../theme/colors';
+import {useColors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
 
@@ -25,6 +25,7 @@ interface SessionsModalProps {
 }
 
 export function SessionsModal({visible, onClose}: SessionsModalProps) {
+  const c = useColors();
   const [sessions, setSessions] = useState<SessionEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [resettingId, setResettingId] = useState<string | null>(null);
@@ -70,12 +71,12 @@ export function SessionsModal({visible, onClose}: SessionsModalProps) {
         <GlassView style={StyleSheet.absoluteFill} cornerRadius={16} />
         <View style={styles.content}>
           <View style={styles.header}>
-            <Text style={styles.title}>Sessions</Text>
+            <Text style={[styles.title, {color: c.label}]}>Sessions</Text>
             <Pressable onPress={onClose} style={styles.closeButton}>
               <Text style={styles.closeText}>Done</Text>
             </Pressable>
           </View>
-          <Text style={styles.description}>
+          <Text style={[styles.description, {color: c.secondaryLabel}]}>
             Encryption sessions with your contacts. Reset a session if messages
             aren't decrypting correctly.
           </Text>
@@ -83,18 +84,18 @@ export function SessionsModal({visible, onClose}: SessionsModalProps) {
             {loading ? (
               <ActivityIndicator style={styles.loader} color="rgba(255,255,255,0.5)" />
             ) : sessions.length === 0 ? (
-              <Text style={styles.emptyText}>No sessions found</Text>
+              <Text style={[styles.emptyText, {color: c.tertiaryLabel}]}>No sessions found</Text>
             ) : (
               sessions.map(session => (
                 <View key={session.address} style={styles.sessionRow}>
                   <View style={styles.sessionInfo}>
-                    <Text style={styles.sessionName} numberOfLines={1}>
+                    <Text style={[styles.sessionName, {color: c.label}]} numberOfLines={1}>
                       {session.contactName || 'Unknown'}
                     </Text>
-                    <Text style={styles.sessionAddress} numberOfLines={1}>
+                    <Text style={[styles.sessionAddress, {color: c.tertiaryLabel}]} numberOfLines={1}>
                       {session.address}
                     </Text>
-                    <Text style={styles.sessionDevices}>
+                    <Text style={[styles.sessionDevices, {color: c.secondaryLabel}]}>
                       {session.deviceCount} device{session.deviceCount !== 1 ? 's' : ''}
                     </Text>
                   </View>
@@ -148,7 +149,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '600',
-    color: colors.label,
   },
   closeButton: {
     paddingHorizontal: 12,
@@ -162,7 +162,6 @@ const styles = StyleSheet.create({
   },
   description: {
     fontSize: 12,
-    color: colors.secondaryLabel,
     marginBottom: 16,
     lineHeight: 16,
   },
@@ -174,7 +173,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 13,
-    color: colors.tertiaryLabel,
     textAlign: 'center',
     paddingVertical: 40,
   },
@@ -193,17 +191,14 @@ const styles = StyleSheet.create({
   sessionName: {
     fontSize: 14,
     fontWeight: '500',
-    color: colors.label,
   },
   sessionAddress: {
     fontSize: 10,
-    color: colors.tertiaryLabel,
     fontFamily: 'Menlo',
     marginTop: 2,
   },
   sessionDevices: {
     fontSize: 11,
-    color: colors.secondaryLabel,
     marginTop: 2,
   },
   resetButton: {

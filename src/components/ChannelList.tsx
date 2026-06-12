@@ -1,9 +1,9 @@
 import React, {useMemo} from 'react';
-import {View, FlatList, Text, StyleSheet, useColorScheme} from 'react-native';
+import {View, FlatList, Text, StyleSheet} from 'react-native';
 import {Channel} from '../store/signalStore';
 import {ChannelItem} from './ChannelItem';
 import {GradientBlurView} from './GradientBlurView';
-import {colors} from '../theme/colors';
+import {useColors} from '../theme/colors';
 
 interface ChannelListProps {
   channels: Channel[];
@@ -15,7 +15,7 @@ interface ChannelListProps {
 const BLUR_HEIGHT = 42;
 
 export function ChannelList({channels, selectedId, onSelect, collapsed}: ChannelListProps) {
-  useColorScheme(); // subscribe to appearance changes so DynamicColorMacOS values update
+  const c = useColors();
   const sorted = useMemo(
     () => [...channels].sort((a, b) => (b.lastMessageTimestamp ?? 0) - (a.lastMessageTimestamp ?? 0)),
     [channels],
@@ -44,7 +44,7 @@ export function ChannelList({channels, selectedId, onSelect, collapsed}: Channel
         ListEmptyComponent={
           <View style={styles.empty}>
             {!collapsed && (
-              <Text style={styles.emptyText}>No conversations yet</Text>
+              <Text style={[styles.emptyText, {color: c.secondaryLabel}]}>No conversations yet</Text>
             )}
           </View>
         }
@@ -78,7 +78,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    color: colors.secondaryLabel,
   },
   topBlur: {
     position: 'absolute',
