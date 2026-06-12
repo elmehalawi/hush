@@ -31,6 +31,7 @@ yarn-error.log
 
 # Rust
 rust/presage-rn/target/
+rust/whisper-transcribe/target/
 rust/test-provisioning/target/
 
 # Build artifacts (static libraries)
