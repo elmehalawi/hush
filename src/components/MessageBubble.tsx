@@ -334,7 +334,6 @@ function QuoteBanner({quote, isOutgoing}: {quote: Message['quote']; isOutgoing: 
 
 const quoteBannerStyles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
     borderRadius: 6,
     marginHorizontal: 4,
     marginTop: 4,
@@ -342,12 +341,16 @@ const quoteBannerStyles = StyleSheet.create({
     overflow: 'hidden',
   },
   bar: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
     width: 3,
   },
   content: {
-    flex: 1,
     paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingLeft: 11,
+    paddingRight: 8,
   },
   authorName: {
     fontSize: 12,
@@ -683,7 +686,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 18,
-    overflow: 'visible',
   },
   bubbleOutgoing: {
     backgroundColor: '#2196f3',
@@ -697,6 +699,7 @@ const styles = StyleSheet.create({
   },
   bubbleWithMedia: {
     padding: 3,
+    overflow: 'hidden',
   },
   attachmentsContainer: {
     borderRadius: 17,
