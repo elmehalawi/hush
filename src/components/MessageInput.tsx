@@ -20,6 +20,12 @@ import {
 } from 'react-native';
 import {GlassView} from './GlassView';
 import {GlassButton} from './GlassButton';
+import {LinkPreviewCard} from './LinkPreviewCard';
+import {
+  findFirstUrl,
+  fetchLinkPreview,
+  LinkPreviewResult,
+} from '../utils/linkPreview';
 
 const {PresageModule, CommandPaletteModule} = NativeModules;
 const commandEmitter = CommandPaletteModule
@@ -33,8 +39,16 @@ interface PendingAttachment {
   thumbnailPath?: string;
 }
 
+interface LinkPreviewSendData {
+  url: string;
+  title?: string;
+  description?: string;
+  imagePath?: string;
+  date?: number;
+}
+
 interface MessageInputProps {
-  onSend: (text: string, attachmentPaths?: string[]) => void;
+  onSend: (text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[]) => void;
   disabled?: boolean;
 }
 
@@ -63,6 +77,15 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
   function MessageInput({onSend, disabled}, ref) {
     const [text, setText] = useState('');
     const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+    const [stagedPreview, setStagedPreview] =
+      useState<LinkPreviewResult | null>(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
+    const previewAbortRef = useRef<AbortController | null>(null);
+    const lastPreviewUrlRef = useRef<string | null>(null);
+    const dismissedUrlRef = useRef<string | null>(null);
+    const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
+      null,
+    );
     const isDark = useColorScheme() === 'dark';
     const inputRef = useRef<TextInput>(null);
     const sendingRef = useRef(false);
@@ -125,20 +148,108 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
 
       if (trimmed.length > 0 || hasAttachments) {
         sendingRef.current = true;
+
+        // Abort any in-flight preview fetch — never block send
+        if (previewAbortRef.current) {
+          previewAbortRef.current.abort();
+          previewAbortRef.current = null;
+        }
+
         const paths = hasAttachments
           ? attachments.map(a => a.path)
           : undefined;
-        onSend(trimmed, paths);
+
+        // Include staged preview if ready and not dismissed
+        let linkPreviews: LinkPreviewSendData[] | undefined;
+        if (stagedPreview) {
+          linkPreviews = [
+            {
+              url: stagedPreview.url,
+              title: stagedPreview.title,
+              description: stagedPreview.description,
+              imagePath: stagedPreview.imagePath,
+              date: stagedPreview.date,
+            },
+          ];
+        }
+
+        onSend(trimmed, paths, linkPreviews);
       }
       setText('');
       setAttachments([]);
+      setStagedPreview(null);
+      setPreviewLoading(false);
+      lastPreviewUrlRef.current = null;
+      dismissedUrlRef.current = null;
       setTimeout(() => { sendingRef.current = false; }, 100);
     };
 
     const handleTextChange = (newText: string) => {
       sendingRef.current = false;
       setText(newText);
+
+      // Debounced URL detection for link preview
+      if (previewDebounceRef.current) {
+        clearTimeout(previewDebounceRef.current);
+      }
+      previewDebounceRef.current = setTimeout(() => {
+        const url = findFirstUrl(newText);
+
+        // No URL found — clear preview
+        if (!url) {
+          if (previewAbortRef.current) {
+            previewAbortRef.current.abort();
+            previewAbortRef.current = null;
+          }
+          setStagedPreview(null);
+          setPreviewLoading(false);
+          lastPreviewUrlRef.current = null;
+          return;
+        }
+
+        // Same URL as last fetch — skip
+        if (url === lastPreviewUrlRef.current) return;
+
+        // URL was dismissed by user — skip
+        if (url === dismissedUrlRef.current) return;
+
+        // New URL — fetch preview
+        lastPreviewUrlRef.current = url;
+        if (previewAbortRef.current) {
+          previewAbortRef.current.abort();
+        }
+        const controller = new AbortController();
+        previewAbortRef.current = controller;
+        setPreviewLoading(true);
+        setStagedPreview(null);
+
+        fetchLinkPreview(url, controller.signal)
+          .then(result => {
+            if (controller.signal.aborted) return;
+            if (result) {
+              setStagedPreview(result);
+            }
+            setPreviewLoading(false);
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) {
+              setPreviewLoading(false);
+            }
+          });
+      }, 500);
     };
+
+    const handleDismissPreview = useCallback(() => {
+      if (stagedPreview) {
+        dismissedUrlRef.current = stagedPreview.url;
+      }
+      setStagedPreview(null);
+      setPreviewLoading(false);
+      if (previewAbortRef.current) {
+        previewAbortRef.current.abort();
+        previewAbortRef.current = null;
+      }
+    }, [stagedPreview]);
 
     const handlePickFiles = useCallback(async () => {
       if (!PresageModule) {
@@ -187,15 +298,32 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
 
     const hasContent = text.trim().length > 0 || attachments.length > 0;
     const hasAttachments = attachments.length > 0;
+    const hasPreview = stagedPreview !== null || previewLoading;
 
     return (
       <View style={styles.container}>
           <GlassView
             style={[
               styles.inputWrapper,
-              hasAttachments && styles.inputWrapperExpanded,
+              (hasAttachments || hasPreview) && styles.inputWrapperExpanded,
             ]}
             cornerRadius={24}>
+            {hasPreview && (
+              <View style={styles.linkPreviewStaged}>
+                <LinkPreviewCard
+                  url={stagedPreview?.url || lastPreviewUrlRef.current || ''}
+                  title={stagedPreview?.title}
+                  description={stagedPreview?.description}
+                  image={
+                    stagedPreview?.imagePath
+                      ? {uri: `file://${stagedPreview.imagePath}`}
+                      : undefined
+                  }
+                  loading={previewLoading}
+                  onDismiss={handleDismissPreview}
+                />
+              </View>
+            )}
             {hasAttachments && (
               <ScrollView
                 horizontal
@@ -320,11 +448,10 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   inputWrapperExpanded: {
-    maxHeight: 240,
-    minHeight: 140,
+    maxHeight: 400,
   },
   input: {
-    flex: 1,
+    minHeight: 40,
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 15,
@@ -334,6 +461,13 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     marginLeft: 4,
+  },
+  linkPreviewStaged: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(128, 128, 128, 0.3)',
   },
   previewRow: {
     maxHeight: 100,

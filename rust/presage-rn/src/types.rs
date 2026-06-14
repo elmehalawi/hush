@@ -77,6 +77,36 @@ pub struct Mention {
     pub name: String,
 }
 
+/// Link preview as received/stored (image is an Attachment with file_path)
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct LinkPreview {
+    /// The URL being previewed
+    pub url: String,
+    /// Title of the linked page
+    pub title: Option<String>,
+    /// Description / subtitle
+    pub description: Option<String>,
+    /// Preview image (downloaded attachment)
+    pub image: Option<Attachment>,
+    /// Publication date (millis since epoch)
+    pub date: Option<u64>,
+}
+
+/// Link preview data for sending (image is a local file path to upload)
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct LinkPreviewData {
+    /// The URL being previewed
+    pub url: String,
+    /// Title of the linked page
+    pub title: Option<String>,
+    /// Description / subtitle
+    pub description: Option<String>,
+    /// Local file path for the preview image (will be uploaded)
+    pub image_path: Option<String>,
+    /// Publication date (millis since epoch)
+    pub date: Option<u64>,
+}
+
 /// Represents a single message
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Message {
@@ -104,6 +134,8 @@ pub struct Message {
     pub mentions: Vec<Mention>,
     /// UUIDs of users who have read this message (outgoing only)
     pub read_by: Vec<String>,
+    /// Link previews attached to this message
+    pub previews: Vec<LinkPreview>,
 }
 
 /// Message delivery status

@@ -28,6 +28,15 @@ pub trait MessageListener: Send + Sync {
         attachment_index: u32,
         attachment: Attachment,
     );
+
+    /// Called when a link preview image download completes
+    fn on_link_preview_image_downloaded(
+        &self,
+        channel_id: String,
+        message_id: String,
+        preview_index: u32,
+        attachment: Attachment,
+    );
 }
 
 /// Callback interface for the device linking process

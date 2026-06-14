@@ -558,6 +558,11 @@ public protocol SignalClientProtocol: AnyObject {
     func sendMessageWithAttachments(channelId: String, text: String?, attachmentPaths: [String]) throws -> Message
 
     /**
+     * Send a message with link previews (and optional attachments) to a channel
+     */
+    func sendMessageWithPreviews(channelId: String, text: String?, attachmentPaths: [String], linkPreviews: [LinkPreviewData]) throws -> Message
+
+    /**
      * Send an emoji reaction to a message
      */
     func sendReaction(channelId: String, emoji: String, targetTimestamp: UInt64, remove: Bool) throws
@@ -763,6 +768,19 @@ open class SignalClient:
                                                                                    FfiConverterString.lower(channelId),
                                                                                    FfiConverterOptionString.lower(text),
                                                                                    FfiConverterSequenceString.lower(attachmentPaths), $0)
+        })
+    }
+
+    /**
+     * Send a message with link previews (and optional attachments) to a channel
+     */
+    open func sendMessageWithPreviews(channelId: String, text: String?, attachmentPaths: [String], linkPreviews: [LinkPreviewData]) throws -> Message {
+        return try FfiConverterTypeMessage.lift(rustCallWithError(FfiConverterTypeSignalError.lift) {
+            uniffi_presage_rn_fn_method_signalclient_send_message_with_previews(self.uniffiClonePointer(),
+                                                                                FfiConverterString.lower(channelId),
+                                                                                FfiConverterOptionString.lower(text),
+                                                                                FfiConverterSequenceString.lower(attachmentPaths),
+                                                                                FfiConverterSequenceTypeLinkPreviewData.lower(linkPreviews), $0)
         })
     }
 
@@ -1164,6 +1182,244 @@ public func FfiConverterTypeChannel_lower(_ value: Channel) -> RustBuffer {
 }
 
 /**
+ * Link preview as received/stored (image is an Attachment with file_path)
+ */
+public struct LinkPreview {
+    /**
+     * The URL being previewed
+     */
+    public var url: String
+    /**
+     * Title of the linked page
+     */
+    public var title: String?
+    /**
+     * Description / subtitle
+     */
+    public var description: String?
+    /**
+     * Preview image (downloaded attachment)
+     */
+    public var image: Attachment?
+    /**
+     * Publication date (millis since epoch)
+     */
+    public var date: UInt64?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The URL being previewed
+         */ url: String,
+        /**
+            * Title of the linked page
+            */ title: String?,
+        /**
+            * Description / subtitle
+            */ description: String?,
+        /**
+            * Preview image (downloaded attachment)
+            */ image: Attachment?,
+        /**
+            * Publication date (millis since epoch)
+            */ date: UInt64?
+    ) {
+        self.url = url
+        self.title = title
+        self.description = description
+        self.image = image
+        self.date = date
+    }
+}
+
+extension LinkPreview: Equatable, Hashable {
+    public static func == (lhs: LinkPreview, rhs: LinkPreview) -> Bool {
+        if lhs.url != rhs.url {
+            return false
+        }
+        if lhs.title != rhs.title {
+            return false
+        }
+        if lhs.description != rhs.description {
+            return false
+        }
+        if lhs.image != rhs.image {
+            return false
+        }
+        if lhs.date != rhs.date {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(url)
+        hasher.combine(title)
+        hasher.combine(description)
+        hasher.combine(image)
+        hasher.combine(date)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkPreview: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkPreview {
+        return
+            try LinkPreview(
+                url: FfiConverterString.read(from: &buf),
+                title: FfiConverterOptionString.read(from: &buf),
+                description: FfiConverterOptionString.read(from: &buf),
+                image: FfiConverterOptionTypeAttachment.read(from: &buf),
+                date: FfiConverterOptionUInt64.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: LinkPreview, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterOptionString.write(value.title, into: &buf)
+        FfiConverterOptionString.write(value.description, into: &buf)
+        FfiConverterOptionTypeAttachment.write(value.image, into: &buf)
+        FfiConverterOptionUInt64.write(value.date, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkPreview_lift(_ buf: RustBuffer) throws -> LinkPreview {
+    return try FfiConverterTypeLinkPreview.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkPreview_lower(_ value: LinkPreview) -> RustBuffer {
+    return FfiConverterTypeLinkPreview.lower(value)
+}
+
+/**
+ * Link preview data for sending (image is a local file path to upload)
+ */
+public struct LinkPreviewData {
+    /**
+     * The URL being previewed
+     */
+    public var url: String
+    /**
+     * Title of the linked page
+     */
+    public var title: String?
+    /**
+     * Description / subtitle
+     */
+    public var description: String?
+    /**
+     * Local file path for the preview image (will be uploaded)
+     */
+    public var imagePath: String?
+    /**
+     * Publication date (millis since epoch)
+     */
+    public var date: UInt64?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The URL being previewed
+         */ url: String,
+        /**
+            * Title of the linked page
+            */ title: String?,
+        /**
+            * Description / subtitle
+            */ description: String?,
+        /**
+            * Local file path for the preview image (will be uploaded)
+            */ imagePath: String?,
+        /**
+            * Publication date (millis since epoch)
+            */ date: UInt64?
+    ) {
+        self.url = url
+        self.title = title
+        self.description = description
+        self.imagePath = imagePath
+        self.date = date
+    }
+}
+
+extension LinkPreviewData: Equatable, Hashable {
+    public static func == (lhs: LinkPreviewData, rhs: LinkPreviewData) -> Bool {
+        if lhs.url != rhs.url {
+            return false
+        }
+        if lhs.title != rhs.title {
+            return false
+        }
+        if lhs.description != rhs.description {
+            return false
+        }
+        if lhs.imagePath != rhs.imagePath {
+            return false
+        }
+        if lhs.date != rhs.date {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(url)
+        hasher.combine(title)
+        hasher.combine(description)
+        hasher.combine(imagePath)
+        hasher.combine(date)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkPreviewData: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkPreviewData {
+        return
+            try LinkPreviewData(
+                url: FfiConverterString.read(from: &buf),
+                title: FfiConverterOptionString.read(from: &buf),
+                description: FfiConverterOptionString.read(from: &buf),
+                imagePath: FfiConverterOptionString.read(from: &buf),
+                date: FfiConverterOptionUInt64.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: LinkPreviewData, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterOptionString.write(value.title, into: &buf)
+        FfiConverterOptionString.write(value.description, into: &buf)
+        FfiConverterOptionString.write(value.imagePath, into: &buf)
+        FfiConverterOptionUInt64.write(value.date, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkPreviewData_lift(_ buf: RustBuffer) throws -> LinkPreviewData {
+    return try FfiConverterTypeLinkPreviewData.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkPreviewData_lower(_ value: LinkPreviewData) -> RustBuffer {
+    return FfiConverterTypeLinkPreviewData.lower(value)
+}
+
+/**
  * A mention of a user within a message body
  */
 public struct Mention {
@@ -1320,6 +1576,10 @@ public struct Message {
      * UUIDs of users who have read this message (outgoing only)
      */
     public var readBy: [String]
+    /**
+     * Link previews attached to this message
+     */
+    public var previews: [LinkPreview]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1359,7 +1619,10 @@ public struct Message {
             */ mentions: [Mention],
         /**
             * UUIDs of users who have read this message (outgoing only)
-            */ readBy: [String]
+            */ readBy: [String],
+        /**
+            * Link previews attached to this message
+            */ previews: [LinkPreview]
     ) {
         self.id = id
         self.channelId = channelId
@@ -1373,6 +1636,7 @@ public struct Message {
         self.reactions = reactions
         self.mentions = mentions
         self.readBy = readBy
+        self.previews = previews
     }
 }
 
@@ -1414,6 +1678,9 @@ extension Message: Equatable, Hashable {
         if lhs.readBy != rhs.readBy {
             return false
         }
+        if lhs.previews != rhs.previews {
+            return false
+        }
         return true
     }
 
@@ -1430,6 +1697,7 @@ extension Message: Equatable, Hashable {
         hasher.combine(reactions)
         hasher.combine(mentions)
         hasher.combine(readBy)
+        hasher.combine(previews)
     }
 }
 
@@ -1451,7 +1719,8 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
                 attachments: FfiConverterSequenceTypeAttachment.read(from: &buf),
                 reactions: FfiConverterSequenceTypeReaction.read(from: &buf),
                 mentions: FfiConverterSequenceTypeMention.read(from: &buf),
-                readBy: FfiConverterSequenceString.read(from: &buf)
+                readBy: FfiConverterSequenceString.read(from: &buf),
+                previews: FfiConverterSequenceTypeLinkPreview.read(from: &buf)
             )
     }
 
@@ -1468,6 +1737,7 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
         FfiConverterSequenceTypeReaction.write(value.reactions, into: &buf)
         FfiConverterSequenceTypeMention.write(value.mentions, into: &buf)
         FfiConverterSequenceString.write(value.readBy, into: &buf)
+        FfiConverterSequenceTypeLinkPreview.write(value.previews, into: &buf)
     }
 }
 
@@ -2297,6 +2567,11 @@ public protocol MessageListener: AnyObject {
      * Called when a background attachment download completes
      */
     func onAttachmentDownloaded(channelId: String, messageId: String, attachmentIndex: UInt32, attachment: Attachment)
+
+    /**
+     * Called when a link preview image download completes
+     */
+    func onLinkPreviewImageDownloaded(channelId: String, messageId: String, previewIndex: UInt32, attachment: Attachment)
 }
 
 // Put the implementation in a struct so we don't pollute the top-level namespace
@@ -2450,6 +2725,35 @@ private enum UniffiCallbackInterfaceMessageListener {
                 writeReturn: writeReturn
             )
         },
+        onLinkPreviewImageDownloaded: { (
+            uniffiHandle: UInt64,
+            channelId: RustBuffer,
+            messageId: RustBuffer,
+            previewIndex: UInt32,
+            attachment: RustBuffer,
+            _: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMessageListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.onLinkPreviewImageDownloaded(
+                    channelId: FfiConverterString.lift(channelId),
+                    messageId: FfiConverterString.lift(messageId),
+                    previewIndex: FfiConverterUInt32.lift(previewIndex),
+                    attachment: FfiConverterTypeAttachment.lift(attachment)
+                )
+            }
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
         uniffiFree: { (uniffiHandle: UInt64) in
             let result = try? FfiConverterCallbackInterfaceMessageListener.handleMap.remove(handle: uniffiHandle)
             if result == nil {
@@ -2583,6 +2887,30 @@ private struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
+private struct FfiConverterOptionTypeAttachment: FfiConverterRustBuffer {
+    typealias SwiftType = Attachment?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAttachment.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAttachment.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
 private struct FfiConverterSequenceUInt64: FfiConverterRustBuffer {
     typealias SwiftType = [UInt64]
 
@@ -2675,6 +3003,56 @@ private struct FfiConverterSequenceTypeChannel: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             try seq.append(FfiConverterTypeChannel.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private struct FfiConverterSequenceTypeLinkPreview: FfiConverterRustBuffer {
+    typealias SwiftType = [LinkPreview]
+
+    public static func write(_ value: [LinkPreview], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLinkPreview.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LinkPreview] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LinkPreview]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            try seq.append(FfiConverterTypeLinkPreview.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private struct FfiConverterSequenceTypeLinkPreviewData: FfiConverterRustBuffer {
+    typealias SwiftType = [LinkPreviewData]
+
+    public static func write(_ value: [LinkPreviewData], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLinkPreviewData.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LinkPreviewData] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LinkPreviewData]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            try seq.append(FfiConverterTypeLinkPreviewData.read(from: &buf))
         }
         return seq
     }
@@ -2829,6 +3207,9 @@ private var initializationResult: InitializationResult = {
     if uniffi_presage_rn_checksum_method_signalclient_send_message_with_attachments() != 27088 {
         return InitializationResult.apiChecksumMismatch
     }
+    if uniffi_presage_rn_checksum_method_signalclient_send_message_with_previews() != 33394 {
+        return InitializationResult.apiChecksumMismatch
+    }
     if uniffi_presage_rn_checksum_method_signalclient_send_reaction() != 17691 {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2872,6 +3253,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_messagelistener_on_attachment_downloaded() != 54381 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_messagelistener_on_link_preview_image_downloaded() != 21627 {
         return InitializationResult.apiChecksumMismatch
     }
 

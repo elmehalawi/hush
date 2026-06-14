@@ -3,6 +3,7 @@ import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeMod
 import {Message, Attachment, Mention, Reaction, useSignalStore} from '../store/signalStore';
 import {ReactionBar} from './ReactionBar';
 import {AudioAttachmentView} from './AudioAttachmentView';
+import {LinkPreviewCard} from './LinkPreviewCard';
 import {useColors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
@@ -423,7 +424,19 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
           <LinkifiedText text={message.body!} isOutgoing={isOutgoing} mentions={message.mentions} />
         </View>
       )}
-      {!hasBody && !hasAttachments && !hasAudio && (
+      {message.linkPreviews.length > 0 && (
+        <View style={styles.linkPreviewContainer}>
+          <LinkPreviewCard
+            url={message.linkPreviews[0].url}
+            title={message.linkPreviews[0].title}
+            description={message.linkPreviews[0].description}
+            image={message.linkPreviews[0].image}
+            onPress={() => Linking.openURL(message.linkPreviews[0].url)}
+            isOutgoing={isOutgoing}
+          />
+        </View>
+      )}
+      {!hasBody && !hasAttachments && !hasAudio && message.linkPreviews.length === 0 && (
         <Text style={[styles.body, {color: c.incomingBody}, isOutgoing && styles.bodyOutgoing]}>
           [No content]
         </Text>
@@ -682,6 +695,11 @@ const styles = StyleSheet.create({
   bodyBelowMedia: {
     paddingHorizontal: 7,
     paddingTop: 4,
+  },
+  linkPreviewContainer: {
+    marginTop: 4,
+    marginHorizontal: 3,
+    marginBottom: 2,
   },
   body: {
     fontSize: 13,

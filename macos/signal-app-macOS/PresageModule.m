@@ -133,4 +133,15 @@ RCT_EXTERN_METHOD(transcribeAudio:(NSString *)filePath
 RCT_EXTERN_METHOD(isTranscriptionModelReady:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(fetchLinkPreviewMetadata:(NSString *)urlString
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(sendMessageWithPreviews:(NSString *)channelId
+                  text:(NSString *)text
+                  attachmentPaths:(NSArray *)attachmentPaths
+                  linkPreviews:(NSArray *)linkPreviews
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 @end

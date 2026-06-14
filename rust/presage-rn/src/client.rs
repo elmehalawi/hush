@@ -16,7 +16,7 @@ use presage::libsignal_service::zkgroup::profiles::ProfileKey;
 use presage::manager::Registered;
 use presage::model::identity::OnNewIdentity;
 use presage::proto::attachment_pointer::AttachmentIdentifier;
-use presage::proto::{receipt_message, AttachmentPointer, DataMessage, GroupContextV2, ReceiptMessage};
+use presage::proto::{receipt_message, AttachmentPointer, DataMessage, GroupContextV2, Preview, ReceiptMessage};
 use presage::store::{ContentsStore, Thread};
 use presage_store_sqlite::SqliteStore;
 use tracing::{error, info, warn};
@@ -24,7 +24,7 @@ use uuid::Uuid;
 
 use crate::callbacks::{LinkingCallback, MessageListener};
 use crate::error::SignalError;
-use crate::types::{Attachment, Channel, Mention, Message, MessageStatus, Reaction, ReactionEvent, SessionInfo};
+use crate::types::{Attachment, Channel, LinkPreview, LinkPreviewData, Mention, Message, MessageStatus, Reaction, ReactionEvent, SessionInfo};
 
 type PresageManager = presage::Manager<SqliteStore, Registered>;
 
@@ -568,8 +568,8 @@ impl SignalClient {
                 for result in iter {
                     if let Ok(content) = result {
                         match process_content(&content, my_user_id, Some(&channel_id)) {
-                            Some(ProcessedContent::Message(msg, pointers, raw_mentions)) => {
-                                messages_with_pointers.push((msg, pointers, raw_mentions));
+                            Some(ProcessedContent::Message(msg, pointers, raw_mentions, raw_previews)) => {
+                                messages_with_pointers.push((msg, pointers, raw_mentions, raw_previews));
                                 if limit > 0 && messages_with_pointers.len() >= limit {
                                     break;
                                 }
@@ -588,7 +588,7 @@ impl SignalClient {
             let is_group = channel_id.len() == 64;
             let mut sender_name_cache: HashMap<String, Option<String>> = HashMap::new();
             let mut messages = Vec::new();
-            for (mut msg, pointers, raw_mentions) in messages_with_pointers {
+            for (mut msg, pointers, raw_mentions, raw_previews) in messages_with_pointers {
                 if !pointers.is_empty() {
                     for (idx, pointer) in pointers.iter().enumerate() {
                         let (attachment, cache_key) =
@@ -613,6 +613,30 @@ impl SignalClient {
                         }
                         msg.attachments.push(attachment);
                     }
+                }
+                // Process link preview images
+                for (idx, (mut preview, image_pointer)) in raw_previews.into_iter().enumerate() {
+                    if let Some(pointer) = image_pointer {
+                        let (attachment, cache_key) =
+                            check_attachment_cache(&pointer, &attachments_dir);
+                        if attachment.file_path.is_some() {
+                            preview.image = Some(attachment);
+                        } else if let Some(ref listener) = listener {
+                            spawn_preview_image_download(
+                                &runtime_handle,
+                                manager.clone(),
+                                pointer,
+                                attachments_dir.clone(),
+                                channel_id.clone(),
+                                msg.id.clone(),
+                                idx as u32,
+                                listener.clone(),
+                                inflight.clone(),
+                                cache_key,
+                            );
+                        }
+                    }
+                    msg.previews.push(preview);
                 }
                 // Resolve sender name for incoming group messages
                 if is_group && !msg.is_outgoing {
@@ -785,6 +809,7 @@ impl SignalClient {
                 reactions: vec![],
                 mentions: vec![],
                 read_by: vec![],
+                previews: vec![],
             })
         })
         })
@@ -942,6 +967,240 @@ impl SignalClient {
                     reactions: vec![],
                     mentions: vec![],
                     read_by: vec![],
+                    previews: vec![],
+                })
+            })
+        })
+    }
+
+    /// Send a message with link previews (and optional attachments) to a channel
+    pub fn send_message_with_previews(
+        &self,
+        channel_id: String,
+        text: Option<String>,
+        attachment_paths: Vec<String>,
+        link_previews: Vec<LinkPreviewData>,
+    ) -> Result<Message, SignalError> {
+        let mut manager_guard = self.manager.write();
+        let manager = manager_guard.as_mut().ok_or(SignalError::NotLinked)?;
+        let my_user_id = self.user_id.read().ok_or(SignalError::NotLinked)?;
+
+        const RED_ZONE: usize = 512 * 1024;
+        const STACK_SIZE: usize = 8 * 1024 * 1024;
+
+        stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
+            let local = tokio::task::LocalSet::new();
+            local.block_on(&self.runtime, async {
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as u64;
+
+                // Upload regular attachments
+                let mut attachment_specs: Vec<(AttachmentSpec, Vec<u8>)> = Vec::new();
+                let mut file_names: Vec<Option<String>> = Vec::new();
+                let mut content_types: Vec<String> = Vec::new();
+
+                for path_str in &attachment_paths {
+                    let path = std::path::Path::new(path_str);
+                    let data = std::fs::read(path).map_err(|e| SignalError::InternalError {
+                        message: format!("Failed to read file {}: {}", path_str, e),
+                    })?;
+                    let mime = mime_guess::from_path(path)
+                        .first_or_octet_stream()
+                        .to_string();
+                    let file_name = path.file_name().map(|n| n.to_string_lossy().to_string());
+                    let spec = AttachmentSpec {
+                        content_type: mime.clone(),
+                        length: data.len(),
+                        file_name: file_name.clone(),
+                        ..Default::default()
+                    };
+                    content_types.push(mime);
+                    file_names.push(file_name);
+                    attachment_specs.push((spec, data));
+                }
+
+                // Upload preview images
+                let mut preview_image_specs: Vec<(usize, AttachmentSpec, Vec<u8>)> = Vec::new();
+                for (i, lp) in link_previews.iter().enumerate() {
+                    if let Some(ref image_path) = lp.image_path {
+                        let path = std::path::Path::new(image_path);
+                        if let Ok(data) = std::fs::read(path) {
+                            let mime = mime_guess::from_path(path)
+                                .first_or_octet_stream()
+                                .to_string();
+                            let file_name = path.file_name().map(|n| n.to_string_lossy().to_string());
+                            let spec = AttachmentSpec {
+                                content_type: mime,
+                                length: data.len(),
+                                file_name,
+                                ..Default::default()
+                            };
+                            preview_image_specs.push((i, spec, data));
+                        }
+                    }
+                }
+
+                // Combine all uploads into one batch
+                let mut all_specs: Vec<(AttachmentSpec, Vec<u8>)> = Vec::new();
+                let attachment_count = attachment_specs.len();
+                all_specs.extend(attachment_specs);
+                // Save preview index mapping before draining
+                let preview_index_map: Vec<usize> = preview_image_specs.iter().map(|(i, _, _)| *i).collect();
+                for (_, spec, data) in preview_image_specs {
+                    all_specs.push((spec, data));
+                }
+
+                let mut attachment_pointers = Vec::new();
+                let mut preview_image_pointers: HashMap<usize, AttachmentPointer> = HashMap::new();
+
+                if !all_specs.is_empty() {
+                    let results = manager
+                        .upload_attachments(all_specs)
+                        .await
+                        .map_err(|e| SignalError::SendFailed {
+                            message: format!("Failed to upload attachments: {}", e),
+                        })?;
+
+                    for (result_idx, result) in results.into_iter().enumerate() {
+                        match result {
+                            Ok(pointer) => {
+                                if result_idx < attachment_count {
+                                    attachment_pointers.push(pointer);
+                                } else {
+                                    let preview_spec_idx = result_idx - attachment_count;
+                                    let preview_idx = preview_index_map[preview_spec_idx];
+                                    preview_image_pointers.insert(preview_idx, pointer);
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Failed to upload attachment: {:?}", e);
+                            }
+                        }
+                    }
+                }
+
+                if attachment_pointers.is_empty() && text.is_none() && attachment_paths.is_empty() && link_previews.is_empty() {
+                    return Err(SignalError::SendFailed {
+                        message: "Nothing to send".to_string(),
+                    });
+                }
+
+                // Build Preview proto objects
+                let proto_previews: Vec<Preview> = link_previews
+                    .iter()
+                    .enumerate()
+                    .map(|(i, lp)| {
+                        Preview {
+                            url: Some(lp.url.clone()),
+                            title: lp.title.clone(),
+                            description: lp.description.clone(),
+                            image: preview_image_pointers.get(&i).cloned(),
+                            date: lp.date,
+                        }
+                    })
+                    .collect();
+
+                // Build data message
+                let mut data_message = DataMessage {
+                    body: text.clone(),
+                    timestamp: Some(timestamp),
+                    attachments: attachment_pointers,
+                    preview: proto_previews,
+                    ..Default::default()
+                };
+
+                // Send to group or direct
+                if channel_id.len() == 64 {
+                    let master_key_bytes =
+                        hex::decode(&channel_id).map_err(|_| SignalError::ParseError {
+                            message: "Invalid group ID".to_string(),
+                        })?;
+                    data_message.group_v2 = Some(GroupContextV2 {
+                        master_key: Some(master_key_bytes.clone()),
+                        revision: Some(0),
+                        ..Default::default()
+                    });
+                    manager
+                        .send_message_to_group(&master_key_bytes, data_message.clone(), timestamp)
+                        .await
+                        .map_err(|e| SignalError::SendFailed {
+                            message: e.to_string(),
+                        })?;
+                } else {
+                    let recipient_uuid: Uuid =
+                        channel_id.parse().map_err(|_| SignalError::ParseError {
+                            message: "Invalid UUID".to_string(),
+                        })?;
+                    let recipient_aci = Aci::from(recipient_uuid);
+                    let body = ContentBody::DataMessage(data_message.clone());
+                    manager
+                        .send_message(recipient_aci, body, timestamp)
+                        .await
+                        .map_err(|e| SignalError::SendFailed {
+                            message: e.to_string(),
+                        })?;
+                }
+
+                // Build return attachments
+                let attachments: Vec<Attachment> = attachment_paths
+                    .iter()
+                    .enumerate()
+                    .map(|(i, path)| Attachment {
+                        content_type: content_types
+                            .get(i)
+                            .cloned()
+                            .unwrap_or_else(|| "application/octet-stream".to_string()),
+                        file_path: Some(path.clone()),
+                        file_name: file_names.get(i).cloned().flatten(),
+                        width: None,
+                        height: None,
+                        size: None,
+                    })
+                    .collect();
+
+                // Build return previews
+                let previews: Vec<LinkPreview> = link_previews
+                    .iter()
+                    .map(|lp| {
+                        let image = lp.image_path.as_ref().map(|p| {
+                            let mime = mime_guess::from_path(p)
+                                .first_or_octet_stream()
+                                .to_string();
+                            Attachment {
+                                content_type: mime,
+                                file_path: Some(p.clone()),
+                                file_name: None,
+                                width: None,
+                                height: None,
+                                size: None,
+                            }
+                        });
+                        LinkPreview {
+                            url: lp.url.clone(),
+                            title: lp.title.clone(),
+                            description: lp.description.clone(),
+                            image,
+                            date: lp.date,
+                        }
+                    })
+                    .collect();
+
+                Ok(Message {
+                    id: timestamp.to_string(),
+                    channel_id,
+                    sender_id: my_user_id.to_string(),
+                    sender_name: None,
+                    body: text,
+                    timestamp,
+                    is_outgoing: true,
+                    status: MessageStatus::Sent,
+                    attachments,
+                    reactions: vec![],
+                    mentions: vec![],
+                    read_by: vec![],
+                    previews,
                 })
             })
         })
@@ -1173,8 +1432,8 @@ impl SignalClient {
                                         }
 
                                         // Check cache only (no blocking downloads)
-                                        let (mut message, pointers, raw_mentions) = match result {
-                                            Some(ProcessedContent::Message(msg, ptrs, raw_mentions)) => (msg, ptrs, raw_mentions),
+                                        let (mut message, pointers, raw_mentions, raw_previews) = match result {
+                                            Some(ProcessedContent::Message(msg, ptrs, raw_mentions, raw_previews)) => (msg, ptrs, raw_mentions, raw_previews),
                                             _ => continue,
                                         };
 
@@ -1199,6 +1458,31 @@ impl SignalClient {
                                                     );
                                                 }
                                                 message.attachments.push(attachment);
+                                            }
+
+                                            // Process link preview images
+                                            for (idx, (mut preview, image_pointer)) in raw_previews.into_iter().enumerate() {
+                                                if let Some(pointer) = image_pointer {
+                                                    let (attachment, cache_key) =
+                                                        check_attachment_cache(&pointer, &attachments_dir);
+                                                    if attachment.file_path.is_some() {
+                                                        preview.image = Some(attachment);
+                                                    } else {
+                                                        spawn_preview_image_download(
+                                                            &runtime_handle_inner,
+                                                            manager_for_attachments.clone(),
+                                                            pointer,
+                                                            attachments_dir.clone(),
+                                                            message.channel_id.clone(),
+                                                            message.id.clone(),
+                                                            idx as u32,
+                                                            listener.clone(),
+                                                            inflight.clone(),
+                                                            cache_key,
+                                                        );
+                                                    }
+                                                }
+                                                message.previews.push(preview);
                                             }
 
                                             // Resolve mentions and replace U+FFFC placeholders
@@ -1854,8 +2138,14 @@ fn spawn_background_download(
 /// Result of processing a Content message
 enum ProcessedContent {
     /// A regular user-visible message (with attachment pointers to download,
-    /// and raw mentions as (start, length, uuid) tuples)
-    Message(Message, Vec<AttachmentPointer>, Vec<(u32, u32, String)>),
+    /// raw mentions as (start, length, uuid) tuples,
+    /// and link previews with their optional image pointers)
+    Message(
+        Message,
+        Vec<AttachmentPointer>,
+        Vec<(u32, u32, String)>,
+        Vec<(LinkPreview, Option<AttachmentPointer>)>,
+    ),
     /// A reaction on an existing message
     Reaction(ReactionEvent),
     /// A read receipt from a contact (timestamps of our messages they read)
@@ -1869,6 +2159,84 @@ fn channel_id_from_dm(dm: &DataMessage, fallback_uuid: Uuid) -> Option<String> {
     } else {
         Some(fallback_uuid.to_string())
     }
+}
+
+/// Spawn a background tokio task to download a link preview image and notify the listener.
+fn spawn_preview_image_download(
+    runtime_handle: &tokio::runtime::Handle,
+    manager: PresageManager,
+    pointer: AttachmentPointer,
+    attachments_dir: PathBuf,
+    channel_id: String,
+    message_id: String,
+    preview_index: u32,
+    listener: Arc<dyn MessageListener>,
+    inflight: Arc<RwLock<HashSet<String>>>,
+    cache_key: String,
+) {
+    // Check and insert into inflight set atomically
+    {
+        let mut set = inflight.write();
+        if set.contains(&cache_key) {
+            return; // Already downloading
+        }
+        set.insert(cache_key.clone());
+    }
+
+    runtime_handle.spawn(async move {
+        // Re-check cache (another task may have completed)
+        let content_type = pointer
+            .content_type
+            .clone()
+            .unwrap_or_else(|| "application/octet-stream".to_string());
+        let ext = extension_from_content_type(&content_type);
+        let file_path = attachments_dir.join(format!("{}.{}", cache_key, ext));
+
+        let attachment = if file_path.exists() {
+            Attachment {
+                content_type,
+                file_path: Some(file_path.to_string_lossy().to_string()),
+                file_name: pointer.file_name.clone(),
+                width: pointer.width,
+                height: pointer.height,
+                size: pointer.size,
+            }
+        } else {
+            download_and_save_attachment(&manager, &pointer, &attachments_dir).await
+        };
+
+        // Remove from inflight set
+        {
+            let mut set = inflight.write();
+            set.remove(&cache_key);
+        }
+
+        // Notify listener
+        listener.on_link_preview_image_downloaded(
+            channel_id,
+            message_id,
+            preview_index,
+            attachment,
+        );
+    });
+}
+
+/// Extract link previews from a DataMessage.
+/// Returns a list of (LinkPreview, Option<AttachmentPointer>) tuples.
+fn extract_previews(dm: &DataMessage) -> Vec<(LinkPreview, Option<AttachmentPointer>)> {
+    dm.preview
+        .iter()
+        .map(|p| {
+            let lp = LinkPreview {
+                url: p.url.clone().unwrap_or_default(),
+                title: p.title.clone(),
+                description: p.description.clone(),
+                image: None, // filled after download
+                date: p.date,
+            };
+            (lp, p.image.clone())
+        })
+        .collect()
 }
 
 /// Extract mention data from body_ranges.
@@ -1998,6 +2366,7 @@ fn process_content(
             let pointers = dm.attachments.clone();
             let channel_id = channel_id_from_dm(dm, sender_uuid)?;
             let raw_mentions = extract_mentions(&dm.body_ranges);
+            let raw_previews = extract_previews(dm);
 
             Some(ProcessedContent::Message(
                 Message {
@@ -2013,9 +2382,11 @@ fn process_content(
                     reactions: vec![],
                     mentions: vec![],
                     read_by: vec![],
+                    previews: vec![],
                 },
                 pointers,
                 raw_mentions,
+                raw_previews,
             ))
         }
         ContentBody::SynchronizeMessage(sync) => {
@@ -2051,6 +2422,7 @@ fn process_content(
                     let body = dm.body.clone();
                     let pointers = dm.attachments.clone();
                     let raw_mentions = extract_mentions(&dm.body_ranges);
+                    let raw_previews = extract_previews(dm);
 
                     let channel_id = if let Some(group_v2) = &dm.group_v2 {
                         group_v2.master_key.as_ref().map(hex::encode)?
@@ -2076,9 +2448,11 @@ fn process_content(
                             reactions: vec![],
                             mentions: vec![],
                             read_by: vec![],
+                            previews: vec![],
                         },
                         pointers,
                         raw_mentions,
+                        raw_previews,
                     ));
                 }
             }

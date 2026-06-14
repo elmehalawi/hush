@@ -1,6 +1,6 @@
 import {useEffect, useRef, useCallback} from 'react';
 import {NativeModules, NativeEventEmitter, Platform} from 'react-native';
-import {useSignalStore, Message, Channel, Attachment, Mention, Reaction, ReactionEvent} from '../store/signalStore';
+import {useSignalStore, Message, Channel, Attachment, LinkPreview, Mention, Reaction, ReactionEvent} from '../store/signalStore';
 
 // Get the native module
 const {PresageModule} = NativeModules;
@@ -55,6 +55,14 @@ interface NativeMention {
   name: string;
 }
 
+interface NativeLinkPreview {
+  url: string;
+  title: string | null;
+  description: string | null;
+  image: NativeAttachment | null;
+  date: number | null;
+}
+
 interface NativeMessage {
   id: string;
   channelId: string;
@@ -68,6 +76,7 @@ interface NativeMessage {
   reactions: NativeReaction[] | null;
   mentions: NativeMention[] | null;
   readBy: string[] | null;
+  linkPreviews: NativeLinkPreview[] | null;
 }
 
 // Convert native channel to store channel
@@ -105,6 +114,17 @@ function convertReaction(native: NativeReaction): Reaction {
   };
 }
 
+// Convert native link preview to store link preview
+function convertLinkPreview(native: NativeLinkPreview): LinkPreview {
+  return {
+    url: native.url,
+    title: native.title || undefined,
+    description: native.description || undefined,
+    image: native.image ? convertAttachment(native.image) : undefined,
+    date: native.date || undefined,
+  };
+}
+
 // Convert native message to store message
 function convertMessage(native: NativeMessage): Message {
   return {
@@ -120,6 +140,7 @@ function convertMessage(native: NativeMessage): Message {
     reactions: (native.reactions || []).map(convertReaction),
     mentions: (native.mentions || []),
     readBy: native.readBy || [],
+    linkPreviews: (native.linkPreviews || []).map(convertLinkPreview),
   };
 }
 
@@ -137,6 +158,7 @@ export function useSignalClient() {
   const updateChannel = useSignalStore(state => state.updateChannel);
   const markChannelAsRead = useSignalStore(state => state.markChannelAsRead);
   const updateAttachment = useSignalStore(state => state.updateAttachment);
+  const updateLinkPreviewImage = useSignalStore(state => state.updateLinkPreviewImage);
   const markMessagesAsRead = useSignalStore(state => state.markMessagesAsRead);
 
   // Initialize client
@@ -277,14 +299,31 @@ export function useSignalClient() {
     [],
   );
 
-  // Send message (with optional attachments)
+  // Link preview data for sending
+  interface LinkPreviewData {
+    url: string;
+    title?: string;
+    description?: string;
+    imagePath?: string;
+    date?: number;
+  }
+
+  // Send message (with optional attachments and link previews)
   const sendMessage = useCallback(
-    async (channelId: string, text: string, attachmentPaths?: string[]) => {
+    async (channelId: string, text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewData[]) => {
       if (!PresageModule || !isInitialized.current) return;
 
       try {
         let message;
-        if (attachmentPaths && attachmentPaths.length > 0) {
+        if (linkPreviews && linkPreviews.length > 0) {
+          // Use the previews-aware send path
+          message = await PresageModule.sendMessageWithPreviews(
+            channelId,
+            text || null,
+            attachmentPaths || [],
+            linkPreviews,
+          );
+        } else if (attachmentPaths && attachmentPaths.length > 0) {
           message = await PresageModule.sendMessageWithAttachments(
             channelId,
             text || null,
@@ -475,6 +514,19 @@ export function useSignalClient() {
           event.messageId,
           event.attachmentIndex,
           convertAttachment(event.attachment),
+        );
+      }),
+      presageEventEmitter.addListener('onLinkPreviewImageDownloaded', (event: {
+        channelId: string;
+        messageId: string;
+        previewIndex: number;
+        image: NativeAttachment;
+      }) => {
+        updateLinkPreviewImage(
+          event.channelId,
+          event.messageId,
+          event.previewIndex,
+          convertAttachment(event.image),
         );
       }),
       presageEventEmitter.addListener('onError', (event: {message: string}) => {

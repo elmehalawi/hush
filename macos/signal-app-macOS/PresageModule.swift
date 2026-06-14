@@ -51,7 +51,7 @@ class PresageModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onMessage", "onReaction", "onReadReceipt", "onChannelUpdated", "onAttachmentDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions"]
+        return ["onMessage", "onReaction", "onReadReceipt", "onChannelUpdated", "onAttachmentDownloaded", "onLinkPreviewImageDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions"]
     }
 
     override func startObserving() {
@@ -350,6 +350,16 @@ class PresageModule: RCTEventEmitter {
                 ]
                 body["attachment"] = self.attachmentToDict(attachment)
                 self.sendEventIfListening("onAttachmentDownloaded", body: body)
+            },
+            onLinkPreviewImageDownloaded: { [weak self] channelId, messageId, previewIndex, attachment in
+                guard let self = self else { return }
+                let body: [String: Any] = [
+                    "channelId": channelId,
+                    "messageId": messageId,
+                    "previewIndex": NSNumber(value: previewIndex),
+                    "image": self.attachmentToDict(attachment),
+                ]
+                self.sendEventIfListening("onLinkPreviewImageDownloaded", body: body)
             }
         )
 
@@ -498,6 +508,155 @@ class PresageModule: RCTEventEmitter {
                 resolver(self.messageToDict(message))
             } catch {
                 rejecter("SEND_ERROR", "Failed to send message with attachments: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
+    // MARK: - Link Preview
+
+    @objc(fetchLinkPreviewMetadata:resolver:rejecter:)
+    func fetchLinkPreviewMetadata(_ urlString: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let url = URL(string: urlString), url.scheme == "https" else {
+            rejecter("INVALID_URL", "Only HTTPS URLs are supported", nil)
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            var request = URLRequest(url: url)
+            request.setValue("WhatsApp/2", forHTTPHeaderField: "User-Agent")
+            request.timeoutInterval = 10
+
+            let semaphore = DispatchSemaphore(value: 0)
+            var responseData: Data?
+            var responseError: Error?
+
+            let task = URLSession.shared.dataTask(with: request) { data, response, error in
+                responseData = data
+                responseError = error
+                semaphore.signal()
+            }
+            task.resume()
+            semaphore.wait()
+
+            if let error = responseError {
+                rejecter("FETCH_ERROR", "Failed to fetch URL: \(error.localizedDescription)", error)
+                return
+            }
+
+            guard let data = responseData, let html = String(data: data, encoding: .utf8) else {
+                rejecter("PARSE_ERROR", "Failed to decode HTML", nil)
+                return
+            }
+
+            // Parse OG tags
+            let title = self.extractOGTag(html: html, property: "og:title")
+            let description = self.extractOGTag(html: html, property: "og:description")
+            let imageUrl = self.extractOGTag(html: html, property: "og:image")
+            let dateStr = self.extractOGTag(html: html, property: "og:published_time")
+                ?? self.extractOGTag(html: html, property: "article:published_time")
+
+            var result: [String: Any?] = [
+                "url": urlString,
+                "title": title,
+                "description": description,
+            ]
+
+            // Parse date if present
+            if let dateStr = dateStr {
+                let formatter = ISO8601DateFormatter()
+                if let date = formatter.date(from: dateStr) {
+                    result["date"] = NSNumber(value: Int64(date.timeIntervalSince1970 * 1000))
+                }
+            }
+
+            // Download OG image to temp file
+            if let imageUrlStr = imageUrl, let imageUrl = URL(string: imageUrlStr) {
+                var imgRequest = URLRequest(url: imageUrl)
+                imgRequest.timeoutInterval = 10
+                var imgData: Data?
+                let imgSemaphore = DispatchSemaphore(value: 0)
+                let imgTask = URLSession.shared.dataTask(with: imgRequest) { data, _, _ in
+                    imgData = data
+                    imgSemaphore.signal()
+                }
+                imgTask.resume()
+                imgSemaphore.wait()
+
+                if let imgData = imgData, !imgData.isEmpty {
+                    let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+                    let ext = imageUrl.pathExtension.isEmpty ? "jpg" : imageUrl.pathExtension
+                    let fileName = "link_preview_\(UUID().uuidString).\(ext)"
+                    let filePath = cacheDir.appendingPathComponent(fileName)
+                    do {
+                        try imgData.write(to: filePath)
+                        result["imagePath"] = filePath.path
+                    } catch {
+                        NSLog("PresageModule: Failed to save preview image: \(error)")
+                    }
+                }
+            }
+
+            resolver(result)
+        }
+    }
+
+    private func extractOGTag(html: String, property: String) -> String? {
+        // Match: <meta property="og:title" content="...">
+        // Also handles name= instead of property=, and single/double quotes
+        let patterns = [
+            "property=[\"']\(property)[\"']\\s+content=[\"']([^\"']*)[\"']",
+            "content=[\"']([^\"']*)[\"']\\s+property=[\"']\(property)[\"']",
+            "name=[\"']\(property)[\"']\\s+content=[\"']([^\"']*)[\"']",
+            "content=[\"']([^\"']*)[\"']\\s+name=[\"']\(property)[\"']",
+        ]
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                let range = NSRange(html.startIndex..., in: html)
+                if let match = regex.firstMatch(in: html, range: range) {
+                    if let contentRange = Range(match.range(at: 1), in: html) {
+                        let value = String(html[contentRange])
+                        if !value.isEmpty {
+                            return value
+                                .replacingOccurrences(of: "&amp;", with: "&")
+                                .replacingOccurrences(of: "&lt;", with: "<")
+                                .replacingOccurrences(of: "&gt;", with: ">")
+                                .replacingOccurrences(of: "&quot;", with: "\"")
+                                .replacingOccurrences(of: "&#39;", with: "'")
+                        }
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    @objc(sendMessageWithPreviews:text:attachmentPaths:linkPreviews:resolver:rejecter:)
+    func sendMessageWithPreviews(_ channelId: String, text: String?, attachmentPaths: [String], linkPreviews: [[String: Any]], resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let client = client else {
+            rejecter("NOT_INITIALIZED", "Client not initialized", nil)
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let previews = linkPreviews.map { dict -> LinkPreviewData in
+                    LinkPreviewData(
+                        url: dict["url"] as? String ?? "",
+                        title: dict["title"] as? String,
+                        description: dict["description"] as? String,
+                        imagePath: dict["imagePath"] as? String,
+                        date: (dict["date"] as? NSNumber)?.uint64Value
+                    )
+                }
+                let message = try client.sendMessageWithPreviews(
+                    channelId: channelId,
+                    text: text,
+                    attachmentPaths: attachmentPaths,
+                    linkPreviews: previews
+                )
+                resolver(self.messageToDict(message))
+            } catch {
+                rejecter("SEND_ERROR", "Failed to send message with previews: \(error.localizedDescription)", error)
             }
         }
     }
@@ -1217,6 +1376,16 @@ class PresageModule: RCTEventEmitter {
         ]
     }
 
+    private func linkPreviewToDict(_ preview: LinkPreview) -> [String: Any?] {
+        return [
+            "url": preview.url,
+            "title": preview.title,
+            "description": preview.description,
+            "date": preview.date.map { NSNumber(value: $0) },
+            "image": preview.image.map { attachmentToDict($0) },
+        ]
+    }
+
     private func messageToDict(_ message: Message) -> [String: Any?] {
         var dict: [String: Any?] = [
             "id": message.id,
@@ -1232,6 +1401,7 @@ class PresageModule: RCTEventEmitter {
         dict["reactions"] = message.reactions.map { reactionToDict($0) }
         dict["mentions"] = message.mentions.map { mentionToDict($0) }
         dict["readBy"] = message.readBy
+        dict["linkPreviews"] = message.previews.map { linkPreviewToDict($0) }
         return dict
     }
 
@@ -1368,14 +1538,16 @@ class MessageListenerImpl: MessageListener {
     private let onChannelUpdatedHandler: (Channel) -> Void
     private let onErrorHandler: (String) -> Void
     private let onAttachmentDownloadedHandler: (String, String, UInt32, Attachment) -> Void
+    private let onLinkPreviewImageDownloadedHandler: (String, String, UInt32, Attachment) -> Void
 
-    init(onMessage: @escaping (Message) -> Void, onReaction: @escaping (ReactionEvent) -> Void, onReadReceipt: @escaping (String, [UInt64]) -> Void, onChannelUpdated: @escaping (Channel) -> Void, onError: @escaping (String) -> Void, onAttachmentDownloaded: @escaping (String, String, UInt32, Attachment) -> Void) {
+    init(onMessage: @escaping (Message) -> Void, onReaction: @escaping (ReactionEvent) -> Void, onReadReceipt: @escaping (String, [UInt64]) -> Void, onChannelUpdated: @escaping (Channel) -> Void, onError: @escaping (String) -> Void, onAttachmentDownloaded: @escaping (String, String, UInt32, Attachment) -> Void, onLinkPreviewImageDownloaded: @escaping (String, String, UInt32, Attachment) -> Void) {
         self.onMessageHandler = onMessage
         self.onReactionHandler = onReaction
         self.onReadReceiptHandler = onReadReceipt
         self.onChannelUpdatedHandler = onChannelUpdated
         self.onErrorHandler = onError
         self.onAttachmentDownloadedHandler = onAttachmentDownloaded
+        self.onLinkPreviewImageDownloadedHandler = onLinkPreviewImageDownloaded
     }
 
     func onMessage(message: Message) {
@@ -1411,6 +1583,12 @@ class MessageListenerImpl: MessageListener {
     func onAttachmentDownloaded(channelId: String, messageId: String, attachmentIndex: UInt32, attachment: Attachment) {
         DispatchQueue.main.async {
             self.onAttachmentDownloadedHandler(channelId, messageId, attachmentIndex, attachment)
+        }
+    }
+
+    func onLinkPreviewImageDownloaded(channelId: String, messageId: String, previewIndex: UInt32, attachment: Attachment) {
+        DispatchQueue.main.async {
+            self.onLinkPreviewImageDownloadedHandler(channelId, messageId, previewIndex, attachment)
         }
     }
 }

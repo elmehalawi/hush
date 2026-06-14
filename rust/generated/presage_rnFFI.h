@@ -314,6 +314,13 @@ typedef void (*UniffiCallbackInterfaceMessageListenerMethod5)(uint64_t, RustBuff
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD6
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD6
+typedef void (*UniffiCallbackInterfaceMessageListenerMethod6)(uint64_t, RustBuffer, RustBuffer, uint32_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LINKING_CALLBACK
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LINKING_CALLBACK
 typedef struct UniffiVTableCallbackInterfaceLinkingCallback {
@@ -333,6 +340,7 @@ typedef struct UniffiVTableCallbackInterfaceMessageListener {
     UniffiCallbackInterfaceMessageListenerMethod3 _Nonnull onReadReceipt;
     UniffiCallbackInterfaceMessageListenerMethod4 _Nonnull onError;
     UniffiCallbackInterfaceMessageListenerMethod5 _Nonnull onAttachmentDownloaded;
+    UniffiCallbackInterfaceMessageListenerMethod6 _Nonnull onLinkPreviewImageDownloaded;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceMessageListener;
 
@@ -405,6 +413,11 @@ RustBuffer uniffi_presage_rn_fn_method_signalclient_send_message(void*_Nonnull p
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SEND_MESSAGE_WITH_ATTACHMENTS
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SEND_MESSAGE_WITH_ATTACHMENTS
 RustBuffer uniffi_presage_rn_fn_method_signalclient_send_message_with_attachments(void*_Nonnull ptr, RustBuffer channel_id, RustBuffer text, RustBuffer attachment_paths, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SEND_MESSAGE_WITH_PREVIEWS
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SEND_MESSAGE_WITH_PREVIEWS
+RustBuffer uniffi_presage_rn_fn_method_signalclient_send_message_with_previews(void*_Nonnull ptr, RustBuffer channel_id, RustBuffer text, RustBuffer attachment_paths, RustBuffer link_previews, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SEND_REACTION
@@ -788,6 +801,12 @@ uint16_t uniffi_presage_rn_checksum_method_signalclient_send_message_with_attach
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SEND_MESSAGE_WITH_PREVIEWS
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SEND_MESSAGE_WITH_PREVIEWS
+uint16_t uniffi_presage_rn_checksum_method_signalclient_send_message_with_previews(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SEND_REACTION
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SEND_REACTION
 uint16_t uniffi_presage_rn_checksum_method_signalclient_send_reaction(void
@@ -875,6 +894,12 @@ uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_error(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_ATTACHMENT_DOWNLOADED
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_ATTACHMENT_DOWNLOADED
 uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_attachment_downloaded(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_LINK_PREVIEW_IMAGE_DOWNLOADED
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_LINK_PREVIEW_IMAGE_DOWNLOADED
+uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_link_preview_image_downloaded(void
     
 );
 #endif

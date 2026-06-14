@@ -34,6 +34,14 @@ export interface Mention {
   name: string;
 }
 
+export interface LinkPreview {
+  url: string;
+  title?: string;
+  description?: string;
+  image?: Attachment;
+  date?: number;
+}
+
 export interface Message {
   id: string;
   channelId: string;
@@ -47,6 +55,7 @@ export interface Message {
   reactions: Reaction[];
   mentions: Mention[];
   readBy: string[];
+  linkPreviews: LinkPreview[];
 }
 
 export type LinkingState =
@@ -91,6 +100,12 @@ interface SignalStore {
     messageId: string,
     attachmentIndex: number,
     attachment: Attachment,
+  ) => void;
+  updateLinkPreviewImage: (
+    channelId: string,
+    messageId: string,
+    previewIndex: number,
+    image: Attachment,
   ) => void;
   markMessagesAsRead: (senderId: string, timestamps: number[]) => void;
 }
@@ -265,6 +280,35 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
 
     const updatedMessages = [...channelMessages];
     updatedMessages[msgIndex] = {...msg, attachments: newAttachments};
+    set({
+      messages: {
+        ...messages,
+        [channelId]: updatedMessages,
+      },
+    });
+  },
+
+  updateLinkPreviewImage: (
+    channelId: string,
+    messageId: string,
+    previewIndex: number,
+    image: Attachment,
+  ) => {
+    const {messages} = get();
+    const channelMessages = messages[channelId];
+    if (!channelMessages) return;
+
+    const msgIndex = channelMessages.findIndex(m => m.id === messageId);
+    if (msgIndex < 0) return;
+
+    const msg = channelMessages[msgIndex];
+    if (previewIndex >= msg.linkPreviews.length) return;
+
+    const newPreviews = [...msg.linkPreviews];
+    newPreviews[previewIndex] = {...newPreviews[previewIndex], image};
+
+    const updatedMessages = [...channelMessages];
+    updatedMessages[msgIndex] = {...msg, linkPreviews: newPreviews};
     set({
       messages: {
         ...messages,

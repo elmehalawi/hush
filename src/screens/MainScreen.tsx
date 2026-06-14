@@ -22,8 +22,16 @@ const SIDEBAR_MIN = 100;
 const SIDEBAR_MAX = 500;
 const COLLAPSE_THRESHOLD = 120;
 
+interface LinkPreviewSendData {
+  url: string;
+  title?: string;
+  description?: string;
+  imagePath?: string;
+  date?: number;
+}
+
 interface MainScreenProps {
-  onSendMessage: (channelId: string, text: string, attachmentPaths?: string[]) => void;
+  onSendMessage: (channelId: string, text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[]) => void;
   onSelectChannel: (channelId: string) => void;
   onReact?: (channelId: string, emoji: string, targetTimestamp: number, remove: boolean) => void;
   onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
@@ -75,9 +83,9 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
   );
 
   const handleSendMessage = useCallback(
-    (text: string, attachmentPaths?: string[]) => {
+    (text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[]) => {
       if (selectedChannelId) {
-        onSendMessage(selectedChannelId, text, attachmentPaths);
+        onSendMessage(selectedChannelId, text, attachmentPaths, linkPreviews);
       }
     },
     [selectedChannelId, onSendMessage],
