@@ -209,7 +209,7 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
       {/* Glass input bar floating at bottom over chat area */}
       {selectedChannel && (
         <GlassContainerView style={[styles.inputContainer, {left: chatLeft}]}>
-          <MessageInput ref={inputRef} onSend={handleSendMessage} />
+          <MessageInput ref={inputRef} onSend={handleSendMessage} channelId={selectedChannelId} />
         </GlassContainerView>
       )}
 

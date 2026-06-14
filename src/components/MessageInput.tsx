@@ -57,6 +57,7 @@ export interface ReplyingTo {
 interface MessageInputProps {
   onSend: (text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[], replyingTo?: ReplyingTo) => void;
   disabled?: boolean;
+  channelId?: string;
 }
 
 export interface MessageInputHandle {
@@ -82,7 +83,7 @@ function getFileName(path: string): string {
 }
 
 export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
-  function MessageInput({onSend, disabled}, ref) {
+  function MessageInput({onSend, disabled, channelId}, ref) {
     const [text, setText] = useState('');
     const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
     const [replyingTo, setReplyingTo] = useState<ReplyingTo | null>(null);
@@ -98,6 +99,10 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
     const isDark = useColorScheme() === 'dark';
     const inputRef = useRef<TextInput>(null);
     const sendingRef = useRef(false);
+
+    useEffect(() => {
+      setReplyingTo(null);
+    }, [channelId]);
 
     useImperativeHandle(ref, () => ({
       focus: () => {
