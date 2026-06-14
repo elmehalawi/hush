@@ -33,6 +33,21 @@ import AppKit
     ])
   }
 
+  override func insertReactSubview(_ subview: NSView!, at atIndex: Int) {
+    super.insertReactSubview(subview, at: atIndex)  // React tracking bookkeeping
+    addSubview(subview)  // Add to native view hierarchy above the glass background
+  }
+
+  override func didUpdateReactSubviews() {
+    // No-op: we handle native hierarchy in insertReactSubview.
+    // Calling super would re-add tracked subviews, interfering with visibility
+    // due to Fabric's deferred commit scheduling.
+  }
+
+  override func removeReactSubview(_ subview: NSView!) {
+    super.removeReactSubview(subview)
+  }
+
   override func viewDidMoveToSuperview() {
     super.viewDidMoveToSuperview()
     if superview != nil {

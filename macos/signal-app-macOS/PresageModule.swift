@@ -51,7 +51,7 @@ class PresageModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onMessage", "onReaction", "onReadReceipt", "onChannelUpdated", "onAttachmentDownloaded", "onLinkPreviewImageDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions"]
+        return ["onMessage", "onReaction", "onReadReceipt", "onChannelUpdated", "onAttachmentDownloaded", "onLinkPreviewImageDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions", "onReplyToMessage"]
     }
 
     override func startObserving() {
@@ -1169,15 +1169,27 @@ class PresageModule: RCTEventEmitter {
 
     // MARK: - Message Context Menu
 
-    @objc(showMessageContextMenu:)
-    func showMessageContextMenu(_ messageBody: String) {
+    @objc(showMessageContextMenu:messageTimestamp:messageSenderId:messageSenderName:)
+    func showMessageContextMenu(_ messageBody: String, messageTimestamp: Double, messageSenderId: String, messageSenderName: String) {
         DispatchQueue.main.async {
             let menu = NSMenu()
 
-            let copyItem = NSMenuItem(title: "Copy", action: #selector(self.handleCopyMessageText(_:)), keyEquivalent: "")
-            copyItem.representedObject = messageBody
-            copyItem.target = self
-            menu.addItem(copyItem)
+            if !messageBody.isEmpty {
+                let copyItem = NSMenuItem(title: "Copy", action: #selector(self.handleCopyMessageText(_:)), keyEquivalent: "")
+                copyItem.representedObject = messageBody
+                copyItem.target = self
+                menu.addItem(copyItem)
+            }
+
+            let replyItem = NSMenuItem(title: "Reply", action: #selector(self.handleReplyToMessage(_:)), keyEquivalent: "")
+            replyItem.representedObject = [
+                "id": messageTimestamp,
+                "authorId": messageSenderId,
+                "authorName": messageSenderName,
+                "text": messageBody,
+            ] as [String: Any]
+            replyItem.target = self
+            menu.addItem(replyItem)
 
             guard let window = NSApp.keyWindow, let contentView = window.contentView else { return }
             let mouseInWindow = window.mouseLocationOutsideOfEventStream
@@ -1190,6 +1202,11 @@ class PresageModule: RCTEventEmitter {
         guard let text = sender.representedObject as? String else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    @objc private func handleReplyToMessage(_ sender: NSMenuItem) {
+        guard let data = sender.representedObject as? [String: Any] else { return }
+        sendEventIfListening("onReplyToMessage", body: data)
     }
 
     // MARK: - File Context Menu

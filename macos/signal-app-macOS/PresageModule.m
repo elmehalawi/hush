@@ -73,7 +73,10 @@ RCT_EXTERN_METHOD(previewFile:(NSString *)filePath)
 RCT_EXTERN_METHOD(showChannelContextMenu:(NSString *)channelId
                   isGroup:(BOOL)isGroup)
 
-RCT_EXTERN_METHOD(showMessageContextMenu:(NSString *)messageBody)
+RCT_EXTERN_METHOD(showMessageContextMenu:(NSString *)messageBody
+                  messageTimestamp:(double)messageTimestamp
+                  messageSenderId:(NSString *)messageSenderId
+                  messageSenderName:(NSString *)messageSenderName)
 
 RCT_EXTERN_METHOD(showFileContextMenu:(NSString *)filePath
                   fileName:(NSString *)fileName)

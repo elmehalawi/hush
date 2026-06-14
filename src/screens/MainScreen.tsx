@@ -115,6 +115,20 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
     return () => sub.remove();
   }, []);
 
+  // Listen for Reply from native context menu
+  useEffect(() => {
+    if (!presageEmitter) return;
+    const sub = presageEmitter.addListener('onReplyToMessage', (data: {id: number; authorId: string; authorName: string; text: string}) => {
+      inputRef.current?.setReplyingTo({
+        id: data.id,
+        authorId: data.authorId,
+        authorName: data.authorName,
+        text: data.text || undefined,
+      });
+    });
+    return () => sub.remove();
+  }, []);
+
   // Channel navigation shortcut handler
   useEffect(() => {
     if (!emitter) return;

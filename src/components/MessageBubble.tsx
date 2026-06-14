@@ -551,10 +551,18 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   );
 
   const handleBubblePressIn = useCallback((e: any) => {
-    if (e.nativeEvent?.button === 2 && message.body) {
-      PresageModule?.showMessageContextMenu(message.body);
+    if (e.nativeEvent?.button === 2) {
+      const authorName = message.isOutgoing
+        ? 'You'
+        : message.senderName || message.senderId;
+      PresageModule?.showMessageContextMenu(
+        message.body || '',
+        message.timestamp,
+        message.senderId,
+        authorName,
+      );
     }
-  }, [message.body]);
+  }, [message.body, message.timestamp, message.senderId, message.senderName, message.isOutgoing]);
 
   const hasReactions = message.reactions.length > 0;
 
@@ -613,9 +621,13 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
           {statusBelow}
         </>
       )}
-      {hovered && onReact && !isOutgoing && (
-        <View style={styles.reactionBarOverlay}>
-          <ReactionBar onReact={handleReact} existingReactionEmoji={myReaction?.emoji} />
+      {hovered && (onReply || (onReact && !isOutgoing)) && (
+        <View style={[styles.reactionBarOverlay, isOutgoing && styles.reactionBarOverlayOutgoing]}>
+          <ReactionBar
+            onReact={!isOutgoing ? handleReact : undefined}
+            onReply={onReply ? () => onReply(message) : undefined}
+            existingReactionEmoji={myReaction?.emoji}
+          />
         </View>
       )}
     </Animated.View>
@@ -832,6 +844,10 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     zIndex: 10,
+  },
+  reactionBarOverlayOutgoing: {
+    right: undefined,
+    left: 8,
   },
   reactionsContainer: {
     flexDirection: 'row',

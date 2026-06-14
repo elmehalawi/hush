@@ -325,26 +325,28 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
               (hasAttachments || hasPreview || hasReply) && styles.inputWrapperExpanded,
             ]}
             cornerRadius={24}>
-            {hasReply && (
-              <View style={styles.replyBanner}>
-                <View style={styles.replyBarIndicator} />
-                <View style={styles.replyContent}>
-                  <Text style={[styles.replyAuthor, isDark && {color: '#7CB8F0'}]} numberOfLines={1}>
-                    {replyingTo!.authorName}
-                  </Text>
-                  {replyingTo!.text ? (
-                    <Text style={[styles.replyText, isDark && {color: '#AAAAAA'}]} numberOfLines={1}>
-                      {replyingTo!.text}
+            <View style={[styles.replyBanner, !hasReply && {height: 0, overflow: 'hidden', paddingVertical: 0, borderBottomWidth: 0}]}>
+              {hasReply && (
+                <>
+                  <View style={styles.replyBarIndicator} />
+                  <View style={styles.replyContent}>
+                    <Text style={[styles.replyAuthor, isDark && {color: '#7CB8F0'}]} numberOfLines={1}>
+                      {replyingTo!.authorName}
                     </Text>
-                  ) : null}
-                </View>
-                <TouchableOpacity
-                  style={styles.replyDismiss}
-                  onPress={() => setReplyingTo(null)}>
-                  <Text style={styles.replyDismissIcon}>{'\u2715'}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+                    {replyingTo!.text ? (
+                      <Text style={[styles.replyText, isDark && {color: '#AAAAAA'}]} numberOfLines={1}>
+                        {replyingTo!.text}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <TouchableOpacity
+                    style={styles.replyDismiss}
+                    onPress={() => setReplyingTo(null)}>
+                    <Text style={styles.replyDismissIcon}>{'\u2715'}</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
             {hasPreview && (
               <View style={styles.linkPreviewStaged}>
                 <LinkPreviewCard
