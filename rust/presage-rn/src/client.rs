@@ -16,7 +16,7 @@ use presage::libsignal_service::zkgroup::profiles::ProfileKey;
 use presage::manager::Registered;
 use presage::model::identity::OnNewIdentity;
 use presage::proto::attachment_pointer::AttachmentIdentifier;
-use presage::proto::{receipt_message, AttachmentPointer, DataMessage, GroupContextV2, Preview, ReceiptMessage};
+use presage::proto::{receipt_message, sync_message, AttachmentPointer, DataMessage, GroupContextV2, Preview, ReceiptMessage, SyncMessage};
 use presage::store::{ContentsStore, Thread};
 use presage_store_sqlite::SqliteStore;
 use tracing::{error, info, warn};
@@ -2190,6 +2190,24 @@ impl SignalClient {
                         message: format!("Failed to send read receipt: {}", e),
                     })?;
                 info!("Sent read receipt for {} timestamps to {}", timestamps.len(), sender_uuid);
+
+                // Send sync read message to our own devices so they clear unread indicators
+                let own_aci = Aci::from(manager.registration_data().service_ids.aci);
+                let sync = SyncMessage {
+                    read: timestamps.iter().map(|&ts| sync_message::Read {
+                        sender_aci: Some(sender_uuid.clone()),
+                        timestamp: Some(ts),
+                        sender_aci_binary: None,
+                    }).collect(),
+                    ..SyncMessage::default()
+                };
+                if let Err(e) = manager
+                    .send_message(own_aci, ContentBody::SynchronizeMessage(sync), now)
+                    .await
+                {
+                    warn!("Failed to send sync read message: {}", e);
+                }
+
                 Ok(())
             })
         })
