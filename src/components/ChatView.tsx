@@ -60,8 +60,8 @@ export function ChatView({channel, messages, onReact, onRetryDownload}: ChatView
   );
 
   useEffect(() => {
-    scrollViewRef.current?.scrollToEnd({animated: true});
-  }, [messages.length]);
+    scrollViewRef.current?.scrollToEnd({animated: false});
+  }, [channel?.id, messages.length]);
 
   if (!channel) {
     return (
