@@ -99,11 +99,14 @@ export function ChatView({channel, messages, onReact, onReply, onRetryDownload}:
             return messages.map((message, index) => {
               const prevMessage = index > 0 ? messages[index - 1] : null;
               const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
-              const isFirstInGroup = !prevMessage || prevMessage.senderId !== message.senderId || prevMessage.isOutgoing !== message.isOutgoing;
-              const isLastInGroup = !nextMessage || nextMessage.senderId !== message.senderId || nextMessage.isOutgoing !== message.isOutgoing;
 
               const showTimeSeparator = !prevMessage ||
                 (message.timestamp - prevMessage.timestamp) > 15 * 60 * 1000;
+              const nextShowsTimeSeparator = nextMessage &&
+                (nextMessage.timestamp - message.timestamp) > 15 * 60 * 1000;
+
+              const isFirstInGroup = !prevMessage || prevMessage.senderId !== message.senderId || prevMessage.isOutgoing !== message.isOutgoing || showTimeSeparator;
+              const isLastInGroup = !nextMessage || nextMessage.senderId !== message.senderId || nextMessage.isOutgoing !== message.isOutgoing || !!nextShowsTimeSeparator;
 
               return (
                 <React.Fragment key={message.id}>

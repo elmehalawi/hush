@@ -450,11 +450,22 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   const hasMedia = mediaAttachments.length > 0;
   const audioOnly = hasAudio && !hasBody && !hasAttachments;
 
+  // Compute border radius based on position within message group.
+  // Only the tail side changes: right for outgoing, left for incoming.
+  // The tail corner (bottom-right outgoing, bottom-left incoming) always stays small.
+  // Non-first messages get a small radius on the top corner of the tail side.
+  const groupRadiusStyle = isFirstInGroup
+    ? undefined
+    : isOutgoing
+      ? {borderTopRightRadius: 4}
+      : {borderTopLeftRadius: 4};
+
   const bubbleStyle = [
     styles.bubble,
     isOutgoing ? [styles.bubbleOutgoing, {backgroundColor: outgoingBubbleBg}] : [styles.bubbleIncoming, {backgroundColor: incomingBubbleBg}],
     hasMedia && styles.bubbleWithMedia,
     showSenderInfo && styles.bubbleInGroup,
+    groupRadiusStyle,
   ];
 
   const readReceiptColor = colorScheme === 'dark' ? 'rgba(255,255,255,0.4)' : '#8E8E93';
