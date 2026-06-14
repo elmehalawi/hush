@@ -144,4 +144,12 @@ RCT_EXTERN_METHOD(sendMessageWithPreviews:(NSString *)channelId
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(sendMessageWithQuote:(NSString *)channelId
+                  text:(NSString *)text
+                  attachmentPaths:(NSArray *)attachmentPaths
+                  linkPreviews:(NSArray *)linkPreviews
+                  quote:(NSDictionary *)quote
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 @end

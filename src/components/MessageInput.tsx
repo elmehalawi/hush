@@ -47,8 +47,15 @@ interface LinkPreviewSendData {
   date?: number;
 }
 
+export interface ReplyingTo {
+  id: number;
+  authorId: string;
+  authorName: string;
+  text?: string;
+}
+
 interface MessageInputProps {
-  onSend: (text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[]) => void;
+  onSend: (text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[], replyingTo?: ReplyingTo) => void;
   disabled?: boolean;
 }
 
@@ -56,6 +63,7 @@ export interface MessageInputHandle {
   focus: () => void;
   insertText: (letter: string) => void;
   addFiles: (paths: string[]) => void;
+  setReplyingTo: (reply: ReplyingTo | null) => void;
 }
 
 function getFileType(path: string): 'image' | 'video' | 'file' {
@@ -77,6 +85,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
   function MessageInput({onSend, disabled}, ref) {
     const [text, setText] = useState('');
     const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+    const [replyingTo, setReplyingTo] = useState<ReplyingTo | null>(null);
     const [stagedPreview, setStagedPreview] =
       useState<LinkPreviewResult | null>(null);
     const [previewLoading, setPreviewLoading] = useState(false);
@@ -102,6 +111,12 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       addFiles: (paths: string[]) => {
         if (paths && paths.length > 0) {
           addFilePaths(paths);
+        }
+      },
+      setReplyingTo: (reply: ReplyingTo | null) => {
+        setReplyingTo(reply);
+        if (reply) {
+          inputRef.current?.focus();
         }
       },
     }));
@@ -173,10 +188,11 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
           ];
         }
 
-        onSend(trimmed, paths, linkPreviews);
+        onSend(trimmed, paths, linkPreviews, replyingTo || undefined);
       }
       setText('');
       setAttachments([]);
+      setReplyingTo(null);
       setStagedPreview(null);
       setPreviewLoading(false);
       lastPreviewUrlRef.current = null;
@@ -299,15 +315,36 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
     const hasContent = text.trim().length > 0 || attachments.length > 0;
     const hasAttachments = attachments.length > 0;
     const hasPreview = stagedPreview !== null || previewLoading;
+    const hasReply = replyingTo !== null;
 
     return (
       <View style={styles.container}>
           <GlassView
             style={[
               styles.inputWrapper,
-              (hasAttachments || hasPreview) && styles.inputWrapperExpanded,
+              (hasAttachments || hasPreview || hasReply) && styles.inputWrapperExpanded,
             ]}
             cornerRadius={24}>
+            {hasReply && (
+              <View style={styles.replyBanner}>
+                <View style={styles.replyBarIndicator} />
+                <View style={styles.replyContent}>
+                  <Text style={[styles.replyAuthor, isDark && {color: '#7CB8F0'}]} numberOfLines={1}>
+                    {replyingTo!.authorName}
+                  </Text>
+                  {replyingTo!.text ? (
+                    <Text style={[styles.replyText, isDark && {color: '#AAAAAA'}]} numberOfLines={1}>
+                      {replyingTo!.text}
+                    </Text>
+                  ) : null}
+                </View>
+                <TouchableOpacity
+                  style={styles.replyDismiss}
+                  onPress={() => setReplyingTo(null)}>
+                  <Text style={styles.replyDismissIcon}>{'\u2715'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
             {hasPreview && (
               <View style={styles.linkPreviewStaged}>
                 <LinkPreviewCard
@@ -461,6 +498,48 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     marginLeft: 4,
+  },
+  replyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(128, 128, 128, 0.3)',
+  },
+  replyBarIndicator: {
+    width: 3,
+    alignSelf: 'stretch',
+    backgroundColor: '#2196f3',
+    borderRadius: 1.5,
+    marginRight: 8,
+  },
+  replyContent: {
+    flex: 1,
+  },
+  replyAuthor: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2196f3',
+  },
+  replyText: {
+    fontSize: 12,
+    color: '#666666',
+    marginTop: 1,
+  },
+  replyDismiss: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(128, 128, 128, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  replyDismissIcon: {
+    fontSize: 10,
+    color: '#999999',
+    fontWeight: '600',
   },
   linkPreviewStaged: {
     paddingHorizontal: 12,

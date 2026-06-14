@@ -42,6 +42,13 @@ export interface LinkPreview {
   date?: number;
 }
 
+export interface Quote {
+  id: number;
+  authorId: string;
+  authorName?: string;
+  text?: string;
+}
+
 export interface Message {
   id: string;
   channelId: string;
@@ -56,6 +63,7 @@ export interface Message {
   mentions: Mention[];
   readBy: string[];
   linkPreviews: LinkPreview[];
+  quote?: Quote;
 }
 
 export type LinkingState =

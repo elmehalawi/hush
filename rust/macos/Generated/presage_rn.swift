@@ -563,6 +563,11 @@ public protocol SignalClientProtocol: AnyObject {
     func sendMessageWithPreviews(channelId: String, text: String?, attachmentPaths: [String], linkPreviews: [LinkPreviewData]) throws -> Message
 
     /**
+     * Send a message with a quote (reply to a previous message)
+     */
+    func sendMessageWithQuote(channelId: String, text: String?, attachmentPaths: [String], linkPreviews: [LinkPreviewData], quote: Quote) throws -> Message
+
+    /**
      * Send an emoji reaction to a message
      */
     func sendReaction(channelId: String, emoji: String, targetTimestamp: UInt64, remove: Bool) throws
@@ -781,6 +786,20 @@ open class SignalClient:
                                                                                 FfiConverterOptionString.lower(text),
                                                                                 FfiConverterSequenceString.lower(attachmentPaths),
                                                                                 FfiConverterSequenceTypeLinkPreviewData.lower(linkPreviews), $0)
+        })
+    }
+
+    /**
+     * Send a message with a quote (reply to a previous message)
+     */
+    open func sendMessageWithQuote(channelId: String, text: String?, attachmentPaths: [String], linkPreviews: [LinkPreviewData], quote: Quote) throws -> Message {
+        return try FfiConverterTypeMessage.lift(rustCallWithError(FfiConverterTypeSignalError.lift) {
+            uniffi_presage_rn_fn_method_signalclient_send_message_with_quote(self.uniffiClonePointer(),
+                                                                             FfiConverterString.lower(channelId),
+                                                                             FfiConverterOptionString.lower(text),
+                                                                             FfiConverterSequenceString.lower(attachmentPaths),
+                                                                             FfiConverterSequenceTypeLinkPreviewData.lower(linkPreviews),
+                                                                             FfiConverterTypeQuote.lower(quote), $0)
         })
     }
 
@@ -1580,6 +1599,10 @@ public struct Message {
      * Link previews attached to this message
      */
     public var previews: [LinkPreview]
+    /**
+     * Quoted message (reply context)
+     */
+    public var quote: Quote?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1622,7 +1645,10 @@ public struct Message {
             */ readBy: [String],
         /**
             * Link previews attached to this message
-            */ previews: [LinkPreview]
+            */ previews: [LinkPreview],
+        /**
+            * Quoted message (reply context)
+            */ quote: Quote?
     ) {
         self.id = id
         self.channelId = channelId
@@ -1637,6 +1663,7 @@ public struct Message {
         self.mentions = mentions
         self.readBy = readBy
         self.previews = previews
+        self.quote = quote
     }
 }
 
@@ -1681,6 +1708,9 @@ extension Message: Equatable, Hashable {
         if lhs.previews != rhs.previews {
             return false
         }
+        if lhs.quote != rhs.quote {
+            return false
+        }
         return true
     }
 
@@ -1698,6 +1728,7 @@ extension Message: Equatable, Hashable {
         hasher.combine(mentions)
         hasher.combine(readBy)
         hasher.combine(previews)
+        hasher.combine(quote)
     }
 }
 
@@ -1720,7 +1751,8 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
                 reactions: FfiConverterSequenceTypeReaction.read(from: &buf),
                 mentions: FfiConverterSequenceTypeMention.read(from: &buf),
                 readBy: FfiConverterSequenceString.read(from: &buf),
-                previews: FfiConverterSequenceTypeLinkPreview.read(from: &buf)
+                previews: FfiConverterSequenceTypeLinkPreview.read(from: &buf),
+                quote: FfiConverterOptionTypeQuote.read(from: &buf)
             )
     }
 
@@ -1738,6 +1770,7 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
         FfiConverterSequenceTypeMention.write(value.mentions, into: &buf)
         FfiConverterSequenceString.write(value.readBy, into: &buf)
         FfiConverterSequenceTypeLinkPreview.write(value.previews, into: &buf)
+        FfiConverterOptionTypeQuote.write(value.quote, into: &buf)
     }
 }
 
@@ -1753,6 +1786,111 @@ public func FfiConverterTypeMessage_lift(_ buf: RustBuffer) throws -> Message {
 #endif
 public func FfiConverterTypeMessage_lower(_ value: Message) -> RustBuffer {
     return FfiConverterTypeMessage.lower(value)
+}
+
+/**
+ * A quoted message (reply context)
+ */
+public struct Quote {
+    /**
+     * Timestamp of the quoted message (used as identifier)
+     */
+    public var id: UInt64
+    /**
+     * UUID of the original message author
+     */
+    public var authorId: String
+    /**
+     * Display name of the original author (if resolved)
+     */
+    public var authorName: String?
+    /**
+     * Text snippet of the quoted message
+     */
+    public var text: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Timestamp of the quoted message (used as identifier)
+         */ id: UInt64,
+        /**
+            * UUID of the original message author
+            */ authorId: String,
+        /**
+            * Display name of the original author (if resolved)
+            */ authorName: String?,
+        /**
+            * Text snippet of the quoted message
+            */ text: String?
+    ) {
+        self.id = id
+        self.authorId = authorId
+        self.authorName = authorName
+        self.text = text
+    }
+}
+
+extension Quote: Equatable, Hashable {
+    public static func == (lhs: Quote, rhs: Quote) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.authorId != rhs.authorId {
+            return false
+        }
+        if lhs.authorName != rhs.authorName {
+            return false
+        }
+        if lhs.text != rhs.text {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(authorId)
+        hasher.combine(authorName)
+        hasher.combine(text)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeQuote: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Quote {
+        return
+            try Quote(
+                id: FfiConverterUInt64.read(from: &buf),
+                authorId: FfiConverterString.read(from: &buf),
+                authorName: FfiConverterOptionString.read(from: &buf),
+                text: FfiConverterOptionString.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: Quote, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterString.write(value.authorId, into: &buf)
+        FfiConverterOptionString.write(value.authorName, into: &buf)
+        FfiConverterOptionString.write(value.text, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeQuote_lift(_ buf: RustBuffer) throws -> Quote {
+    return try FfiConverterTypeQuote.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeQuote_lower(_ value: Quote) -> RustBuffer {
+    return FfiConverterTypeQuote.lower(value)
 }
 
 /**
@@ -2911,6 +3049,30 @@ private struct FfiConverterOptionTypeAttachment: FfiConverterRustBuffer {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
+private struct FfiConverterOptionTypeQuote: FfiConverterRustBuffer {
+    typealias SwiftType = Quote?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeQuote.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeQuote.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
 private struct FfiConverterSequenceUInt64: FfiConverterRustBuffer {
     typealias SwiftType = [UInt64]
 
@@ -3208,6 +3370,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_send_message_with_previews() != 33394 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_signalclient_send_message_with_quote() != 37684 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_send_reaction() != 17691 {

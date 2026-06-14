@@ -24,7 +24,7 @@ use uuid::Uuid;
 
 use crate::callbacks::{LinkingCallback, MessageListener};
 use crate::error::SignalError;
-use crate::types::{Attachment, Channel, LinkPreview, LinkPreviewData, Mention, Message, MessageStatus, Reaction, ReactionEvent, SessionInfo};
+use crate::types::{Attachment, Channel, LinkPreview, LinkPreviewData, Mention, Message, MessageStatus, Quote, Reaction, ReactionEvent, SessionInfo};
 
 type PresageManager = presage::Manager<SqliteStore, Registered>;
 
@@ -568,8 +568,8 @@ impl SignalClient {
                 for result in iter {
                     if let Ok(content) = result {
                         match process_content(&content, my_user_id, Some(&channel_id)) {
-                            Some(ProcessedContent::Message(msg, pointers, raw_mentions, raw_previews)) => {
-                                messages_with_pointers.push((msg, pointers, raw_mentions, raw_previews));
+                            Some(ProcessedContent::Message(msg, pointers, raw_mentions, raw_previews, raw_quote)) => {
+                                messages_with_pointers.push((msg, pointers, raw_mentions, raw_previews, raw_quote));
                                 if limit > 0 && messages_with_pointers.len() >= limit {
                                     break;
                                 }
@@ -588,7 +588,7 @@ impl SignalClient {
             let is_group = channel_id.len() == 64;
             let mut sender_name_cache: HashMap<String, Option<String>> = HashMap::new();
             let mut messages = Vec::new();
-            for (mut msg, pointers, raw_mentions, raw_previews) in messages_with_pointers {
+            for (mut msg, pointers, raw_mentions, raw_previews, raw_quote) in messages_with_pointers {
                 if !pointers.is_empty() {
                     for (idx, pointer) in pointers.iter().enumerate() {
                         let (attachment, cache_key) =
@@ -662,6 +662,28 @@ impl SignalClient {
                         msg.body = Some(new_body);
                     }
                     msg.mentions = resolved;
+                }
+                // Resolve quote author name
+                if let Some((quote_id, ref author_aci, ref quote_text)) = raw_quote {
+                    let author_name = if let Ok(uuid) = author_aci.parse::<Uuid>() {
+                        if uuid == my_user_id {
+                            Some("You".to_string())
+                        } else if let Some(cached) = sender_name_cache.get(&uuid.to_string()) {
+                            cached.clone()
+                        } else {
+                            let sid = ServiceId::from(Aci::from(uuid));
+                            let (n, _) = resolve_contact_name_readonly(manager, uuid, &sid).await;
+                            if n.is_empty() || n == uuid.to_string() { None } else { Some(n) }
+                        }
+                    } else {
+                        None
+                    };
+                    msg.quote = Some(Quote {
+                        id: quote_id,
+                        author_id: author_aci.clone(),
+                        author_name,
+                        text: quote_text.clone(),
+                    });
                 }
                 messages.push(msg);
             }
@@ -810,6 +832,7 @@ impl SignalClient {
                 mentions: vec![],
                 read_by: vec![],
                 previews: vec![],
+                quote: None,
             })
         })
         })
@@ -968,6 +991,7 @@ impl SignalClient {
                     mentions: vec![],
                     read_by: vec![],
                     previews: vec![],
+                    quote: None,
                 })
             })
         })
@@ -1201,6 +1225,243 @@ impl SignalClient {
                     mentions: vec![],
                     read_by: vec![],
                     previews,
+                    quote: None,
+                })
+            })
+        })
+    }
+
+    /// Send a message with a quote (reply to a previous message)
+    pub fn send_message_with_quote(
+        &self,
+        channel_id: String,
+        text: Option<String>,
+        attachment_paths: Vec<String>,
+        link_previews: Vec<LinkPreviewData>,
+        quote: Quote,
+    ) -> Result<Message, SignalError> {
+        let mut manager_guard = self.manager.write();
+        let manager = manager_guard.as_mut().ok_or(SignalError::NotLinked)?;
+        let my_user_id = self.user_id.read().ok_or(SignalError::NotLinked)?;
+
+        const RED_ZONE: usize = 512 * 1024;
+        const STACK_SIZE: usize = 8 * 1024 * 1024;
+
+        let quote_for_return = quote.clone();
+
+        stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
+            let local = tokio::task::LocalSet::new();
+            local.block_on(&self.runtime, async {
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as u64;
+
+                // Upload regular attachments
+                let mut attachment_specs: Vec<(AttachmentSpec, Vec<u8>)> = Vec::new();
+                let mut file_names: Vec<Option<String>> = Vec::new();
+                let mut content_types: Vec<String> = Vec::new();
+
+                for path_str in &attachment_paths {
+                    let path = std::path::Path::new(path_str);
+                    let data = std::fs::read(path).map_err(|e| SignalError::InternalError {
+                        message: format!("Failed to read file {}: {}", path_str, e),
+                    })?;
+                    let mime = mime_guess::from_path(path)
+                        .first_or_octet_stream()
+                        .to_string();
+                    let file_name = path.file_name().map(|n| n.to_string_lossy().to_string());
+                    let spec = AttachmentSpec {
+                        content_type: mime.clone(),
+                        length: data.len(),
+                        file_name: file_name.clone(),
+                        ..Default::default()
+                    };
+                    content_types.push(mime);
+                    file_names.push(file_name);
+                    attachment_specs.push((spec, data));
+                }
+
+                // Upload preview images
+                let mut preview_image_specs: Vec<(usize, AttachmentSpec, Vec<u8>)> = Vec::new();
+                for (i, lp) in link_previews.iter().enumerate() {
+                    if let Some(ref image_path) = lp.image_path {
+                        let path = std::path::Path::new(image_path);
+                        if let Ok(data) = std::fs::read(path) {
+                            let mime = mime_guess::from_path(path)
+                                .first_or_octet_stream()
+                                .to_string();
+                            let file_name = path.file_name().map(|n| n.to_string_lossy().to_string());
+                            let spec = AttachmentSpec {
+                                content_type: mime,
+                                length: data.len(),
+                                file_name,
+                                ..Default::default()
+                            };
+                            preview_image_specs.push((i, spec, data));
+                        }
+                    }
+                }
+
+                // Combine all uploads into one batch
+                let mut all_specs: Vec<(AttachmentSpec, Vec<u8>)> = Vec::new();
+                let attachment_count = attachment_specs.len();
+                all_specs.extend(attachment_specs);
+                let preview_index_map: Vec<usize> = preview_image_specs.iter().map(|(i, _, _)| *i).collect();
+                for (_, spec, data) in preview_image_specs {
+                    all_specs.push((spec, data));
+                }
+
+                let mut attachment_pointers = Vec::new();
+                let mut preview_image_pointers: HashMap<usize, AttachmentPointer> = HashMap::new();
+
+                if !all_specs.is_empty() {
+                    let results = manager
+                        .upload_attachments(all_specs)
+                        .await
+                        .map_err(|e| SignalError::SendFailed {
+                            message: format!("Failed to upload attachments: {}", e),
+                        })?;
+
+                    for (result_idx, result) in results.into_iter().enumerate() {
+                        match result {
+                            Ok(pointer) => {
+                                if result_idx < attachment_count {
+                                    attachment_pointers.push(pointer);
+                                } else {
+                                    let preview_spec_idx = result_idx - attachment_count;
+                                    let preview_idx = preview_index_map[preview_spec_idx];
+                                    preview_image_pointers.insert(preview_idx, pointer);
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Failed to upload attachment: {:?}", e);
+                            }
+                        }
+                    }
+                }
+
+                // Build Preview proto objects
+                let proto_previews: Vec<Preview> = link_previews
+                    .iter()
+                    .enumerate()
+                    .map(|(i, lp)| {
+                        Preview {
+                            url: Some(lp.url.clone()),
+                            title: lp.title.clone(),
+                            description: lp.description.clone(),
+                            image: preview_image_pointers.get(&i).cloned(),
+                            date: lp.date,
+                        }
+                    })
+                    .collect();
+
+                // Build data message with quote
+                let mut data_message = DataMessage {
+                    body: text.clone(),
+                    timestamp: Some(timestamp),
+                    attachments: attachment_pointers,
+                    preview: proto_previews,
+                    quote: Some(presage::proto::data_message::Quote {
+                        id: Some(quote.id),
+                        author_aci: Some(quote.author_id.clone()),
+                        text: quote.text.clone(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                };
+
+                // Send to group or direct
+                if channel_id.len() == 64 {
+                    let master_key_bytes =
+                        hex::decode(&channel_id).map_err(|_| SignalError::ParseError {
+                            message: "Invalid group ID".to_string(),
+                        })?;
+                    data_message.group_v2 = Some(GroupContextV2 {
+                        master_key: Some(master_key_bytes.clone()),
+                        revision: Some(0),
+                        ..Default::default()
+                    });
+                    manager
+                        .send_message_to_group(&master_key_bytes, data_message.clone(), timestamp)
+                        .await
+                        .map_err(|e| SignalError::SendFailed {
+                            message: e.to_string(),
+                        })?;
+                } else {
+                    let recipient_uuid: Uuid =
+                        channel_id.parse().map_err(|_| SignalError::ParseError {
+                            message: "Invalid UUID".to_string(),
+                        })?;
+                    let recipient_aci = Aci::from(recipient_uuid);
+                    let body = ContentBody::DataMessage(data_message.clone());
+                    manager
+                        .send_message(recipient_aci, body, timestamp)
+                        .await
+                        .map_err(|e| SignalError::SendFailed {
+                            message: e.to_string(),
+                        })?;
+                }
+
+                // Build return attachments
+                let attachments: Vec<Attachment> = attachment_paths
+                    .iter()
+                    .enumerate()
+                    .map(|(i, path)| Attachment {
+                        content_type: content_types
+                            .get(i)
+                            .cloned()
+                            .unwrap_or_else(|| "application/octet-stream".to_string()),
+                        file_path: Some(path.clone()),
+                        file_name: file_names.get(i).cloned().flatten(),
+                        width: None,
+                        height: None,
+                        size: None,
+                    })
+                    .collect();
+
+                // Build return previews
+                let previews: Vec<LinkPreview> = link_previews
+                    .iter()
+                    .map(|lp| {
+                        let image = lp.image_path.as_ref().map(|p| {
+                            let mime = mime_guess::from_path(p)
+                                .first_or_octet_stream()
+                                .to_string();
+                            Attachment {
+                                content_type: mime,
+                                file_path: Some(p.clone()),
+                                file_name: None,
+                                width: None,
+                                height: None,
+                                size: None,
+                            }
+                        });
+                        LinkPreview {
+                            url: lp.url.clone(),
+                            title: lp.title.clone(),
+                            description: lp.description.clone(),
+                            image,
+                            date: lp.date,
+                        }
+                    })
+                    .collect();
+
+                Ok(Message {
+                    id: timestamp.to_string(),
+                    channel_id,
+                    sender_id: my_user_id.to_string(),
+                    sender_name: None,
+                    body: text,
+                    timestamp,
+                    is_outgoing: true,
+                    status: MessageStatus::Sent,
+                    attachments,
+                    reactions: vec![],
+                    mentions: vec![],
+                    read_by: vec![],
+                    previews,
+                    quote: Some(quote_for_return),
                 })
             })
         })
@@ -1432,8 +1693,8 @@ impl SignalClient {
                                         }
 
                                         // Check cache only (no blocking downloads)
-                                        let (mut message, pointers, raw_mentions, raw_previews) = match result {
-                                            Some(ProcessedContent::Message(msg, ptrs, raw_mentions, raw_previews)) => (msg, ptrs, raw_mentions, raw_previews),
+                                        let (mut message, pointers, raw_mentions, raw_previews, raw_quote) = match result {
+                                            Some(ProcessedContent::Message(msg, ptrs, raw_mentions, raw_previews, raw_quote)) => (msg, ptrs, raw_mentions, raw_previews, raw_quote),
                                             _ => continue,
                                         };
 
@@ -1493,6 +1754,27 @@ impl SignalClient {
                                                     message.body = Some(new_body);
                                                 }
                                                 message.mentions = resolved;
+                                            }
+
+                                            // Resolve quote author name
+                                            if let Some((quote_id, ref author_aci, ref quote_text)) = raw_quote {
+                                                let author_name = if let Ok(uuid) = author_aci.parse::<Uuid>() {
+                                                    if uuid == my_user_id {
+                                                        Some("You".to_string())
+                                                    } else {
+                                                        let sid = ServiceId::from(Aci::from(uuid));
+                                                        let (n, _) = resolve_contact_name_readonly(&manager_for_attachments, uuid, &sid).await;
+                                                        if n.is_empty() || n == uuid.to_string() { None } else { Some(n) }
+                                                    }
+                                                } else {
+                                                    None
+                                                };
+                                                message.quote = Some(Quote {
+                                                    id: quote_id,
+                                                    author_id: author_aci.clone(),
+                                                    author_name,
+                                                    text: quote_text.clone(),
+                                                });
                                             }
 
                                             // For incoming messages, look up sender name and emit channel update
@@ -2139,12 +2421,14 @@ fn spawn_background_download(
 enum ProcessedContent {
     /// A regular user-visible message (with attachment pointers to download,
     /// raw mentions as (start, length, uuid) tuples,
-    /// and link previews with their optional image pointers)
+    /// link previews with their optional image pointers,
+    /// and raw quote data as (id, author_aci, text) tuple)
     Message(
         Message,
         Vec<AttachmentPointer>,
         Vec<(u32, u32, String)>,
         Vec<(LinkPreview, Option<AttachmentPointer>)>,
+        Option<(u64, String, Option<String>)>,
     ),
     /// A reaction on an existing message
     Reaction(ReactionEvent),
@@ -2263,6 +2547,21 @@ fn extract_mentions(body_ranges: &[presage::proto::BodyRange]) -> Vec<(u32, u32,
     mentions
 }
 
+/// Extract raw quote data from a DataMessage: (id, author_aci, text)
+fn extract_raw_quote(dm: &DataMessage) -> Option<(u64, String, Option<String>)> {
+    let q = dm.quote.as_ref()?;
+    let id = q.id?;
+    // Try string ACI first, then binary
+    let author_aci = if let Some(ref aci) = q.author_aci {
+        aci.clone()
+    } else if let Some(ref bytes) = q.author_aci_binary {
+        Uuid::from_slice(bytes).ok()?.to_string()
+    } else {
+        return None;
+    };
+    Some((id, author_aci, q.text.clone()))
+}
+
 /// Resolve raw mention tuples into Mention structs by looking up display names.
 async fn resolve_mentions(
     raw: &[(u32, u32, String)],
@@ -2367,6 +2666,7 @@ fn process_content(
             let channel_id = channel_id_from_dm(dm, sender_uuid)?;
             let raw_mentions = extract_mentions(&dm.body_ranges);
             let raw_previews = extract_previews(dm);
+            let raw_quote = extract_raw_quote(dm);
 
             Some(ProcessedContent::Message(
                 Message {
@@ -2383,10 +2683,12 @@ fn process_content(
                     mentions: vec![],
                     read_by: vec![],
                     previews: vec![],
+                    quote: None,
                 },
                 pointers,
                 raw_mentions,
                 raw_previews,
+                raw_quote,
             ))
         }
         ContentBody::SynchronizeMessage(sync) => {
@@ -2423,6 +2725,7 @@ fn process_content(
                     let pointers = dm.attachments.clone();
                     let raw_mentions = extract_mentions(&dm.body_ranges);
                     let raw_previews = extract_previews(dm);
+                    let raw_quote = extract_raw_quote(dm);
 
                     let channel_id = if let Some(group_v2) = &dm.group_v2 {
                         group_v2.master_key.as_ref().map(hex::encode)?
@@ -2449,10 +2752,12 @@ fn process_content(
                             mentions: vec![],
                             read_by: vec![],
                             previews: vec![],
+                            quote: None,
                         },
                         pointers,
                         raw_mentions,
                         raw_previews,
+                        raw_quote,
                     ));
                 }
             }

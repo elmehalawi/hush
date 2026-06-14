@@ -1,5 +1,5 @@
 import React, {useState, useCallback, useRef, useEffect} from 'react';
-import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme, ActivityIndicator} from 'react-native';
+import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme, ActivityIndicator, Animated, PanResponder} from 'react-native';
 import {Message, Attachment, Mention, Reaction, useSignalStore} from '../store/signalStore';
 import {ReactionBar} from './ReactionBar';
 import {AudioAttachmentView} from './AudioAttachmentView';
@@ -18,6 +18,7 @@ interface MessageBubbleProps {
   isFirstInGroup?: boolean;
   isLastInGroup?: boolean;
   onReact?: (emoji: string, targetTimestamp: number, remove: boolean) => void;
+  onReply?: (message: Message) => void;
   userId?: string | null;
   onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
   showReadReceipt?: boolean;
@@ -302,7 +303,65 @@ function DoubleCheckIcon({color}: {color: string}) {
   );
 }
 
-export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastInGroup = true, onReact, userId, onRetryDownload, showReadReceipt}: MessageBubbleProps) {
+function QuoteBanner({quote, isOutgoing}: {quote: Message['quote']; isOutgoing: boolean}) {
+  const c = useColors();
+  const colorScheme = useColorScheme();
+  if (!quote) return null;
+
+  const barColor = isOutgoing ? 'rgba(255, 255, 255, 0.5)' : '#2196f3';
+  const bgColor = isOutgoing
+    ? 'rgba(255, 255, 255, 0.12)'
+    : colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)';
+  const nameColor = isOutgoing ? 'rgba(255, 255, 255, 0.9)' : '#2196f3';
+  const textColor = isOutgoing ? 'rgba(255, 255, 255, 0.7)' : c.secondaryLabel;
+
+  return (
+    <View style={[quoteBannerStyles.container, {backgroundColor: bgColor}]}>
+      <View style={[quoteBannerStyles.bar, {backgroundColor: barColor}]} />
+      <View style={quoteBannerStyles.content}>
+        <Text style={[quoteBannerStyles.authorName, {color: nameColor}]} numberOfLines={1}>
+          {quote.authorName || quote.authorId}
+        </Text>
+        {quote.text ? (
+          <Text style={[quoteBannerStyles.text, {color: textColor}]} numberOfLines={2}>
+            {quote.text}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+const quoteBannerStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    borderRadius: 6,
+    marginHorizontal: 4,
+    marginTop: 4,
+    marginBottom: 2,
+    overflow: 'hidden',
+  },
+  bar: {
+    width: 3,
+  },
+  content: {
+    flex: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  authorName: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  text: {
+    fontSize: 12,
+    marginTop: 1,
+  },
+});
+
+const SWIPE_THRESHOLD = 60;
+
+export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastInGroup = true, onReact, onReply, userId, onRetryDownload, showReadReceipt}: MessageBubbleProps) {
   const colorScheme = useColorScheme();
   const c = useColors();
   const incomingBubbleBg = colorScheme === 'dark' ? '#3A3A3D' : '#E9E9EB';
@@ -312,6 +371,49 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   const showSenderName = showSenderInfo && isFirstInGroup;
   const showAvatar = showSenderInfo && isLastInGroup;
   const [hovered, setHovered] = useState(false);
+
+  // Swipe-to-reply gesture
+  const swipeAnim = useRef(new Animated.Value(0)).current;
+  const swipeTriggered = useRef(false);
+
+  const swipePanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) => {
+        // Only activate for horizontal-dominant gestures
+        return Math.abs(gs.dx) > 10 && Math.abs(gs.dx) > Math.abs(gs.dy) * 2;
+      },
+      onPanResponderMove: (_, gs) => {
+        if (gs.dx > 0) {
+          // Only allow right swipe, with diminishing returns
+          swipeAnim.setValue(Math.min(gs.dx * 0.5, 50));
+          if (gs.dx > SWIPE_THRESHOLD && !swipeTriggered.current) {
+            swipeTriggered.current = true;
+          }
+        }
+      },
+      onPanResponderRelease: () => {
+        if (swipeTriggered.current && onReply) {
+          onReply(message);
+        }
+        swipeTriggered.current = false;
+        Animated.spring(swipeAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 10,
+        }).start();
+      },
+      onPanResponderTerminate: () => {
+        swipeTriggered.current = false;
+        Animated.spring(swipeAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 10,
+        }).start();
+      },
+    }),
+  ).current;
 
   // Find current user's existing reaction emoji on this message
   const myReaction = userId
@@ -403,6 +505,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
 
   const bubbleContent = (
     <>
+      {message.quote && <QuoteBanner quote={message.quote} isOutgoing={isOutgoing} />}
       {hasAttachments && (
         <View style={styles.attachmentsContainer}>
           {nonAudioAttachments.map((attachment, index) => (
@@ -460,7 +563,8 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   );
 
   return (
-    <View
+    <Animated.View
+      {...(onReply ? swipePanResponder.panHandlers : {})}
       // @ts-ignore - onMouseEnter/onMouseLeave work on macOS
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -468,6 +572,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
         styles.container,
         isOutgoing ? styles.outgoing : styles.incoming,
         hasReactions && styles.containerWithReactions,
+        {transform: [{translateX: swipeAnim}]},
       ]}>
       {showSenderInfo ? (
         <View style={styles.groupRow}>
@@ -510,7 +615,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
           <ReactionBar onReact={handleReact} existingReactionEmoji={myReaction?.emoji} />
         </View>
       )}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -578,6 +683,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 18,
+    overflow: 'visible',
   },
   bubbleOutgoing: {
     backgroundColor: '#2196f3',
@@ -591,7 +697,6 @@ const styles = StyleSheet.create({
   },
   bubbleWithMedia: {
     padding: 3,
-    overflow: 'hidden',
   },
   attachmentsContainer: {
     borderRadius: 17,

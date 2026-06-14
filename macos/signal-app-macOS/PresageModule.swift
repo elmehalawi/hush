@@ -661,6 +661,44 @@ class PresageModule: RCTEventEmitter {
         }
     }
 
+    @objc(sendMessageWithQuote:text:attachmentPaths:linkPreviews:quote:resolver:rejecter:)
+    func sendMessageWithQuote(_ channelId: String, text: String?, attachmentPaths: [String], linkPreviews: [[String: Any]], quote: [String: Any], resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let client = client else {
+            rejecter("NOT_INITIALIZED", "Client not initialized", nil)
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let previews = linkPreviews.map { dict -> LinkPreviewData in
+                    LinkPreviewData(
+                        url: dict["url"] as? String ?? "",
+                        title: dict["title"] as? String,
+                        description: dict["description"] as? String,
+                        imagePath: dict["imagePath"] as? String,
+                        date: (dict["date"] as? NSNumber)?.uint64Value
+                    )
+                }
+                let quoteObj = Quote(
+                    id: (quote["id"] as? NSNumber)?.uint64Value ?? 0,
+                    authorId: quote["authorId"] as? String ?? "",
+                    authorName: quote["authorName"] as? String,
+                    text: quote["text"] as? String
+                )
+                let message = try client.sendMessageWithQuote(
+                    channelId: channelId,
+                    text: text,
+                    attachmentPaths: attachmentPaths,
+                    linkPreviews: previews,
+                    quote: quoteObj
+                )
+                resolver(self.messageToDict(message))
+            } catch {
+                rejecter("SEND_ERROR", "Failed to send message with quote: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
     @objc(getFileIcon:resolver:rejecter:)
     func getFileIcon(_ filePath: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {
@@ -1402,7 +1440,19 @@ class PresageModule: RCTEventEmitter {
         dict["mentions"] = message.mentions.map { mentionToDict($0) }
         dict["readBy"] = message.readBy
         dict["linkPreviews"] = message.previews.map { linkPreviewToDict($0) }
+        if let quote = message.quote {
+            dict["quote"] = quoteToDict(quote)
+        }
         return dict
+    }
+
+    private func quoteToDict(_ quote: Quote) -> [String: Any?] {
+        return [
+            "id": NSNumber(value: quote.id),
+            "authorId": quote.authorId,
+            "authorName": quote.authorName,
+            "text": quote.text,
+        ]
     }
 
     private func messageStatusToString(_ status: MessageStatus) -> String {

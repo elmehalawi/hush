@@ -42,10 +42,11 @@ interface ChatViewProps {
   channel: Channel | null;
   messages: Message[];
   onReact?: (channelId: string, emoji: string, targetTimestamp: number, remove: boolean) => void;
+  onReply?: (message: Message) => void;
   onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
 }
 
-export function ChatView({channel, messages, onReact, onRetryDownload}: ChatViewProps) {
+export function ChatView({channel, messages, onReact, onReply, onRetryDownload}: ChatViewProps) {
   const c = useColors();
   const scrollViewRef = useRef<ScrollView>(null);
   const userId = useSignalStore(state => state.userId);
@@ -118,7 +119,7 @@ export function ChatView({channel, messages, onReact, onRetryDownload}: ChatView
                       </View>
                     );
                   })()}
-                  <MessageBubble message={message} isGroup={channel.isGroup} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} onReact={handleReact} userId={userId} onRetryDownload={onRetryDownload} showReadReceipt={index === lastReadIndex} />
+                  <MessageBubble message={message} isGroup={channel.isGroup} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} onReact={handleReact} onReply={onReply} userId={userId} onRetryDownload={onRetryDownload} showReadReceipt={index === lastReadIndex} />
                 </React.Fragment>
               );
             });

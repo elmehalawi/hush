@@ -3,7 +3,7 @@ import {View, StyleSheet, PanResponder, NativeModules, NativeEventEmitter, Platf
 import {useSignalStore} from '../store/signalStore';
 import {ChannelList} from '../components/ChannelList';
 import {ChatView} from '../components/ChatView';
-import {MessageInput, MessageInputHandle} from '../components/MessageInput';
+import {MessageInput, MessageInputHandle, ReplyingTo} from '../components/MessageInput';
 import {GlassContainerView} from '../components/GlassContainerView';
 import {DropTargetView} from '../components/DropTargetView';
 import {SessionsModal} from '../components/SessionsModal';
@@ -31,7 +31,7 @@ interface LinkPreviewSendData {
 }
 
 interface MainScreenProps {
-  onSendMessage: (channelId: string, text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[]) => void;
+  onSendMessage: (channelId: string, text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[], replyingTo?: ReplyingTo) => void;
   onSelectChannel: (channelId: string) => void;
   onReact?: (channelId: string, emoji: string, targetTimestamp: number, remove: boolean) => void;
   onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
@@ -83,12 +83,27 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
   );
 
   const handleSendMessage = useCallback(
-    (text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[]) => {
+    (text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[], replyingTo?: ReplyingTo) => {
       if (selectedChannelId) {
-        onSendMessage(selectedChannelId, text, attachmentPaths, linkPreviews);
+        onSendMessage(selectedChannelId, text, attachmentPaths, linkPreviews, replyingTo);
       }
     },
     [selectedChannelId, onSendMessage],
+  );
+
+  const handleReply = useCallback(
+    (message: import('../store/signalStore').Message) => {
+      const authorName = message.isOutgoing
+        ? 'You'
+        : message.senderName || channels.find(c => c.id === message.senderId)?.name || message.senderId;
+      inputRef.current?.setReplyingTo({
+        id: message.timestamp,
+        authorId: message.senderId,
+        authorName,
+        text: message.body,
+      });
+    },
+    [channels],
   );
 
   // Listen for "Sessions..." menu item from macOS app menu
@@ -153,6 +168,7 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
           channel={selectedChannel}
           messages={channelMessages}
           onReact={onReact}
+          onReply={handleReply}
           onRetryDownload={onRetryDownload}
         />
       </DropTargetView>

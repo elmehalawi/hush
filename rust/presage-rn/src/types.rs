@@ -107,6 +107,19 @@ pub struct LinkPreviewData {
     pub date: Option<u64>,
 }
 
+/// A quoted message (reply context)
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct Quote {
+    /// Timestamp of the quoted message (used as identifier)
+    pub id: u64,
+    /// UUID of the original message author
+    pub author_id: String,
+    /// Display name of the original author (if resolved)
+    pub author_name: Option<String>,
+    /// Text snippet of the quoted message
+    pub text: Option<String>,
+}
+
 /// Represents a single message
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Message {
@@ -136,6 +149,8 @@ pub struct Message {
     pub read_by: Vec<String>,
     /// Link previews attached to this message
     pub previews: Vec<LinkPreview>,
+    /// Quoted message (reply context)
+    pub quote: Option<Quote>,
 }
 
 /// Message delivery status

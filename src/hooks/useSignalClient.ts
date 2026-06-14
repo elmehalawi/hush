@@ -1,6 +1,6 @@
 import {useEffect, useRef, useCallback} from 'react';
 import {NativeModules, NativeEventEmitter, Platform} from 'react-native';
-import {useSignalStore, Message, Channel, Attachment, LinkPreview, Mention, Reaction, ReactionEvent} from '../store/signalStore';
+import {useSignalStore, Message, Channel, Attachment, LinkPreview, Mention, Quote, Reaction, ReactionEvent} from '../store/signalStore';
 
 // Get the native module
 const {PresageModule} = NativeModules;
@@ -63,6 +63,13 @@ interface NativeLinkPreview {
   date: number | null;
 }
 
+interface NativeQuote {
+  id: number;
+  authorId: string;
+  authorName: string | null;
+  text: string | null;
+}
+
 interface NativeMessage {
   id: string;
   channelId: string;
@@ -77,6 +84,7 @@ interface NativeMessage {
   mentions: NativeMention[] | null;
   readBy: string[] | null;
   linkPreviews: NativeLinkPreview[] | null;
+  quote: NativeQuote | null;
 }
 
 // Convert native channel to store channel
@@ -125,6 +133,16 @@ function convertLinkPreview(native: NativeLinkPreview): LinkPreview {
   };
 }
 
+// Convert native quote to store quote
+function convertQuote(native: NativeQuote): Quote {
+  return {
+    id: native.id,
+    authorId: native.authorId,
+    authorName: native.authorName || undefined,
+    text: native.text || undefined,
+  };
+}
+
 // Convert native message to store message
 function convertMessage(native: NativeMessage): Message {
   return {
@@ -141,6 +159,7 @@ function convertMessage(native: NativeMessage): Message {
     mentions: (native.mentions || []),
     readBy: native.readBy || [],
     linkPreviews: (native.linkPreviews || []).map(convertLinkPreview),
+    quote: native.quote ? convertQuote(native.quote) : undefined,
   };
 }
 
@@ -308,14 +327,23 @@ export function useSignalClient() {
     date?: number;
   }
 
-  // Send message (with optional attachments and link previews)
+  // Send message (with optional attachments, link previews, and quote)
   const sendMessage = useCallback(
-    async (channelId: string, text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewData[]) => {
+    async (channelId: string, text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewData[], quote?: Quote) => {
       if (!PresageModule || !isInitialized.current) return;
 
       try {
         let message;
-        if (linkPreviews && linkPreviews.length > 0) {
+        if (quote) {
+          // Use the quote-aware send path
+          message = await PresageModule.sendMessageWithQuote(
+            channelId,
+            text || null,
+            attachmentPaths || [],
+            linkPreviews || [],
+            {id: quote.id, authorId: quote.authorId, authorName: quote.authorName || null, text: quote.text || null},
+          );
+        } else if (linkPreviews && linkPreviews.length > 0) {
           // Use the previews-aware send path
           message = await PresageModule.sendMessageWithPreviews(
             channelId,
