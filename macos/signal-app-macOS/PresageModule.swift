@@ -1662,7 +1662,7 @@ class MessageListenerImpl: MessageListener {
 
 // MARK: - Media Preview Panel
 
-class MediaPreviewPanel {
+class MediaPreviewPanel: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
     private var player: AVPlayer?
     private var playerView: AVPlayerView?
@@ -1826,8 +1826,13 @@ class MediaPreviewPanel {
             return event
         }
 
+        p.delegate = self
         self.panel = p
         return p
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        cleanUpContent()
     }
 
     private func showPanel(_ p: NSPanel) {
