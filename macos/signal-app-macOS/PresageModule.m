@@ -76,7 +76,9 @@ RCT_EXTERN_METHOD(showChannelContextMenu:(NSString *)channelId
 RCT_EXTERN_METHOD(showMessageContextMenu:(NSString *)messageBody
                   messageTimestamp:(double)messageTimestamp
                   messageSenderId:(NSString *)messageSenderId
-                  messageSenderName:(NSString *)messageSenderName)
+                  messageSenderName:(NSString *)messageSenderName
+                  channelId:(NSString *)channelId
+                  existingReactionEmoji:(NSString *)existingReactionEmoji)
 
 RCT_EXTERN_METHOD(showFileContextMenu:(NSString *)filePath
                   fileName:(NSString *)fileName)

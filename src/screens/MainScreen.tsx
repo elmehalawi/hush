@@ -129,6 +129,15 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
     return () => sub.remove();
   }, []);
 
+  // Listen for emoji reaction from native context menu
+  useEffect(() => {
+    if (!presageEmitter || !onReact) return;
+    const sub = presageEmitter.addListener('onContextMenuReaction', (data: {channelId: string; emoji: string; targetTimestamp: number; remove: boolean}) => {
+      onReact(data.channelId, data.emoji, data.targetTimestamp, data.remove);
+    });
+    return () => sub.remove();
+  }, [onReact]);
+
   // Channel navigation shortcut handler
   useEffect(() => {
     if (!emitter) return;
@@ -181,7 +190,6 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
         <ChatView
           channel={selectedChannel}
           messages={channelMessages}
-          onReact={onReact}
           onReply={handleReply}
           onRetryDownload={onRetryDownload}
         />

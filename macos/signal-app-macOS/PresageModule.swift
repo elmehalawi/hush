@@ -51,7 +51,7 @@ class PresageModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onMessage", "onReaction", "onReadReceipt", "onChannelUpdated", "onAttachmentDownloaded", "onLinkPreviewImageDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions", "onReplyToMessage"]
+        return ["onMessage", "onReaction", "onReadReceipt", "onChannelUpdated", "onAttachmentDownloaded", "onLinkPreviewImageDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions", "onReplyToMessage", "onContextMenuReaction"]
     }
 
     override func startObserving() {
@@ -1169,10 +1169,24 @@ class PresageModule: RCTEventEmitter {
 
     // MARK: - Message Context Menu
 
-    @objc(showMessageContextMenu:messageTimestamp:messageSenderId:messageSenderName:)
-    func showMessageContextMenu(_ messageBody: String, messageTimestamp: Double, messageSenderId: String, messageSenderName: String) {
+    @objc(showMessageContextMenu:messageTimestamp:messageSenderId:messageSenderName:channelId:existingReactionEmoji:)
+    func showMessageContextMenu(_ messageBody: String, messageTimestamp: Double, messageSenderId: String, messageSenderName: String, channelId: String, existingReactionEmoji: String) {
         DispatchQueue.main.async {
             let menu = NSMenu()
+
+            // Emoji reaction row at top of menu
+            let activeEmoji = existingReactionEmoji.isEmpty ? nil : existingReactionEmoji
+            let emojiItem = NSMenuItem()
+            emojiItem.view = EmojiReactionRowView(activeEmoji: activeEmoji) { [weak self] emoji, isRemove in
+                self?.sendEventIfListening("onContextMenuReaction", body: [
+                    "channelId": channelId,
+                    "emoji": emoji,
+                    "targetTimestamp": NSNumber(value: messageTimestamp),
+                    "remove": isRemove,
+                ])
+            }
+            menu.addItem(emojiItem)
+            menu.addItem(NSMenuItem.separator())
 
             if !messageBody.isEmpty {
                 let copyItem = NSMenuItem(title: "Copy", action: #selector(self.handleCopyMessageText(_:)), keyEquivalent: "")
@@ -1192,9 +1206,13 @@ class PresageModule: RCTEventEmitter {
             menu.addItem(replyItem)
 
             guard let window = NSApp.keyWindow, let contentView = window.contentView else { return }
-            let mouseInWindow = window.mouseLocationOutsideOfEventStream
-            let mouseInView = contentView.convert(mouseInWindow, from: nil)
-            menu.popUp(positioning: nil, at: mouseInView, in: contentView)
+            if let currentEvent = NSApp.currentEvent {
+                NSMenu.popUpContextMenu(menu, with: currentEvent, for: contentView)
+            } else {
+                let mouseInWindow = window.mouseLocationOutsideOfEventStream
+                let mouseInView = contentView.convert(mouseInWindow, from: nil)
+                menu.popUp(positioning: nil, at: mouseInView, in: contentView)
+            }
         }
     }
 
@@ -1895,5 +1913,147 @@ class NotificationDelegateHandler: NSObject, UNUserNotificationCenterDelegate {
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .sound])
+    }
+}
+
+// MARK: - Emoji Reaction Row View (for context menu)
+
+private class EmojiReactionRowView: NSView {
+    static let row1 = ["❤️", "👍", "👎", "😂", "😮", "😢"]
+    static let row2 = ["🔥", "🎉", "🤞", "😍", "💯", "🙏"]
+    private var allEmojis: [String] { Self.row1 + Self.row2 }
+    private let columns = 6
+
+    private let buttonSize: CGFloat = 34
+    private let spacing: CGFloat = 2
+    private let hPadding: CGFloat = 8
+    private let vPadding: CGFloat = 6
+    private let rowSpacing: CGFloat = 2
+
+    private var hoveredIndex: Int = -1
+    private var activeEmoji: String?
+    private var onSelect: ((String, Bool) -> Void)?
+    private var emojiTrackingAreas: [NSTrackingArea] = []
+
+    convenience init(activeEmoji: String?, onSelect: @escaping (String, Bool) -> Void) {
+        let count = CGFloat(6)
+        let totalWidth = count * 34 + (count - 1) * 2 + 2 * 8
+        let totalHeight = 2 * 34.0 + 2.0 + 2 * 6.0
+        self.init(frame: NSRect(x: 0, y: 0, width: totalWidth, height: totalHeight))
+        self.activeEmoji = activeEmoji
+        self.onSelect = onSelect
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+    }
+
+    override var intrinsicContentSize: NSSize {
+        return frame.size
+    }
+
+    private func buttonRect(at index: Int) -> NSRect {
+        let col = index % columns
+        let row = index / columns
+        let x = hPadding + CGFloat(col) * (buttonSize + spacing)
+        // Row 0 is top (row1), row 1 is bottom (row2). NSView y=0 is bottom.
+        let y = vPadding + CGFloat(1 - row) * (buttonSize + rowSpacing)
+        return NSRect(x: x, y: y, width: buttonSize, height: buttonSize)
+    }
+
+    // MARK: - Tracking Areas (per-emoji, with enabledDuringMouseDrag)
+
+    override func updateTrackingAreas() {
+        for area in emojiTrackingAreas {
+            removeTrackingArea(area)
+        }
+        emojiTrackingAreas.removeAll()
+
+        for i in 0..<allEmojis.count {
+            let area = NSTrackingArea(
+                rect: buttonRect(at: i),
+                options: [
+                    .enabledDuringMouseDrag,
+                    .mouseEnteredAndExited,
+                    .activeInActiveApp,
+                ],
+                owner: self,
+                userInfo: ["index": i]
+            )
+            addTrackingArea(area)
+            emojiTrackingAreas.append(area)
+        }
+    }
+
+    // MARK: - Mouse Events (no mouseDown override — menu owns it)
+
+    override func mouseEntered(with event: NSEvent) {
+        guard let index = event.trackingArea?.userInfo?["index"] as? Int else { return }
+        hoveredIndex = index
+        needsDisplay = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hoveredIndex = -1
+        needsDisplay = true
+    }
+
+    private func handleMouseUp() {
+        let emojis = allEmojis
+        if hoveredIndex >= 0 && hoveredIndex < emojis.count {
+            let emoji = emojis[hoveredIndex]
+            let isRemove = emoji == activeEmoji
+            onSelect?(emoji, isRemove)
+        }
+        enclosingMenuItem?.menu?.cancelTracking()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        handleMouseUp()
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        handleMouseUp()
+    }
+
+    // MARK: - Drawing
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        let emojis = allEmojis
+        for (i, emoji) in emojis.enumerated() {
+            let rect = buttonRect(at: i)
+
+            let isActive = emoji == activeEmoji
+            let isHovered = i == hoveredIndex
+
+            if isActive {
+                NSColor.controlAccentColor.withAlphaComponent(0.2).setFill()
+                NSBezierPath(roundedRect: rect, xRadius: rect.width / 2, yRadius: rect.height / 2).fill()
+            } else if isHovered {
+                let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                let hoverColor = isDark ? NSColor.white.withAlphaComponent(0.1) : NSColor.black.withAlphaComponent(0.08)
+                hoverColor.setFill()
+                NSBezierPath(roundedRect: rect, xRadius: rect.width / 2, yRadius: rect.height / 2).fill()
+            }
+
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 20)
+            ]
+            let attrStr = NSAttributedString(string: emoji, attributes: attributes)
+            let strSize = attrStr.size()
+            let strRect = NSRect(
+                x: rect.midX - strSize.width / 2,
+                y: rect.midY - strSize.height / 2,
+                width: strSize.width,
+                height: strSize.height
+            )
+            attrStr.draw(in: strRect)
+        }
     }
 }

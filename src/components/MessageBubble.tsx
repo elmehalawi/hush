@@ -1,7 +1,6 @@
 import React, {useState, useCallback, useRef, useEffect} from 'react';
 import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme, ActivityIndicator, Animated, PanResponder} from 'react-native';
 import {Message, Attachment, Mention, Reaction, useSignalStore} from '../store/signalStore';
-import {ReactionBar} from './ReactionBar';
 import {AudioAttachmentView} from './AudioAttachmentView';
 import {LinkPreviewCard} from './LinkPreviewCard';
 import {useColors} from '../theme/colors';
@@ -17,7 +16,6 @@ interface MessageBubbleProps {
   isGroup?: boolean;
   isFirstInGroup?: boolean;
   isLastInGroup?: boolean;
-  onReact?: (emoji: string, targetTimestamp: number, remove: boolean) => void;
   onReply?: (message: Message) => void;
   userId?: string | null;
   onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
@@ -364,7 +362,7 @@ const quoteBannerStyles = StyleSheet.create({
 
 const SWIPE_THRESHOLD = 60;
 
-export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastInGroup = true, onReact, onReply, userId, onRetryDownload, showReadReceipt}: MessageBubbleProps) {
+export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastInGroup = true, onReply, userId, onRetryDownload, showReadReceipt}: MessageBubbleProps) {
   const colorScheme = useColorScheme();
   const c = useColors();
   const incomingBubbleBg = colorScheme === 'dark' ? '#3A3A3D' : '#E9E9EB';
@@ -373,8 +371,6 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   const showSenderInfo = !!isGroup && !isOutgoing;
   const showSenderName = showSenderInfo && isFirstInGroup;
   const showAvatar = showSenderInfo && isLastInGroup;
-  const [hovered, setHovered] = useState(false);
-
   // Swipe-to-reply gesture
   const swipeAnim = useRef(new Animated.Value(0)).current;
   const swipeTriggered = useRef(false);
@@ -422,16 +418,6 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   const myReaction = userId
     ? message.reactions.find(r => r.senderId === userId)
     : undefined;
-
-  const handleReact = useCallback(
-    (emoji: string) => {
-      if (!onReact) return;
-      const isRemove = myReaction?.emoji === emoji;
-      onReact(emoji, message.timestamp, isRemove);
-      setHovered(false);
-    },
-    [onReact, myReaction, message.timestamp],
-  );
 
   // Look up sender's avatar from their DM channel
   const senderChannel = useSignalStore(state =>
@@ -571,9 +557,11 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
         message.timestamp,
         message.senderId,
         authorName,
+        message.channelId,
+        myReaction?.emoji || '',
       );
     }
-  }, [message.body, message.timestamp, message.senderId, message.senderName, message.isOutgoing]);
+  }, [message.body, message.timestamp, message.senderId, message.senderName, message.isOutgoing, message.channelId, myReaction?.emoji]);
 
   const hasReactions = message.reactions.length > 0;
 
@@ -587,9 +575,6 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   return (
     <Animated.View
       {...(onReply ? swipePanResponder.panHandlers : {})}
-      // @ts-ignore - onMouseEnter/onMouseLeave work on macOS
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       style={[
         styles.container,
         isOutgoing ? styles.outgoing : styles.incoming,
@@ -631,15 +616,6 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
           {reactionsRow}
           {statusBelow}
         </>
-      )}
-      {hovered && (onReply || (onReact && !isOutgoing)) && (
-        <View style={[styles.reactionBarOverlay, isOutgoing && styles.reactionBarOverlayOutgoing]}>
-          <ReactionBar
-            onReact={!isOutgoing ? handleReact : undefined}
-            onReply={onReply ? () => onReply(message) : undefined}
-            existingReactionEmoji={myReaction?.emoji}
-          />
-        </View>
       )}
     </Animated.View>
   );
@@ -847,18 +823,6 @@ const styles = StyleSheet.create({
   },
   mentionTextOutgoing: {
     color: 'rgba(255, 255, 255, 0.9)',
-  },
-  reactionBarOverlay: {
-    position: 'absolute',
-    right: 8,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    zIndex: 10,
-  },
-  reactionBarOverlayOutgoing: {
-    right: undefined,
-    left: 8,
   },
   reactionsContainer: {
     flexDirection: 'row',

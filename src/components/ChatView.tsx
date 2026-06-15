@@ -1,4 +1,4 @@
-import React, {useRef, useEffect, useCallback} from 'react';
+import React, {useRef, useEffect} from 'react';
 import {View, ScrollView, Text, StyleSheet, Image} from 'react-native';
 import {Message, Channel, useSignalStore} from '../store/signalStore';
 import {MessageBubble} from './MessageBubble';
@@ -41,24 +41,14 @@ function formatTimeSeparator(timestamp: number, previousTimestamp: number | null
 interface ChatViewProps {
   channel: Channel | null;
   messages: Message[];
-  onReact?: (channelId: string, emoji: string, targetTimestamp: number, remove: boolean) => void;
   onReply?: (message: Message) => void;
   onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
 }
 
-export function ChatView({channel, messages, onReact, onReply, onRetryDownload}: ChatViewProps) {
+export function ChatView({channel, messages, onReply, onRetryDownload}: ChatViewProps) {
   const c = useColors();
   const scrollViewRef = useRef<ScrollView>(null);
   const userId = useSignalStore(state => state.userId);
-
-  const handleReact = useCallback(
-    (emoji: string, targetTimestamp: number, remove: boolean) => {
-      if (channel && onReact) {
-        onReact(channel.id, emoji, targetTimestamp, remove);
-      }
-    },
-    [channel, onReact],
-  );
 
   useEffect(() => {
     scrollViewRef.current?.scrollToEnd({animated: false});
@@ -122,7 +112,7 @@ export function ChatView({channel, messages, onReact, onReply, onRetryDownload}:
                       </View>
                     );
                   })()}
-                  <MessageBubble message={message} isGroup={channel.isGroup} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} onReact={handleReact} onReply={onReply} userId={userId} onRetryDownload={onRetryDownload} showReadReceipt={index === lastReadIndex} />
+                  <MessageBubble message={message} isGroup={channel.isGroup} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} onReply={onReply} userId={userId} onRetryDownload={onRetryDownload} showReadReceipt={index === lastReadIndex} />
                 </React.Fragment>
               );
             });
