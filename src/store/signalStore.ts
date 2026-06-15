@@ -359,3 +359,31 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
     }
   },
 }));
+
+/**
+ * Resolve a UUID to a display name using available store data.
+ * Checks channels (for 1:1 chats where channel.id matches the UUID),
+ * then scans loaded messages in the given channel for a senderName.
+ * Returns undefined if no name can be found.
+ */
+export function resolveContactName(
+  uuid: string,
+  userId: string | null,
+  channels: Channel[],
+  channelMessages: Message[],
+): string | undefined {
+  if (uuid === userId) return 'You';
+
+  // 1:1 chats use the contact UUID as channel ID
+  const channel = channels.find(c => c.id === uuid && !c.isGroup);
+  if (channel?.name && channel.name !== uuid) return channel.name;
+
+  // In group chats, find a message from this sender that has a resolved name
+  for (const msg of channelMessages) {
+    if (msg.senderId === uuid && msg.senderName && msg.senderName !== uuid) {
+      return msg.senderName;
+    }
+  }
+
+  return undefined;
+}

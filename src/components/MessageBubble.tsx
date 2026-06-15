@@ -1,6 +1,6 @@
 import React, {useState, useCallback, useRef, useEffect} from 'react';
 import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme, ActivityIndicator, Animated, PanResponder} from 'react-native';
-import {Message, Attachment, Mention, Reaction, useSignalStore} from '../store/signalStore';
+import {Message, Attachment, Mention, Reaction, useSignalStore, resolveContactName} from '../store/signalStore';
 import {AudioAttachmentView} from './AudioAttachmentView';
 import {LinkPreviewCard} from './LinkPreviewCard';
 import {useColors} from '../theme/colors';
@@ -44,13 +44,17 @@ function getImageDimensions(attachment: Attachment) {
 
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
 
-function LinkifiedText({text, isOutgoing, mentions}: {text: string; isOutgoing: boolean; mentions?: Mention[]}) {
+function LinkifiedText({text, isOutgoing, mentions, channelId}: {text: string; isOutgoing: boolean; mentions?: Mention[]; channelId?: string}) {
   const c = useColors();
-  // Build a set of mention ranges for quick lookup
+  const channels = useSignalStore(s => s.channels);
+  const userId = useSignalStore(s => s.userId);
+  const channelMessages = useSignalStore(s => channelId ? (s.messages[channelId] || []) : []);
+
+  // Build a set of mention ranges, resolving names from current store data
   const mentionRanges = (mentions || []).map(m => ({
     start: m.start,
     end: m.start + m.length,
-    name: m.name,
+    name: resolveContactName(m.uuid, userId, channels, channelMessages) || m.name,
   }));
 
   // Split text into segments: plain text, URLs, and mentions
@@ -58,11 +62,11 @@ function LinkifiedText({text, isOutgoing, mentions}: {text: string; isOutgoing: 
   const segments: Segment[] = [];
   let cursor = 0;
 
-  // First, identify mention positions
+  // First, identify mention positions — use resolved name instead of body text
   const mentionPositions: {start: number; end: number; text: string}[] = [];
   for (const m of mentionRanges) {
     if (m.start >= 0 && m.end <= text.length) {
-      mentionPositions.push({start: m.start, end: m.end, text: text.slice(m.start, m.end)});
+      mentionPositions.push({start: m.start, end: m.end, text: `@${m.name}`});
     }
   }
   mentionPositions.sort((a, b) => a.start - b.start);
@@ -301,10 +305,17 @@ function DoubleCheckIcon({color}: {color: string}) {
   );
 }
 
-function QuoteBanner({quote, isOutgoing}: {quote: Message['quote']; isOutgoing: boolean}) {
+function QuoteBanner({quote, isOutgoing, channelId}: {quote: Message['quote']; isOutgoing: boolean; channelId?: string}) {
   const c = useColors();
   const colorScheme = useColorScheme();
+  const channels = useSignalStore(s => s.channels);
+  const userId = useSignalStore(s => s.userId);
+  const channelMessages = useSignalStore(s => channelId ? (s.messages[channelId] || []) : []);
   if (!quote) return null;
+
+  const authorDisplayName = resolveContactName(quote.authorId, userId, channels, channelMessages)
+    || quote.authorName
+    || quote.authorId;
 
   const barColor = isOutgoing ? 'rgba(255, 255, 255, 0.5)' : '#2196f3';
   const bgColor = isOutgoing
@@ -318,7 +329,7 @@ function QuoteBanner({quote, isOutgoing}: {quote: Message['quote']; isOutgoing: 
       <View style={[quoteBannerStyles.bar, {backgroundColor: barColor}]} />
       <View style={quoteBannerStyles.content}>
         <Text style={[quoteBannerStyles.authorName, {color: nameColor}]} numberOfLines={1}>
-          {quote.authorName || quote.authorId}
+          {authorDisplayName}
         </Text>
         {quote.text ? (
           <Text style={[quoteBannerStyles.text, {color: textColor}]} numberOfLines={2}>
@@ -505,7 +516,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
 
   const bubbleContent = (
     <>
-      {message.quote && <QuoteBanner quote={message.quote} isOutgoing={isOutgoing} />}
+      {message.quote && <QuoteBanner quote={message.quote} isOutgoing={isOutgoing} channelId={message.channelId} />}
       {hasAttachments && (
         <View style={styles.attachmentsContainer}>
           {nonAudioAttachments.map((attachment, index) => (
@@ -524,7 +535,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
       )}
       {hasBody && (
         <View style={hasMedia ? styles.bodyBelowMedia : undefined}>
-          <LinkifiedText text={message.body!} isOutgoing={isOutgoing} mentions={message.mentions} />
+          <LinkifiedText text={message.body!} isOutgoing={isOutgoing} mentions={message.mentions} channelId={message.channelId} />
         </View>
       )}
       {message.linkPreviews.length > 0 && (

@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {View, StyleSheet, PanResponder, NativeModules, NativeEventEmitter, Platform} from 'react-native';
-import {useSignalStore} from '../store/signalStore';
+import {useSignalStore, resolveContactName} from '../store/signalStore';
 import {ChannelList} from '../components/ChannelList';
 import {ChatView} from '../components/ChatView';
 import {MessageInput, MessageInputHandle, ReplyingTo} from '../components/MessageInput';
@@ -42,6 +42,7 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
   const channels = useSignalStore(state => state.channels);
   const selectedChannelId = useSignalStore(state => state.selectedChannelId);
   const messages = useSignalStore(state => state.messages);
+  const userId = useSignalStore(state => state.userId);
   const setSelectedChannelId = useSignalStore(state => state.setSelectedChannelId);
 
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
@@ -93,9 +94,9 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
 
   const handleReply = useCallback(
     (message: import('../store/signalStore').Message) => {
-      const authorName = message.isOutgoing
-        ? 'You'
-        : message.senderName || channels.find(c => c.id === message.senderId)?.name || message.senderId;
+      const channelMsgs = messages[message.channelId] || [];
+      const authorName = resolveContactName(message.senderId, userId, channels, channelMsgs)
+        || message.senderId;
       inputRef.current?.setReplyingTo({
         id: message.timestamp,
         authorId: message.senderId,
@@ -103,7 +104,7 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
         text: message.body,
       });
     },
-    [channels],
+    [channels, messages, userId],
   );
 
   // Listen for "Sessions..." menu item from macOS app menu
