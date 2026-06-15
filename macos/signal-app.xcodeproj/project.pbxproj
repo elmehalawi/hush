@@ -37,6 +37,8 @@
 		ICON001A00000000000001 /* HushIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = ICON001F00000000000001 /* HushIcon.icon */; };
 		WHSP001A00000000000001 /* whisper_transcribe.swift in Sources */ = {isa = PBXBuildFile; fileRef = WHSP001F00000000000001 /* whisper_transcribe.swift */; };
 		WHSP001A00000000000002 /* libwhisper_transcribe.a in Frameworks */ = {isa = PBXBuildFile; fileRef = WHSP001F00000000000002 /* libwhisper_transcribe.a */; };
+		SWIP001A00000000000001 /* SwipeGestureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SWIP001F00000000000001 /* SwipeGestureView.swift */; };
+		SWIP001A00000000000002 /* SwipeGestureViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = SWIP001F00000000000002 /* SwipeGestureViewManager.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -80,6 +82,8 @@
 		WHSP001F00000000000001 /* whisper_transcribe.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = whisper_transcribe.swift; sourceTree = "<group>"; };
 		WHSP001F00000000000002 /* libwhisper_transcribe.a */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = archive.ar; path = libwhisper_transcribe.a; sourceTree = "<group>"; };
 		WHSP001F00000000000003 /* whisper_transcribeFFI.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = whisper_transcribeFFI.h; sourceTree = "<group>"; };
+		SWIP001F00000000000001 /* SwipeGestureView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SwipeGestureView.swift; sourceTree = "<group>"; };
+		SWIP001F00000000000002 /* SwipeGestureViewManager.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = SwipeGestureViewManager.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -152,6 +156,8 @@
 				ICON001F00000000000001 /* HushIcon.icon */,
 				00B25359C6CDFF7277A3B1A5 /* DropTargetView.swift */,
 				529236F3A6B5D4A3DF76B9A7 /* DropTargetViewManager.m */,
+				SWIP001F00000000000001 /* SwipeGestureView.swift */,
+				SWIP001F00000000000002 /* SwipeGestureViewManager.m */,
 			);
 			path = "signal-app-macOS";
 			sourceTree = "<group>";
@@ -441,6 +447,8 @@
 				CMDP001A00000000000003 /* CommandPaletteModule.m in Sources */,
 				16F990AFD2C1A061E32B018C /* DropTargetView.swift in Sources */,
 				65AE6D990FA263357B370F2A /* DropTargetViewManager.m in Sources */,
+				SWIP001A00000000000001 /* SwipeGestureView.swift in Sources */,
+				SWIP001A00000000000002 /* SwipeGestureViewManager.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

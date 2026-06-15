@@ -1,11 +1,13 @@
 import React, {useState, useCallback, useRef, useEffect} from 'react';
-import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme, ActivityIndicator, Animated, PanResponder} from 'react-native';
+import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme, ActivityIndicator, Animated, requireNativeComponent} from 'react-native';
 import {Message, Attachment, Mention, Reaction, useSignalStore, resolveContactName} from '../store/signalStore';
 import {AudioAttachmentView} from './AudioAttachmentView';
 import {LinkPreviewCard} from './LinkPreviewCard';
 import {useColors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
+const NativeSwipeGestureView = requireNativeComponent<any>('SwipeGestureView');
+const AnimatedSwipeGestureView = Animated.createAnimatedComponent(NativeSwipeGestureView);
 
 function openMediaPreview(filePath: string) {
   PresageModule?.previewFile(filePath);
@@ -389,48 +391,40 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   const showSenderInfo = !!isGroup && !isOutgoing;
   const showSenderName = showSenderInfo && isFirstInGroup;
   const showAvatar = showSenderInfo && isLastInGroup;
-  // Swipe-to-reply gesture
+  // Swipe-to-reply gesture (driven by native trackpad scroll events)
   const swipeAnim = useRef(new Animated.Value(0)).current;
   const swipeTriggered = useRef(false);
+  const swipeEnded = useRef(false);
 
-  const swipePanResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gs) => {
-        // Only activate for horizontal-dominant gestures
-        return Math.abs(gs.dx) > 10 && Math.abs(gs.dx) > Math.abs(gs.dy) * 2;
-      },
-      onPanResponderMove: (_, gs) => {
-        if (gs.dx > 0) {
-          // Only allow right swipe, with diminishing returns
-          swipeAnim.setValue(Math.min(gs.dx * 0.5, 50));
-          if (gs.dx > SWIPE_THRESHOLD && !swipeTriggered.current) {
-            swipeTriggered.current = true;
-          }
-        }
-      },
-      onPanResponderRelease: () => {
-        if (swipeTriggered.current && onReply) {
-          onReply(message);
-        }
-        swipeTriggered.current = false;
-        Animated.spring(swipeAnim, {
-          toValue: 0,
-          useNativeDriver: true,
-          tension: 100,
-          friction: 10,
-        }).start();
-      },
-      onPanResponderTerminate: () => {
-        swipeTriggered.current = false;
-        Animated.spring(swipeAnim, {
-          toValue: 0,
-          useNativeDriver: true,
-          tension: 100,
-          friction: 10,
-        }).start();
-      },
-    }),
-  ).current;
+  const handleSwipeUpdate = useCallback((e: any) => {
+    if (swipeEnded.current) { return; }
+    const deltaX = e.nativeEvent.deltaX;
+    if (deltaX > 0) {
+      // Right swipe: apply with diminishing returns
+      swipeAnim.setValue(Math.min(deltaX * 0.5, 50));
+      if (deltaX > SWIPE_THRESHOLD && !swipeTriggered.current) {
+        swipeTriggered.current = true;
+      }
+    } else {
+      swipeAnim.setValue(0);
+    }
+  }, [swipeAnim]);
+
+  const handleSwipeEnd = useCallback(() => {
+    swipeEnded.current = true;
+    if (swipeTriggered.current && onReply) {
+      onReply(message);
+    }
+    swipeTriggered.current = false;
+    Animated.spring(swipeAnim, {
+      toValue: 0,
+      useNativeDriver: false,
+      tension: 100,
+      friction: 10,
+    }).start(() => {
+      swipeEnded.current = false;
+    });
+  }, [swipeAnim, onReply, message]);
 
   // Find current user's existing reaction emoji on this message
   const myReaction = userId
@@ -591,8 +585,9 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   );
 
   return (
-    <Animated.View
-      {...(onReply ? swipePanResponder.panHandlers : {})}
+    <AnimatedSwipeGestureView
+      onSwipeUpdate={onReply ? handleSwipeUpdate : undefined}
+      onSwipeEnd={onReply ? handleSwipeEnd : undefined}
       style={[
         styles.container,
         isOutgoing ? styles.outgoing : styles.incoming,
@@ -635,14 +630,14 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
           {statusBelow}
         </>
       )}
-    </Animated.View>
+    </AnimatedSwipeGestureView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     marginVertical: 2,
-    paddingHorizontal: 8,
+    marginHorizontal: 8,
   },
   containerWithReactions: {
     marginBottom: 4,
