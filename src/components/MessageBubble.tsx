@@ -44,11 +44,13 @@ function getImageDimensions(attachment: Attachment) {
 
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
 
+const EMPTY_MESSAGES: Message[] = [];
+
 function LinkifiedText({text, isOutgoing, mentions, channelId}: {text: string; isOutgoing: boolean; mentions?: Mention[]; channelId?: string}) {
   const c = useColors();
   const channels = useSignalStore(s => s.channels);
   const userId = useSignalStore(s => s.userId);
-  const channelMessages = useSignalStore(s => channelId ? (s.messages[channelId] || []) : []);
+  const channelMessages = useSignalStore(s => channelId ? s.messages[channelId] : undefined) || EMPTY_MESSAGES;
 
   // Build a set of mention ranges, resolving names from current store data
   const mentionRanges = (mentions || []).map(m => ({
@@ -310,7 +312,7 @@ function QuoteBanner({quote, isOutgoing, channelId}: {quote: Message['quote']; i
   const colorScheme = useColorScheme();
   const channels = useSignalStore(s => s.channels);
   const userId = useSignalStore(s => s.userId);
-  const channelMessages = useSignalStore(s => channelId ? (s.messages[channelId] || []) : []);
+  const channelMessages = useSignalStore(s => channelId ? s.messages[channelId] : undefined) || EMPTY_MESSAGES;
   if (!quote) return null;
 
   const authorDisplayName = resolveContactName(quote.authorId, userId, channels, channelMessages)
