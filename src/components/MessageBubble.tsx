@@ -115,7 +115,12 @@ function LinkifiedText({text, isOutgoing, mentions, channelId}: {text: string; i
       {finalSegments.map((seg, i) => {
         if (seg.type === 'url') {
           return (
-            <Text key={i} style={styles.link} onPress={() => Linking.openURL(seg.value)}>
+            <Text key={i} style={styles.link} onPress={(e: any) => {
+              // Only open URL on left-click; let right-clicks propagate to the
+              // bubble's context-menu handler instead of swallowing the event.
+              if (e.nativeEvent?.button === 2) return;
+              Linking.openURL(seg.value);
+            }}>
               {seg.value}
             </Text>
           );

@@ -57,7 +57,13 @@ log_step "Setting version to ${VERSION} (${BUILD})..."
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "$INFO_PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${BUILD}" "$INFO_PLIST"
 
-# Step 2: Build the app in release mode
+# Step 2: Commit the version bump
+log_step "Committing version bump..."
+cd "$SCRIPT_DIR"
+git add "$INFO_PLIST"
+git commit -m "Bump version to ${VERSION} (build ${BUILD})"
+
+# Step 3: Build the app in release mode
 log_step "Building release..."
 "$SCRIPT_DIR/build.sh" --release
 
@@ -72,7 +78,7 @@ fi
 
 echo "  App: $APP_PATH"
 
-# Step 3: Create DMG
+# Step 4: Create DMG
 log_step "Creating DMG..."
 mkdir -p "$RELEASES_DIR"
 DMG_PATH="$RELEASES_DIR/$DMG_NAME"
@@ -93,12 +99,12 @@ hdiutil create \
 rm -rf "$DMG_STAGING"
 echo "  DMG: $DMG_PATH"
 
-# Step 4: Sign the DMG with Sparkle's EdDSA key
+# Step 5: Sign the DMG with Sparkle's EdDSA key
 log_step "Signing DMG with Sparkle EdDSA key..."
 SIGNATURE=$("$SPARKLE_TOOLS/bin/sign_update" "$DMG_PATH")
 echo "  Signature: $SIGNATURE"
 
-# Step 5: Create GitHub release (so we know the download URL for appcast)
+# Step 6: Create GitHub release (so we know the download URL for appcast)
 log_step "Creating GitHub release..."
 TAG="v${VERSION}"
 GITHUB_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
@@ -119,7 +125,7 @@ gh release create "$TAG" \
 
 echo "  Release: https://github.com/${GITHUB_REPO}/releases/tag/${TAG}"
 
-# Step 6: Generate appcast and fix download URL
+# Step 7: Generate appcast and fix download URL
 log_step "Generating appcast..."
 "$SPARKLE_TOOLS/bin/generate_appcast" "$RELEASES_DIR"
 
@@ -132,7 +138,7 @@ else
     log_warn "generate_appcast did not produce appcast.xml"
 fi
 
-# Step 7: Commit and push appcast
+# Step 8: Commit and push appcast
 log_step "Pushing appcast.xml..."
 cd "$SCRIPT_DIR"
 git add appcast.xml
