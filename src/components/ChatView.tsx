@@ -1,6 +1,6 @@
-import React, {useRef, useEffect} from 'react';
+import React, {useRef, useEffect, useMemo} from 'react';
 import {View, ScrollView, Text, StyleSheet, Image} from 'react-native';
-import {Message, Channel, useSignalStore} from '../store/signalStore';
+import {Message, Attachment, Channel, useSignalStore} from '../store/signalStore';
 import {MessageBubble} from './MessageBubble';
 import {GlassView} from './GlassView';
 import {GradientBlurView} from './GradientBlurView';
@@ -54,6 +54,68 @@ export function ChatView({channel, messages, onReply, onRetryDownload}: ChatView
     scrollViewRef.current?.scrollToEnd({animated: false});
   }, [channel?.id, messages.length]);
 
+  // Pre-compute cross-message album groups: consecutive media-only messages
+  // from the same sender within 15 minutes are merged into a single album.
+  const {crossAlbumMap, hiddenMessages} = useMemo(() => {
+    const albumMap = new Map<string, Attachment[]>();
+    const hidden = new Set<string>();
+
+    function isMediaOnlyMessage(msg: Message): boolean {
+      if (msg.body) return false;
+      const hasAudio = msg.attachments.some(a => a.contentType.startsWith('audio/'));
+      if (hasAudio) return false;
+      const mediaCount = msg.attachments.filter(
+        a => a.contentType.startsWith('image/') || a.contentType.startsWith('video/'),
+      ).length;
+      if (mediaCount === 0) return false;
+      // All non-audio attachments must be media (no generic file attachments)
+      const nonAudioCount = msg.attachments.filter(a => !a.contentType.startsWith('audio/')).length;
+      return mediaCount === nonAudioCount;
+    }
+
+    let i = 0;
+    while (i < messages.length) {
+      const leader = messages[i];
+      if (!isMediaOnlyMessage(leader)) {
+        i++;
+        continue;
+      }
+
+      // Try to extend the group from i
+      let j = i + 1;
+      while (j < messages.length) {
+        const candidate = messages[j];
+        if (!isMediaOnlyMessage(candidate)) break;
+        if (candidate.senderId !== leader.senderId) break;
+        if (candidate.isOutgoing !== leader.isOutgoing) break;
+        if (candidate.timestamp - messages[j - 1].timestamp > 15 * 60 * 1000) break;
+        j++;
+      }
+
+      const groupSize = j - i;
+      if (groupSize >= 2) {
+        // Merge all media attachments into the leader
+        const merged: Attachment[] = [];
+        for (let k = i; k < j; k++) {
+          const msg = messages[k];
+          for (const a of msg.attachments) {
+            if (a.contentType.startsWith('image/') || a.contentType.startsWith('video/')) {
+              merged.push(a);
+            }
+          }
+          if (k > i) {
+            hidden.add(msg.id);
+          }
+        }
+        albumMap.set(leader.id, merged);
+      }
+
+      i = j;
+    }
+
+    return {crossAlbumMap: albumMap, hiddenMessages: hidden};
+  }, [messages]);
+
   if (!channel) {
     return (
       <View style={styles.empty}>
@@ -87,8 +149,23 @@ export function ChatView({channel, messages, onReply, onRetryDownload}: ChatView
               }
             }
             return messages.map((message, index) => {
-              const prevMessage = index > 0 ? messages[index - 1] : null;
-              const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
+              if (hiddenMessages.has(message.id)) return null;
+
+              // Find effective prev/next by skipping hidden messages
+              let prevMessage: Message | null = null;
+              for (let pi = index - 1; pi >= 0; pi--) {
+                if (!hiddenMessages.has(messages[pi].id)) {
+                  prevMessage = messages[pi];
+                  break;
+                }
+              }
+              let nextMessage: Message | null = null;
+              for (let ni = index + 1; ni < messages.length; ni++) {
+                if (!hiddenMessages.has(messages[ni].id)) {
+                  nextMessage = messages[ni];
+                  break;
+                }
+              }
 
               const showTimeSeparator = !prevMessage ||
                 (message.timestamp - prevMessage.timestamp) > 15 * 60 * 1000;
@@ -112,7 +189,7 @@ export function ChatView({channel, messages, onReply, onRetryDownload}: ChatView
                       </View>
                     );
                   })()}
-                  <MessageBubble message={message} isGroup={channel.isGroup} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} onReply={onReply} userId={userId} onRetryDownload={onRetryDownload} showReadReceipt={index === lastReadIndex} />
+                  <MessageBubble message={message} isGroup={channel.isGroup} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} onReply={onReply} userId={userId} onRetryDownload={onRetryDownload} showReadReceipt={index === lastReadIndex} crossAlbumAttachments={crossAlbumMap.get(message.id)} />
                 </React.Fragment>
               );
             });

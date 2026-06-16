@@ -22,6 +22,7 @@ interface MessageBubbleProps {
   userId?: string | null;
   onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
   showReadReceipt?: boolean;
+  crossAlbumAttachments?: Attachment[];
 }
 
 const MAX_BUBBLE_WIDTH = Dimensions.get('window').width * 0.75;
@@ -365,7 +366,7 @@ const quoteBannerStyles = StyleSheet.create({
 
 const SWIPE_THRESHOLD = 60;
 
-export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastInGroup = true, onReply, userId, onRetryDownload, showReadReceipt}: MessageBubbleProps) {
+export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastInGroup = true, onReply, userId, onRetryDownload, showReadReceipt, crossAlbumAttachments}: MessageBubbleProps) {
   const colorScheme = useColorScheme();
   const c = useColors();
   const incomingBubbleBg = colorScheme === 'dark' ? '#3A3A3D' : '#E9E9EB';
@@ -435,7 +436,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   const hasAttachments = nonAudioAttachments.length > 0;
   const hasAudio = audioAttachments.length > 0;
   const hasBody = !!message.body;
-  const mediaAttachments = nonAudioAttachments.filter(
+  const mediaAttachments = crossAlbumAttachments || nonAudioAttachments.filter(
     a => isImageType(a.contentType) || isVideoType(a.contentType),
   );
   const hasMedia = mediaAttachments.length > 0;
@@ -454,7 +455,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
       : {borderTopLeftRadius: 4};
 
   // Any message with media attachments renders bubble-free; text gets its own caption bubble
-  const useBubbleMediaOnly = hasMedia && nonAudioAttachments.length === mediaAttachments.length;
+  const useBubbleMediaOnly = crossAlbumAttachments ? true : hasMedia && nonAudioAttachments.length === mediaAttachments.length;
   const bubbleStyle = useBubbleMediaOnly
     ? [
         styles.bubbleMediaOnly,
