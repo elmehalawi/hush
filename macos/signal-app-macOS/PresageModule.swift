@@ -1169,8 +1169,8 @@ class PresageModule: RCTEventEmitter {
 
     // MARK: - Message Context Menu
 
-    @objc(showMessageContextMenu:messageTimestamp:messageSenderId:messageSenderName:channelId:existingReactionEmoji:)
-    func showMessageContextMenu(_ messageBody: String, messageTimestamp: Double, messageSenderId: String, messageSenderName: String, channelId: String, existingReactionEmoji: String) {
+    @objc(showMessageContextMenu:messageTimestamp:messageSenderId:messageSenderName:channelId:existingReactionEmoji:attachmentFilePath:attachmentFileName:)
+    func showMessageContextMenu(_ messageBody: String, messageTimestamp: Double, messageSenderId: String, messageSenderName: String, channelId: String, existingReactionEmoji: String, attachmentFilePath: String, attachmentFileName: String) {
         DispatchQueue.main.async {
             let menu = NSMenu()
 
@@ -1204,6 +1204,21 @@ class PresageModule: RCTEventEmitter {
             ] as [String: Any]
             replyItem.target = self
             menu.addItem(replyItem)
+
+            // Append file actions when an attachment is present
+            if !attachmentFilePath.isEmpty {
+                menu.addItem(NSMenuItem.separator())
+
+                let saveItem = NSMenuItem(title: "Save to Downloads", action: #selector(self.handleSaveToDownloads(_:)), keyEquivalent: "")
+                saveItem.representedObject = attachmentFilePath
+                saveItem.target = self
+                menu.addItem(saveItem)
+
+                let openItem = NSMenuItem(title: "Open", action: #selector(self.handleOpenFile(_:)), keyEquivalent: "")
+                openItem.representedObject = attachmentFilePath
+                openItem.target = self
+                menu.addItem(openItem)
+            }
 
             guard let window = NSApp.keyWindow, let contentView = window.contentView else { return }
             if let currentEvent = NSApp.currentEvent {

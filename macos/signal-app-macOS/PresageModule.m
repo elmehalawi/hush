@@ -78,7 +78,9 @@ RCT_EXTERN_METHOD(showMessageContextMenu:(NSString *)messageBody
                   messageSenderId:(NSString *)messageSenderId
                   messageSenderName:(NSString *)messageSenderName
                   channelId:(NSString *)channelId
-                  existingReactionEmoji:(NSString *)existingReactionEmoji)
+                  existingReactionEmoji:(NSString *)existingReactionEmoji
+                  attachmentFilePath:(NSString *)attachmentFilePath
+                  attachmentFileName:(NSString *)attachmentFileName)
 
 RCT_EXTERN_METHOD(showFileContextMenu:(NSString *)filePath
                   fileName:(NSString *)fileName)

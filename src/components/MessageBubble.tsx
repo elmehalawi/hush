@@ -1,13 +1,13 @@
 import React, {useState, useCallback, useRef, useEffect} from 'react';
-import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme, ActivityIndicator, Animated, requireNativeComponent} from 'react-native';
+import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme, ActivityIndicator, Animated} from 'react-native';
 import {Message, Attachment, Mention, Reaction, useSignalStore, resolveContactName} from '../store/signalStore';
 import {AudioAttachmentView} from './AudioAttachmentView';
+import {AlbumView} from './AlbumView';
 import {LinkPreviewCard} from './LinkPreviewCard';
+import {AnimatedSwipeGestureView} from './NativeSwipeGestureView';
 import {useColors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
-const NativeSwipeGestureView = requireNativeComponent<any>('SwipeGestureView');
-const AnimatedSwipeGestureView = Animated.createAnimatedComponent(NativeSwipeGestureView);
 
 function openMediaPreview(filePath: string) {
   PresageModule?.previewFile(filePath);
@@ -162,7 +162,6 @@ function AttachmentView({
   onRetry?: () => void;
 }) {
   const c = useColors();
-  const rightClickedRef = useRef(false);
   const [showRetry, setShowRetry] = useState(false);
 
   // Show retry button after 15s if still no filePath
@@ -197,30 +196,14 @@ function AttachmentView({
     );
   }
 
-  const handlePressIn = (e: any) => {
-    if (e.nativeEvent?.button === 2) {
-      rightClickedRef.current = true;
-      PresageModule?.showFileContextMenu(
-        attachment.filePath!,
-        attachment.fileName || 'File',
-      );
-    } else {
-      rightClickedRef.current = false;
-    }
-  };
-
   const handlePress = () => {
-    if (rightClickedRef.current) {
-      rightClickedRef.current = false;
-      return;
-    }
     openMediaPreview(attachment.filePath!);
   };
 
   if (isImageType(attachment.contentType)) {
     const dims = getImageDimensions(attachment);
     return (
-      <Pressable onPress={handlePress} onPressIn={handlePressIn}>
+      <Pressable onPress={handlePress}>
         <Image
           source={{uri: `file://${attachment.filePath}`}}
           style={[styles.attachmentImage, {width: dims.width, height: dims.height}]}
@@ -236,7 +219,7 @@ function AttachmentView({
       ? `file://${attachment.thumbnailPath}`
       : undefined;
     return (
-      <Pressable onPress={handlePress} onPressIn={handlePressIn}>
+      <Pressable onPress={handlePress}>
         <View style={[styles.videoContainer, {width: dims.width, height: dims.height}]}>
           {thumbUri ? (
             <Image
@@ -447,6 +430,8 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   );
   const hasMedia = mediaAttachments.length > 0;
   const audioOnly = hasAudio && !hasBody && !hasAttachments;
+  const isAlbum = mediaAttachments.length > 1;
+  const isSingleMediaOnly = mediaAttachments.length === 1 && !hasBody && nonAudioAttachments.length === 1;
 
   // Compute border radius based on position within message group.
   // Only the tail side changes: right for outgoing, left for incoming.
@@ -458,13 +443,22 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
       ? {borderTopRightRadius: 4}
       : {borderTopLeftRadius: 4};
 
-  const bubbleStyle = [
-    styles.bubble,
-    isOutgoing ? [styles.bubbleOutgoing, {backgroundColor: outgoingBubbleBg}] : [styles.bubbleIncoming, {backgroundColor: incomingBubbleBg}],
-    hasMedia && styles.bubbleWithMedia,
-    showSenderInfo && styles.bubbleInGroup,
-    groupRadiusStyle,
-  ];
+  // Any message with media attachments renders bubble-free; text gets its own caption bubble
+  const useBubbleMediaOnly = hasMedia && nonAudioAttachments.length === mediaAttachments.length;
+  const bubbleStyle = useBubbleMediaOnly
+    ? [
+        styles.bubbleMediaOnly,
+        isOutgoing ? {borderBottomRightRadius: 4} : {borderBottomLeftRadius: 4},
+        showSenderInfo && styles.bubbleInGroup,
+        groupRadiusStyle,
+      ]
+    : [
+        styles.bubble,
+        isOutgoing ? [styles.bubbleOutgoing, {backgroundColor: outgoingBubbleBg}] : [styles.bubbleIncoming, {backgroundColor: incomingBubbleBg}],
+        hasMedia && styles.bubbleWithMedia,
+        showSenderInfo && styles.bubbleInGroup,
+        groupRadiusStyle,
+      ];
 
   const readReceiptColor = colorScheme === 'dark' ? 'rgba(255,255,255,0.4)' : '#8E8E93';
 
@@ -518,7 +512,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   const bubbleContent = (
     <>
       {message.quote && <QuoteBanner quote={message.quote} isOutgoing={isOutgoing} channelId={message.channelId} />}
-      {hasAttachments && (
+      {hasAttachments && !isAlbum && (
         <View style={styles.attachmentsContainer}>
           {nonAudioAttachments.map((attachment, index) => (
             <AttachmentView
@@ -534,10 +528,25 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
           ))}
         </View>
       )}
-      {hasBody && (
-        <View style={hasMedia ? styles.bodyBelowMedia : undefined}>
+      {isAlbum && (
+        <AlbumView
+          attachments={mediaAttachments}
+          isOutgoing={isOutgoing}
+          onPreview={(filePath) => openMediaPreview(filePath)}
+        />
+      )}
+      {hasBody && hasMedia && (
+        <View style={[
+          styles.captionBubble,
+          isOutgoing
+            ? [styles.bubbleOutgoing, {backgroundColor: outgoingBubbleBg}]
+            : [styles.bubbleIncoming, {backgroundColor: incomingBubbleBg}],
+        ]}>
           <LinkifiedText text={message.body!} isOutgoing={isOutgoing} mentions={message.mentions} channelId={message.channelId} />
         </View>
+      )}
+      {hasBody && !hasMedia && (
+        <LinkifiedText text={message.body!} isOutgoing={isOutgoing} mentions={message.mentions} channelId={message.channelId} />
       )}
       {message.linkPreviews.length > 0 && (
         <View style={styles.linkPreviewContainer}>
@@ -559,6 +568,9 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
     </>
   );
 
+  // First media attachment for context menu file actions
+  const firstMediaAttachment = mediaAttachments.length > 0 ? mediaAttachments[0] : null;
+
   const handleBubblePressIn = useCallback((e: any) => {
     if (e.nativeEvent?.button === 2) {
       const authorName = message.isOutgoing
@@ -571,9 +583,11 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
         authorName,
         message.channelId,
         myReaction?.emoji || '',
+        firstMediaAttachment?.filePath || '',
+        firstMediaAttachment?.fileName || '',
       );
     }
-  }, [message.body, message.timestamp, message.senderId, message.senderName, message.isOutgoing, message.channelId, myReaction?.emoji]);
+  }, [message.body, message.timestamp, message.senderId, message.senderName, message.isOutgoing, message.channelId, myReaction?.emoji, firstMediaAttachment?.filePath, firstMediaAttachment?.fileName]);
 
   const hasReactions = message.reactions.length > 0;
 
@@ -586,13 +600,13 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
 
   return (
     <AnimatedSwipeGestureView
-      onSwipeUpdate={onReply ? handleSwipeUpdate : undefined}
-      onSwipeEnd={onReply ? handleSwipeEnd : undefined}
+      onSwipeUpdate={onReply && !isAlbum ? handleSwipeUpdate : undefined}
+      onSwipeEnd={onReply && !isAlbum ? handleSwipeEnd : undefined}
       style={[
         styles.container,
         isOutgoing ? styles.outgoing : styles.incoming,
         hasReactions && styles.containerWithReactions,
-        {transform: [{translateX: swipeAnim}]},
+        !isAlbum && {transform: [{translateX: swipeAnim}]},
       ]}>
       {showSenderInfo ? (
         <View style={styles.groupRow}>
@@ -713,6 +727,10 @@ const styles = StyleSheet.create({
     padding: 3,
     overflow: 'hidden',
   },
+  bubbleMediaOnly: {
+    maxWidth: '75%',
+    backgroundColor: 'transparent',
+  },
   attachmentsContainer: {
     borderRadius: 17,
     overflow: 'hidden',
@@ -812,9 +830,11 @@ const styles = StyleSheet.create({
   fileNameOutgoing: {
     color: 'white',
   },
-  bodyBelowMedia: {
-    paddingHorizontal: 7,
-    paddingTop: 4,
+  captionBubble: {
+    marginTop: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 18,
   },
   linkPreviewContainer: {
     marginTop: 4,
