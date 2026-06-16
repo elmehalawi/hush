@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useMemo, useRef, useImperativeHandle, forwardRef} from 'react';
+import React, {useState, useCallback, useMemo, useRef, useImperativeHandle, forwardRef, useLayoutEffect} from 'react';
 import {View, Text, Image, StyleSheet, Pressable, Animated} from 'react-native';
 import {Attachment} from '../store/signalStore';
 
@@ -56,6 +56,14 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
     // Residual rotation for the newly promoted top card — springs from baseRotation to 0
     const settleRotation = useRef(new Animated.Value(0)).current;
     const settling = useRef(false);
+
+    // Animated.View on macOS doesn't push interpolated transforms to the
+    // native layer until the first value change.  Nudging swipeX before the
+    // first paint forces the entire interpolation chain to evaluate.
+    useLayoutEffect(() => {
+      swipeX.setValue(0.0001);
+      swipeX.setValue(0);
+    }, [swipeX]);
 
     const stackDims = useMemo(() => {
       let maxW = 0;
