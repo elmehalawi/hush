@@ -60,12 +60,16 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
     const departOriginX = useRef(0);
 
     // Animated.View on macOS doesn't push interpolated transforms to the
-    // native layer until the first value change.  Nudging swipeX before the
-    // first paint forces the entire interpolation chain to evaluate.
+    // native layer until the first value change.  Nudging swipeX forces the
+    // entire interpolation chain to evaluate.  Re-run whenever the
+    // attachments array identity changes, since that causes React to
+    // recreate the interpolation nodes which need re-activation.
     useLayoutEffect(() => {
-      swipeX.setValue(0.0001);
-      swipeX.setValue(0);
-    }, [swipeX]);
+      if (!animating.current) {
+        swipeX.setValue(0.0001);
+        swipeX.setValue(0);
+      }
+    }, [attachments, swipeX]);
 
     const stackDims = useMemo(() => {
       let maxW = 0;
