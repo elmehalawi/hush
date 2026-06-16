@@ -229,9 +229,10 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
 
             // Card that just got swiped away — rubber-banding back into the stack
             if (isDeparting) {
+              const endScale = stackPos === 1 ? 0.97 : 1;
               const departScale = returnAnim.interpolate({
                 inputRange: [0, 1],
-                outputRange: [0.88, 1],
+                outputRange: [0.88, endScale],
               });
               const departRotation = returnAnim.interpolate({
                 inputRange: [0, 1],
@@ -240,6 +241,10 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
               const departOffsetX = returnAnim.interpolate({
                 inputRange: [0, 1],
                 outputRange: [0, stackOffsetX],
+              });
+              const departOffsetY = returnAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, stackOffsetY],
               });
 
               return (
@@ -256,6 +261,7 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                       top: (stackDims.height - dims.height) / 2,
                       transform: [
                         {translateX: departOffsetX},
+                        {translateY: departOffsetY},
                         {rotate: departRotation},
                         {scale: departScale},
                       ],
@@ -282,12 +288,12 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
               });
               const nextTranslateX = swipeProgress.interpolate({
                 inputRange: [0, 1],
-                outputRange: [0, -stackOffsetX],
+                outputRange: [stackOffsetX, 0],
                 extrapolate: 'clamp',
               });
               const nextTranslateY = swipeProgress.interpolate({
                 inputRange: [0, 1],
-                outputRange: [0, -stackOffsetY],
+                outputRange: [stackOffsetY, 0],
                 extrapolate: 'clamp',
               });
 
@@ -301,8 +307,8 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                       height: dims.height,
                       zIndex: 10 - stackPos,
                       opacity: 0.85,
-                      left: (stackDims.width - dims.width) / 2 + stackOffsetX,
-                      top: (stackDims.height - dims.height) / 2 + stackOffsetY,
+                      left: (stackDims.width - dims.width) / 2,
+                      top: (stackDims.height - dims.height) / 2,
                       transform: [
                         {translateX: nextTranslateX},
                         {translateY: nextTranslateY},
@@ -331,7 +337,9 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                       top: (stackDims.height - dims.height) / 2,
                       transform: [
                         {translateX: swipeX},
+                        {translateY: 0},
                         {rotate: topRotation},
+                        {scale: 1},
                       ],
                     },
                   ]}>
@@ -344,7 +352,9 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
               );
             }
 
-            // Other stack cards — static
+            // Other stack cards — uses same 4-item transform structure as the
+            // departing branch so React Native doesn't tear down / rebuild the
+            // composite transform (which briefly resets rotation to 0).
             return (
               <Animated.View
                 key={attIdx}
@@ -355,9 +365,14 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                     height: dims.height,
                     zIndex: 10 - stackPos,
                     opacity: 0.85,
-                    left: (stackDims.width - dims.width) / 2 + stackOffsetX,
-                    top: (stackDims.height - dims.height) / 2 + stackOffsetY,
-                    transform: [{rotate: `${baseRotation}deg`}],
+                    left: (stackDims.width - dims.width) / 2,
+                    top: (stackDims.height - dims.height) / 2,
+                    transform: [
+                      {translateX: stackOffsetX},
+                      {translateY: stackOffsetY},
+                      {rotate: `${baseRotation}deg`},
+                      {scale: 1},
+                    ],
                   },
                 ]}>
                 {cardContent}
