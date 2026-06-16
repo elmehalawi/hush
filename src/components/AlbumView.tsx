@@ -56,6 +56,8 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
     // Residual rotation for the newly promoted top card — springs from baseRotation to 0
     const settleRotation = useRef(new Animated.Value(0)).current;
     const settling = useRef(false);
+    // Where the departing card was when it left the screen (Phase 1 toValue)
+    const departOriginX = useRef(0);
 
     // Animated.View on macOS doesn't push interpolated transforms to the
     // native layer until the first value change.  Nudging swipeX before the
@@ -120,6 +122,7 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
             const newTopBaseRotation = STACK_ROTATIONS[newTopAttIdx % STACK_ROTATIONS.length];
 
             // Set up rubber-band return for the departing card
+            departOriginX.current = offScreenX;
             setDepartingIdx(departingAttIdx);
             returnAnim.setValue(0);
             settleRotation.setValue(0);
@@ -177,11 +180,14 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
       extrapolate: 'clamp',
     });
 
-    // Show 3 stack cards + the departing card (which is at the end of the order)
+    // Build the list of cards to render: up to 3 stack cards + the departing
+    // card (which may be deeper than position 3 for albums with 5+ items).
     const baseVisibleCount = Math.min(order.length, 3);
-    const visibleCount = departingIdx !== null
-      ? Math.min(order.length, baseVisibleCount + 1)
-      : baseVisibleCount;
+    const visibleCards = order.slice(0, baseVisibleCount);
+    if (departingIdx !== null && !visibleCards.includes(departingIdx)) {
+      visibleCards.push(departingIdx);
+    }
+    const visibleCount = visibleCards.length;
 
     const pageLabel = (
       <Text style={styles.pageIndicator}>
@@ -194,7 +200,7 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
         {isOutgoing && pageLabel}
         <View style={[styles.stack, {width: stackDims.width, height: stackDims.height}]}>
           {/* Render bottom-to-top so the top card paints last */}
-          {order.slice(0, visibleCount).reverse().map((attIdx, renderIdx) => {
+          {visibleCards.slice().reverse().map((attIdx, renderIdx) => {
             const stackPos = visibleCount - 1 - renderIdx; // 0 = top, 1 = one below, etc.
             const att = attachments[attIdx];
             const dims = getImageDimensions(att);
@@ -240,7 +246,7 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
               const endScale = stackPos === 1 ? 0.97 : 1;
               const departScale = returnAnim.interpolate({
                 inputRange: [0, 1],
-                outputRange: [0.88, endScale],
+                outputRange: [1, endScale],
               });
               const departRotation = returnAnim.interpolate({
                 inputRange: [0, 1],
@@ -248,7 +254,7 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
               });
               const departOffsetX = returnAnim.interpolate({
                 inputRange: [0, 1],
-                outputRange: [0, stackOffsetX],
+                outputRange: [departOriginX.current, stackOffsetX],
               });
               const departOffsetY = returnAnim.interpolate({
                 inputRange: [0, 1],
