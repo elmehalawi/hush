@@ -2,7 +2,7 @@ import React, {useState, useCallback, useRef, useEffect} from 'react';
 import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme, ActivityIndicator, Animated} from 'react-native';
 import {Message, Attachment, Mention, Reaction, useSignalStore, resolveContactName} from '../store/signalStore';
 import {AudioAttachmentView} from './AudioAttachmentView';
-import {AlbumView} from './AlbumView';
+import {AlbumView, AlbumViewHandle} from './AlbumView';
 import {LinkPreviewCard} from './LinkPreviewCard';
 import {AnimatedSwipeGestureView} from './NativeSwipeGestureView';
 import {useColors} from '../theme/colors';
@@ -378,6 +378,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   const swipeAnim = useRef(new Animated.Value(0)).current;
   const swipeTriggered = useRef(false);
   const swipeEnded = useRef(false);
+  const albumRef = useRef<AlbumViewHandle>(null);
 
   const handleSwipeUpdate = useCallback((e: any) => {
     if (swipeEnded.current) { return; }
@@ -408,6 +409,15 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
       swipeEnded.current = false;
     });
   }, [swipeAnim, onReply, message]);
+
+  // Album swipe handlers — forward events from the outer gesture view to AlbumView
+  const handleAlbumSwipeUpdate = useCallback((e: any) => {
+    albumRef.current?.onSwipeUpdate(e.nativeEvent.deltaX);
+  }, []);
+
+  const handleAlbumSwipeEnd = useCallback((e: any) => {
+    albumRef.current?.onSwipeEnd(e?.nativeEvent?.deltaX ?? 0);
+  }, []);
 
   // Find current user's existing reaction emoji on this message
   const myReaction = userId
@@ -530,6 +540,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
       )}
       {isAlbum && (
         <AlbumView
+          ref={albumRef}
           attachments={mediaAttachments}
           isOutgoing={isOutgoing}
           onPreview={(filePath) => openMediaPreview(filePath)}
@@ -600,8 +611,8 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
 
   return (
     <AnimatedSwipeGestureView
-      onSwipeUpdate={onReply && !isAlbum ? handleSwipeUpdate : undefined}
-      onSwipeEnd={onReply && !isAlbum ? handleSwipeEnd : undefined}
+      onSwipeUpdate={isAlbum ? handleAlbumSwipeUpdate : (onReply ? handleSwipeUpdate : undefined)}
+      onSwipeEnd={isAlbum ? handleAlbumSwipeEnd : (onReply ? handleSwipeEnd : undefined)}
       style={[
         styles.container,
         isOutgoing ? styles.outgoing : styles.incoming,
