@@ -180,11 +180,15 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
       extrapolate: 'clamp',
     });
 
-    // Build the list of cards to render: up to 3 stack cards + the departing
-    // card (which may be deeper than position 3 for albums with 5+ items).
-    const baseVisibleCount = Math.min(order.length, 3);
+    // Build the list of cards to render: all stack cards (up to 10) + the
+    // departing card (which may be deeper for albums with 10+ items).
+    const baseVisibleCount = Math.min(order.length, 10);
     const visibleCards = order.slice(0, baseVisibleCount);
-    if (departingIdx !== null && !visibleCards.includes(departingIdx)) {
+    // Track whether the departing card is outside the normal visible range —
+    // if so it will be removed from the DOM when departingIdx clears, so we
+    // need to fade it out during the spring to avoid a visual pop.
+    const departingIsExtra = departingIdx !== null && !visibleCards.includes(departingIdx);
+    if (departingIsExtra) {
       visibleCards.push(departingIdx);
     }
     const visibleCount = visibleCards.length;
@@ -260,6 +264,16 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                 inputRange: [0, 1],
                 outputRange: [0, stackOffsetY],
               });
+              // For 10+ item albums the departing card won't persist in the
+              // visible set after the spring completes — fade it out so removal
+              // from the DOM doesn't cause a visual pop.
+              const departOpacity = departingIsExtra
+                ? returnAnim.interpolate({
+                    inputRange: [0, 0.5, 0.85],
+                    outputRange: [0.85, 0.85, 0],
+                    extrapolate: 'clamp',
+                  })
+                : 0.85;
 
               return (
                 <Animated.View
@@ -270,7 +284,7 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                       width: dims.width,
                       height: dims.height,
                       zIndex: 1,
-                      opacity: 0.85,
+                      opacity: departOpacity,
                       left: (stackDims.width - dims.width) / 2,
                       top: (stackDims.height - dims.height) / 2,
                       transform: [
