@@ -86,14 +86,8 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
           }).start(() => {
             const currentOrder = orderRef.current;
             const departingAttIdx = currentOrder[0];
-            let newOrder: number[];
-            if (direction < 0) {
-              // Swipe left → send top to bottom, next becomes top
-              newOrder = [...currentOrder.slice(1), currentOrder[0]];
-            } else {
-              // Swipe right → bring bottom to top
-              newOrder = [currentOrder[currentOrder.length - 1], ...currentOrder.slice(0, -1)];
-            }
+            // Always send the top card to the bottom — the card underneath is revealed
+            const newOrder = [...currentOrder.slice(1), currentOrder[0]];
 
             // Set up rubber-band return for the departing card
             departingIdx.current = departingAttIdx;
