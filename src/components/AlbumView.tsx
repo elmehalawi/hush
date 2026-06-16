@@ -49,10 +49,13 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
     const swipeX = useRef(new Animated.Value(0)).current;
     // Tracks the departing card's "return to stack" animation (0 = off-screen, 1 = settled in stack)
     const returnAnim = useRef(new Animated.Value(1)).current;
-    const departingIdx = useRef<number | null>(null);
+    const [departingIdx, setDepartingIdx] = useState<number | null>(null);
     const animating = useRef(false);
     const orderRef = useRef(order);
     orderRef.current = order;
+    // Residual rotation for the newly promoted top card — springs from baseRotation to 0
+    const settleRotation = useRef(new Animated.Value(0)).current;
+    const settling = useRef(false);
 
     const stackDims = useMemo(() => {
       let maxW = 0;
@@ -67,7 +70,22 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
 
     useImperativeHandle(ref, () => ({
       onSwipeUpdate(deltaX: number) {
-        if (animating.current) return;
+        if (animating.current) {
+          // Allow new swipes to interrupt the settle phase
+          if (settling.current) {
+            settleRotation.stopAnimation();
+            settleRotation.setValue(0);
+            returnAnim.stopAnimation();
+            returnAnim.setValue(1);
+            setDepartingIdx(null);
+            settling.current = false;
+            animating.current = false;
+            // Force re-render so the departing card switches to the stackPos 1 branch
+            setOrder(prev => [...prev]);
+          } else {
+            return;
+          }
+        }
         swipeX.setValue(deltaX);
       },
       onSwipeEnd(deltaX: number) {
@@ -89,20 +107,27 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
             // Always send the top card to the bottom — the card underneath is revealed
             const newOrder = [...currentOrder.slice(1), currentOrder[0]];
 
+            // The new top card's base rotation (it was at order[1] before reorder)
+            const newTopAttIdx = newOrder[0];
+            const newTopBaseRotation = STACK_ROTATIONS[newTopAttIdx % STACK_ROTATIONS.length];
+
             // Set up rubber-band return for the departing card
-            departingIdx.current = departingAttIdx;
+            setDepartingIdx(departingAttIdx);
             returnAnim.setValue(0);
+            settleRotation.setValue(0);
+            settling.current = true;
             swipeX.setValue(0);
             setOrder(newOrder);
 
-            // Phase 2: departing card shrinks and slides into its stack position
+            // Phase 2: departing card rubber-bands into its stack position
             Animated.spring(returnAnim, {
               toValue: 1,
               useNativeDriver: false,
               tension: 80,
               friction: 10,
             }).start(() => {
-              departingIdx.current = null;
+              setDepartingIdx(null);
+              settling.current = false;
               animating.current = false;
             });
           });
@@ -116,7 +141,7 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
           }).start();
         }
       },
-    }), [swipeX, returnAnim, stackDims.width]);
+    }), [swipeX, returnAnim, settleRotation, stackDims.width]);
 
     const handlePress = useCallback(
       (filePath: string) => {
@@ -125,20 +150,30 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
       [onPreview],
     );
 
-    // Top card rotation follows the swipe — subtle tilt
-    const topRotation = swipeX.interpolate({
+    // Top card rotation: swipe tilt + settle residual (in degrees as a number)
+    const swipeTiltDeg = swipeX.interpolate({
       inputRange: [-(stackDims.width + 80), 0, stackDims.width + 80],
-      outputRange: ['-8deg', '0deg', '8deg'],
+      outputRange: [-8, 0, 8],
+    });
+    // Combine swipe tilt with settle rotation (both numeric degrees)
+    const topRotationDeg = Animated.add(swipeTiltDeg, settleRotation);
+    const topRotation = topRotationDeg.interpolate({
+      inputRange: [-20, 0, 20],
+      outputRange: ['-20deg', '0deg', '20deg'],
     });
 
-    // As top card moves away, the next card underneath straightens and scales up
-    const absSwipe = swipeX.interpolate({
+    // 0 = top card centered, 1 = top card fully swiped away
+    const swipeProgress = swipeX.interpolate({
       inputRange: [-(stackDims.width + 80), 0, stackDims.width + 80],
       outputRange: [1, 0, 1],
       extrapolate: 'clamp',
     });
 
-    const visibleCount = Math.min(order.length, 3);
+    // Show 3 stack cards + the departing card (which is at the end of the order)
+    const baseVisibleCount = Math.min(order.length, 3);
+    const visibleCount = departingIdx !== null
+      ? Math.min(order.length, baseVisibleCount + 1)
+      : baseVisibleCount;
 
     const pageLabel = (
       <Text style={styles.pageIndicator}>
@@ -156,7 +191,7 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
             const att = attachments[attIdx];
             const dims = getImageDimensions(att);
             const isTop = stackPos === 0;
-            const isDeparting = attIdx === departingIdx.current;
+            const isDeparting = attIdx === departingIdx;
 
             // Stack positioning: cards below are rotated and offset
             const baseRotation = STACK_ROTATIONS[attIdx % STACK_ROTATIONS.length];
@@ -233,17 +268,26 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
 
             // Card directly behind the top — straightens as top card moves away
             if (stackPos === 1) {
-              const nextRotation = Animated.multiply(
-                absSwipe,
-                -1,
-              ).interpolate({
-                inputRange: [-1, 0],
+              // swipeProgress: 0 = no swipe, 1 = fully swiped
+              // rotation: baseRotation at 0, 0deg at 1
+              const nextRotation = swipeProgress.interpolate({
+                inputRange: [0, 1],
                 outputRange: [`${baseRotation}deg`, '0deg'],
                 extrapolate: 'clamp',
               });
-              const nextScale = absSwipe.interpolate({
+              const nextScale = swipeProgress.interpolate({
                 inputRange: [0, 1],
-                outputRange: [1, 0.97],
+                outputRange: [0.97, 1],
+                extrapolate: 'clamp',
+              });
+              const nextTranslateX = swipeProgress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, -stackOffsetX],
+                extrapolate: 'clamp',
+              });
+              const nextTranslateY = swipeProgress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, -stackOffsetY],
                 extrapolate: 'clamp',
               });
 
@@ -260,6 +304,8 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                       left: (stackDims.width - dims.width) / 2 + stackOffsetX,
                       top: (stackDims.height - dims.height) / 2 + stackOffsetY,
                       transform: [
+                        {translateX: nextTranslateX},
+                        {translateY: nextTranslateY},
                         {rotate: nextRotation},
                         {scale: nextScale},
                       ],
