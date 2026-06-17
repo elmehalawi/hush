@@ -243,7 +243,7 @@ function AttachmentView({
 
   // Generic file attachment
   return (
-    <Pressable onPress={handlePress} onPressIn={handlePressIn}>
+    <Pressable onPress={handlePress}>
       <View style={[styles.fileAttachment, isOutgoing && styles.fileAttachmentOutgoing]}>
         <Text style={[styles.fileIcon]}>{'📎'}</Text>
         <Text
