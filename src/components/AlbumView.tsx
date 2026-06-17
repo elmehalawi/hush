@@ -38,10 +38,11 @@ interface AlbumViewProps {
   attachments: Attachment[];
   isOutgoing: boolean;
   onPreview?: (filePath: string) => void;
+  onRightClick?: (e: any) => void;
 }
 
 export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
-  function AlbumView({attachments, isOutgoing, onPreview}, ref) {
+  function AlbumView({attachments, isOutgoing, onPreview, onRightClick}, ref) {
     // order[0] = top of stack (current), order[1] = one below, etc.
     const [order, setOrder] = useState(() => attachments.map((_, i) => i));
 
@@ -376,7 +377,13 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                     },
                   ]}>
                   <Pressable
-                    onPress={() => att.filePath && handlePress(att.filePath)}
+                    onPressIn={(e: any) => {
+                      if (e.nativeEvent?.button === 2) {
+                        onRightClick?.(e);
+                        return;
+                      }
+                      att.filePath && handlePress(att.filePath);
+                    }}
                     style={{width: dims.width, height: dims.height}}>
                     {cardContent}
                   </Pressable>

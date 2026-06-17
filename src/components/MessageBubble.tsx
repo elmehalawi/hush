@@ -157,10 +157,12 @@ function AttachmentView({
   attachment,
   isOutgoing,
   onRetry,
+  onRightClick,
 }: {
   attachment: Attachment;
   isOutgoing: boolean;
   onRetry?: () => void;
+  onRightClick?: (e: any) => void;
 }) {
   const c = useColors();
   const [showRetry, setShowRetry] = useState(false);
@@ -197,14 +199,18 @@ function AttachmentView({
     );
   }
 
-  const handlePress = () => {
+  const handlePressIn = (e: any) => {
+    if (e.nativeEvent?.button === 2) {
+      onRightClick?.(e);
+      return;
+    }
     openMediaPreview(attachment.filePath!);
   };
 
   if (isImageType(attachment.contentType)) {
     const dims = getImageDimensions(attachment);
     return (
-      <Pressable onPress={handlePress}>
+      <Pressable onPressIn={handlePressIn}>
         <Image
           source={{uri: `file://${attachment.filePath}`}}
           style={[styles.attachmentImage, {width: dims.width, height: dims.height}]}
@@ -220,7 +226,7 @@ function AttachmentView({
       ? `file://${attachment.thumbnailPath}`
       : undefined;
     return (
-      <Pressable onPress={handlePress}>
+      <Pressable onPressIn={handlePressIn}>
         <View style={[styles.videoContainer, {width: dims.width, height: dims.height}]}>
           {thumbUri ? (
             <Image
@@ -243,7 +249,7 @@ function AttachmentView({
 
   // Generic file attachment
   return (
-    <Pressable onPress={handlePress}>
+    <Pressable onPressIn={handlePressIn}>
       <View style={[styles.fileAttachment, isOutgoing && styles.fileAttachmentOutgoing]}>
         <Text style={[styles.fileIcon]}>{'📎'}</Text>
         <Text
@@ -508,6 +514,27 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
     </>
   ) : null;
 
+  // First media attachment for context menu file actions
+  const firstMediaAttachment = mediaAttachments.length > 0 ? mediaAttachments[0] : null;
+
+  const handleBubblePressIn = useCallback((e: any) => {
+    if (e.nativeEvent?.button === 2) {
+      const authorName = message.isOutgoing
+        ? 'You'
+        : message.senderName || message.senderId;
+      PresageModule?.showMessageContextMenu(
+        message.body || '',
+        message.timestamp,
+        message.senderId,
+        authorName,
+        message.channelId,
+        myReaction?.emoji || '',
+        firstMediaAttachment?.filePath || '',
+        firstMediaAttachment?.fileName || '',
+      );
+    }
+  }, [message.body, message.timestamp, message.senderId, message.senderName, message.isOutgoing, message.channelId, myReaction?.emoji, firstMediaAttachment?.filePath, firstMediaAttachment?.fileName]);
+
   const audioContent = hasAudio ? (
     <View>
       {audioAttachments.map((attachment, index) => (
@@ -535,6 +562,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
                   ? () => onRetryDownload(message.channelId, message.id, message.attachments.indexOf(attachment))
                   : undefined
               }
+              onRightClick={handleBubblePressIn}
             />
           ))}
         </View>
@@ -545,6 +573,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
           attachments={mediaAttachments}
           isOutgoing={isOutgoing}
           onPreview={(filePath) => openMediaPreview(filePath)}
+          onRightClick={handleBubblePressIn}
         />
       )}
       {hasBody && hasMedia && (
@@ -579,27 +608,6 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
       )}
     </>
   );
-
-  // First media attachment for context menu file actions
-  const firstMediaAttachment = mediaAttachments.length > 0 ? mediaAttachments[0] : null;
-
-  const handleBubblePressIn = useCallback((e: any) => {
-    if (e.nativeEvent?.button === 2) {
-      const authorName = message.isOutgoing
-        ? 'You'
-        : message.senderName || message.senderId;
-      PresageModule?.showMessageContextMenu(
-        message.body || '',
-        message.timestamp,
-        message.senderId,
-        authorName,
-        message.channelId,
-        myReaction?.emoji || '',
-        firstMediaAttachment?.filePath || '',
-        firstMediaAttachment?.fileName || '',
-      );
-    }
-  }, [message.body, message.timestamp, message.senderId, message.senderName, message.isOutgoing, message.channelId, myReaction?.emoji, firstMediaAttachment?.filePath, firstMediaAttachment?.fileName]);
 
   const hasReactions = message.reactions.length > 0;
 
