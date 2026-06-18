@@ -88,6 +88,7 @@ interface SignalStore {
   selectedChannelId: string | null;
   messages: Record<string, Message[]>; // channelId -> messages
   userId: string | null;
+  typingUsers: Record<string, {senderId: string; timestamp: number}[]>; // channelId -> active typers
 
   // Actions
   setIsLinked: (linked: boolean) => void;
@@ -116,6 +117,7 @@ interface SignalStore {
     image: Attachment,
   ) => void;
   markMessagesAsRead: (senderId: string, timestamps: number[]) => void;
+  setTyping: (channelId: string, senderId: string, started: boolean) => void;
 }
 
 export const useSignalStore = create<SignalStore>((set, get) => ({
@@ -126,6 +128,7 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
   selectedChannelId: null,
   messages: {},
   userId: null,
+  typingUsers: {},
 
   // Actions
   setIsLinked: (linked: boolean) => set({isLinked: linked}),
@@ -177,7 +180,7 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
   },
 
   addMessage: (message: Message) => {
-    const {messages, channels, selectedChannelId} = get();
+    const {messages, channels, selectedChannelId, typingUsers} = get();
     const channelMessages = messages[message.channelId] || [];
 
     // Update the channel's last message info for sorting
@@ -198,8 +201,22 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
       }
     }
 
+    // Clear typing state for the sender (they sent a message, so they stopped typing)
+    let updatedTyping = typingUsers;
+    const channelTyping = typingUsers[message.channelId];
+    if (channelTyping && channelTyping.some(t => t.senderId === message.senderId)) {
+      const filtered = channelTyping.filter(t => t.senderId !== message.senderId);
+      if (filtered.length === 0) {
+        const {[message.channelId]: _, ...rest} = typingUsers;
+        updatedTyping = rest;
+      } else {
+        updatedTyping = {...typingUsers, [message.channelId]: filtered};
+      }
+    }
+
     set({
       channels: updatedChannels,
+      typingUsers: updatedTyping,
       messages: {
         ...messages,
         [message.channelId]: [...channelMessages, message],
@@ -356,6 +373,27 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
 
     if (changed) {
       set({messages: updatedMessages});
+    }
+  },
+
+  setTyping: (channelId: string, senderId: string, started: boolean) => {
+    const {typingUsers, userId} = get();
+    // Don't show our own typing indicator
+    if (senderId === userId) return;
+
+    const current = typingUsers[channelId] || [];
+    if (started) {
+      const filtered = current.filter(t => t.senderId !== senderId);
+      filtered.push({senderId, timestamp: Date.now()});
+      set({typingUsers: {...typingUsers, [channelId]: filtered}});
+    } else {
+      const filtered = current.filter(t => t.senderId !== senderId);
+      if (filtered.length === 0) {
+        const {[channelId]: _, ...rest} = typingUsers;
+        set({typingUsers: rest});
+      } else {
+        set({typingUsers: {...typingUsers, [channelId]: filtered}});
+      }
     }
   },
 }));

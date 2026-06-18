@@ -16,7 +16,7 @@ use presage::libsignal_service::zkgroup::profiles::ProfileKey;
 use presage::manager::Registered;
 use presage::model::identity::OnNewIdentity;
 use presage::proto::attachment_pointer::AttachmentIdentifier;
-use presage::proto::{receipt_message, sync_message, AttachmentPointer, DataMessage, GroupContextV2, Preview, ReceiptMessage, SyncMessage};
+use presage::proto::{receipt_message, sync_message, typing_message, AttachmentPointer, DataMessage, GroupContextV2, Preview, ReceiptMessage, SyncMessage};
 use presage::store::{ContentsStore, Thread};
 use presage_store_sqlite::SqliteStore;
 use tracing::{error, info, warn};
@@ -578,6 +578,7 @@ impl SignalClient {
                                 reaction_events.push(reaction);
                             }
                             Some(ProcessedContent::ReadReceipt { .. }) => {}
+                            Some(ProcessedContent::Typing { .. }) => {}
                             None => {}
                         }
                     }
@@ -1692,6 +1693,12 @@ impl SignalClient {
                                             continue;
                                         }
 
+                                        // Handle typing indicators
+                                        if let Some(ProcessedContent::Typing { channel_id, sender_id, started }) = &result {
+                                            listener.on_typing(channel_id.clone(), sender_id.clone(), *started);
+                                            continue;
+                                        }
+
                                         // Check cache only (no blocking downloads)
                                         let (mut message, pointers, raw_mentions, raw_previews, raw_quote) = match result {
                                             Some(ProcessedContent::Message(msg, ptrs, raw_mentions, raw_previews, raw_quote)) => (msg, ptrs, raw_mentions, raw_previews, raw_quote),
@@ -2452,6 +2459,8 @@ enum ProcessedContent {
     Reaction(ReactionEvent),
     /// A read receipt from a contact (timestamps of our messages they read)
     ReadReceipt { sender_id: String, timestamps: Vec<u64> },
+    /// A typing indicator (started or stopped)
+    Typing { channel_id: String, sender_id: String, started: bool },
 }
 
 /// Extract channel_id from a DataMessage (group context or sender UUID)
@@ -2792,6 +2801,19 @@ fn process_content(
             } else {
                 None
             }
+        }
+        ContentBody::TypingMessage(typing) => {
+            let started = typing.action == Some(typing_message::Action::Started as i32);
+            let channel_id = if let Some(ref group_id) = typing.group_id {
+                hex::encode(group_id)
+            } else {
+                sender_uuid.to_string()
+            };
+            Some(ProcessedContent::Typing {
+                channel_id,
+                sender_id: sender_uuid.to_string(),
+                started,
+            })
         }
         _ => None,
     }

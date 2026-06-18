@@ -321,6 +321,13 @@ typedef void (*UniffiCallbackInterfaceMessageListenerMethod6)(uint64_t, RustBuff
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD7
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD7
+typedef void (*UniffiCallbackInterfaceMessageListenerMethod7)(uint64_t, RustBuffer, RustBuffer, int8_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LINKING_CALLBACK
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LINKING_CALLBACK
 typedef struct UniffiVTableCallbackInterfaceLinkingCallback {
@@ -341,6 +348,7 @@ typedef struct UniffiVTableCallbackInterfaceMessageListener {
     UniffiCallbackInterfaceMessageListenerMethod4 _Nonnull onError;
     UniffiCallbackInterfaceMessageListenerMethod5 _Nonnull onAttachmentDownloaded;
     UniffiCallbackInterfaceMessageListenerMethod6 _Nonnull onLinkPreviewImageDownloaded;
+    UniffiCallbackInterfaceMessageListenerMethod7 _Nonnull onTyping;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceMessageListener;
 
@@ -911,6 +919,12 @@ uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_attachment_downloa
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_LINK_PREVIEW_IMAGE_DOWNLOADED
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_LINK_PREVIEW_IMAGE_DOWNLOADED
 uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_link_preview_image_downloaded(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_TYPING
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_TYPING
+uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_typing(void
     
 );
 #endif

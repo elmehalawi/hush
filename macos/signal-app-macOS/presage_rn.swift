@@ -558,6 +558,16 @@ public protocol SignalClientProtocol: AnyObject {
     func sendMessageWithAttachments(channelId: String, text: String?, attachmentPaths: [String]) throws -> Message
 
     /**
+     * Send a message with link previews (and optional attachments) to a channel
+     */
+    func sendMessageWithPreviews(channelId: String, text: String?, attachmentPaths: [String], linkPreviews: [LinkPreviewData]) throws -> Message
+
+    /**
+     * Send a message with a quote (reply to a previous message)
+     */
+    func sendMessageWithQuote(channelId: String, text: String?, attachmentPaths: [String], linkPreviews: [LinkPreviewData], quote: Quote) throws -> Message
+
+    /**
      * Send an emoji reaction to a message
      */
     func sendReaction(channelId: String, emoji: String, targetTimestamp: UInt64, remove: Bool) throws
@@ -763,6 +773,33 @@ open class SignalClient:
                                                                                    FfiConverterString.lower(channelId),
                                                                                    FfiConverterOptionString.lower(text),
                                                                                    FfiConverterSequenceString.lower(attachmentPaths), $0)
+        })
+    }
+
+    /**
+     * Send a message with link previews (and optional attachments) to a channel
+     */
+    open func sendMessageWithPreviews(channelId: String, text: String?, attachmentPaths: [String], linkPreviews: [LinkPreviewData]) throws -> Message {
+        return try FfiConverterTypeMessage.lift(rustCallWithError(FfiConverterTypeSignalError.lift) {
+            uniffi_presage_rn_fn_method_signalclient_send_message_with_previews(self.uniffiClonePointer(),
+                                                                                FfiConverterString.lower(channelId),
+                                                                                FfiConverterOptionString.lower(text),
+                                                                                FfiConverterSequenceString.lower(attachmentPaths),
+                                                                                FfiConverterSequenceTypeLinkPreviewData.lower(linkPreviews), $0)
+        })
+    }
+
+    /**
+     * Send a message with a quote (reply to a previous message)
+     */
+    open func sendMessageWithQuote(channelId: String, text: String?, attachmentPaths: [String], linkPreviews: [LinkPreviewData], quote: Quote) throws -> Message {
+        return try FfiConverterTypeMessage.lift(rustCallWithError(FfiConverterTypeSignalError.lift) {
+            uniffi_presage_rn_fn_method_signalclient_send_message_with_quote(self.uniffiClonePointer(),
+                                                                             FfiConverterString.lower(channelId),
+                                                                             FfiConverterOptionString.lower(text),
+                                                                             FfiConverterSequenceString.lower(attachmentPaths),
+                                                                             FfiConverterSequenceTypeLinkPreviewData.lower(linkPreviews),
+                                                                             FfiConverterTypeQuote.lower(quote), $0)
         })
     }
 
@@ -1164,6 +1201,349 @@ public func FfiConverterTypeChannel_lower(_ value: Channel) -> RustBuffer {
 }
 
 /**
+ * Link preview as received/stored (image is an Attachment with file_path)
+ */
+public struct LinkPreview {
+    /**
+     * The URL being previewed
+     */
+    public var url: String
+    /**
+     * Title of the linked page
+     */
+    public var title: String?
+    /**
+     * Description / subtitle
+     */
+    public var description: String?
+    /**
+     * Preview image (downloaded attachment)
+     */
+    public var image: Attachment?
+    /**
+     * Publication date (millis since epoch)
+     */
+    public var date: UInt64?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The URL being previewed
+         */ url: String,
+        /**
+            * Title of the linked page
+            */ title: String?,
+        /**
+            * Description / subtitle
+            */ description: String?,
+        /**
+            * Preview image (downloaded attachment)
+            */ image: Attachment?,
+        /**
+            * Publication date (millis since epoch)
+            */ date: UInt64?
+    ) {
+        self.url = url
+        self.title = title
+        self.description = description
+        self.image = image
+        self.date = date
+    }
+}
+
+extension LinkPreview: Equatable, Hashable {
+    public static func == (lhs: LinkPreview, rhs: LinkPreview) -> Bool {
+        if lhs.url != rhs.url {
+            return false
+        }
+        if lhs.title != rhs.title {
+            return false
+        }
+        if lhs.description != rhs.description {
+            return false
+        }
+        if lhs.image != rhs.image {
+            return false
+        }
+        if lhs.date != rhs.date {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(url)
+        hasher.combine(title)
+        hasher.combine(description)
+        hasher.combine(image)
+        hasher.combine(date)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkPreview: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkPreview {
+        return
+            try LinkPreview(
+                url: FfiConverterString.read(from: &buf),
+                title: FfiConverterOptionString.read(from: &buf),
+                description: FfiConverterOptionString.read(from: &buf),
+                image: FfiConverterOptionTypeAttachment.read(from: &buf),
+                date: FfiConverterOptionUInt64.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: LinkPreview, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterOptionString.write(value.title, into: &buf)
+        FfiConverterOptionString.write(value.description, into: &buf)
+        FfiConverterOptionTypeAttachment.write(value.image, into: &buf)
+        FfiConverterOptionUInt64.write(value.date, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkPreview_lift(_ buf: RustBuffer) throws -> LinkPreview {
+    return try FfiConverterTypeLinkPreview.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkPreview_lower(_ value: LinkPreview) -> RustBuffer {
+    return FfiConverterTypeLinkPreview.lower(value)
+}
+
+/**
+ * Link preview data for sending (image is a local file path to upload)
+ */
+public struct LinkPreviewData {
+    /**
+     * The URL being previewed
+     */
+    public var url: String
+    /**
+     * Title of the linked page
+     */
+    public var title: String?
+    /**
+     * Description / subtitle
+     */
+    public var description: String?
+    /**
+     * Local file path for the preview image (will be uploaded)
+     */
+    public var imagePath: String?
+    /**
+     * Publication date (millis since epoch)
+     */
+    public var date: UInt64?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The URL being previewed
+         */ url: String,
+        /**
+            * Title of the linked page
+            */ title: String?,
+        /**
+            * Description / subtitle
+            */ description: String?,
+        /**
+            * Local file path for the preview image (will be uploaded)
+            */ imagePath: String?,
+        /**
+            * Publication date (millis since epoch)
+            */ date: UInt64?
+    ) {
+        self.url = url
+        self.title = title
+        self.description = description
+        self.imagePath = imagePath
+        self.date = date
+    }
+}
+
+extension LinkPreviewData: Equatable, Hashable {
+    public static func == (lhs: LinkPreviewData, rhs: LinkPreviewData) -> Bool {
+        if lhs.url != rhs.url {
+            return false
+        }
+        if lhs.title != rhs.title {
+            return false
+        }
+        if lhs.description != rhs.description {
+            return false
+        }
+        if lhs.imagePath != rhs.imagePath {
+            return false
+        }
+        if lhs.date != rhs.date {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(url)
+        hasher.combine(title)
+        hasher.combine(description)
+        hasher.combine(imagePath)
+        hasher.combine(date)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkPreviewData: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkPreviewData {
+        return
+            try LinkPreviewData(
+                url: FfiConverterString.read(from: &buf),
+                title: FfiConverterOptionString.read(from: &buf),
+                description: FfiConverterOptionString.read(from: &buf),
+                imagePath: FfiConverterOptionString.read(from: &buf),
+                date: FfiConverterOptionUInt64.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: LinkPreviewData, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterOptionString.write(value.title, into: &buf)
+        FfiConverterOptionString.write(value.description, into: &buf)
+        FfiConverterOptionString.write(value.imagePath, into: &buf)
+        FfiConverterOptionUInt64.write(value.date, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkPreviewData_lift(_ buf: RustBuffer) throws -> LinkPreviewData {
+    return try FfiConverterTypeLinkPreviewData.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkPreviewData_lower(_ value: LinkPreviewData) -> RustBuffer {
+    return FfiConverterTypeLinkPreviewData.lower(value)
+}
+
+/**
+ * A mention of a user within a message body
+ */
+public struct Mention {
+    /**
+     * Character offset in body where the mention starts
+     */
+    public var start: UInt32
+    /**
+     * Number of characters replaced (always 1 for \uFFFC placeholder)
+     */
+    public var length: UInt32
+    /**
+     * UUID of the mentioned user
+     */
+    public var uuid: String
+    /**
+     * Resolved display name of the mentioned user
+     */
+    public var name: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Character offset in body where the mention starts
+         */ start: UInt32,
+        /**
+            * Number of characters replaced (always 1 for \uFFFC placeholder)
+            */ length: UInt32,
+        /**
+            * UUID of the mentioned user
+            */ uuid: String,
+        /**
+            * Resolved display name of the mentioned user
+            */ name: String
+    ) {
+        self.start = start
+        self.length = length
+        self.uuid = uuid
+        self.name = name
+    }
+}
+
+extension Mention: Equatable, Hashable {
+    public static func == (lhs: Mention, rhs: Mention) -> Bool {
+        if lhs.start != rhs.start {
+            return false
+        }
+        if lhs.length != rhs.length {
+            return false
+        }
+        if lhs.uuid != rhs.uuid {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(start)
+        hasher.combine(length)
+        hasher.combine(uuid)
+        hasher.combine(name)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMention: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Mention {
+        return
+            try Mention(
+                start: FfiConverterUInt32.read(from: &buf),
+                length: FfiConverterUInt32.read(from: &buf),
+                uuid: FfiConverterString.read(from: &buf),
+                name: FfiConverterString.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: Mention, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.start, into: &buf)
+        FfiConverterUInt32.write(value.length, into: &buf)
+        FfiConverterString.write(value.uuid, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMention_lift(_ buf: RustBuffer) throws -> Mention {
+    return try FfiConverterTypeMention.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMention_lower(_ value: Mention) -> RustBuffer {
+    return FfiConverterTypeMention.lower(value)
+}
+
+/**
  * Represents a single message
  */
 public struct Message {
@@ -1207,6 +1587,22 @@ public struct Message {
      * Emoji reactions on this message
      */
     public var reactions: [Reaction]
+    /**
+     * Mentions of other users in the message body
+     */
+    public var mentions: [Mention]
+    /**
+     * UUIDs of users who have read this message (outgoing only)
+     */
+    public var readBy: [String]
+    /**
+     * Link previews attached to this message
+     */
+    public var previews: [LinkPreview]
+    /**
+     * Quoted message (reply context)
+     */
+    public var quote: Quote?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1240,7 +1636,19 @@ public struct Message {
             */ attachments: [Attachment],
         /**
             * Emoji reactions on this message
-            */ reactions: [Reaction]
+            */ reactions: [Reaction],
+        /**
+            * Mentions of other users in the message body
+            */ mentions: [Mention],
+        /**
+            * UUIDs of users who have read this message (outgoing only)
+            */ readBy: [String],
+        /**
+            * Link previews attached to this message
+            */ previews: [LinkPreview],
+        /**
+            * Quoted message (reply context)
+            */ quote: Quote?
     ) {
         self.id = id
         self.channelId = channelId
@@ -1252,6 +1660,10 @@ public struct Message {
         self.status = status
         self.attachments = attachments
         self.reactions = reactions
+        self.mentions = mentions
+        self.readBy = readBy
+        self.previews = previews
+        self.quote = quote
     }
 }
 
@@ -1287,6 +1699,18 @@ extension Message: Equatable, Hashable {
         if lhs.reactions != rhs.reactions {
             return false
         }
+        if lhs.mentions != rhs.mentions {
+            return false
+        }
+        if lhs.readBy != rhs.readBy {
+            return false
+        }
+        if lhs.previews != rhs.previews {
+            return false
+        }
+        if lhs.quote != rhs.quote {
+            return false
+        }
         return true
     }
 
@@ -1301,6 +1725,10 @@ extension Message: Equatable, Hashable {
         hasher.combine(status)
         hasher.combine(attachments)
         hasher.combine(reactions)
+        hasher.combine(mentions)
+        hasher.combine(readBy)
+        hasher.combine(previews)
+        hasher.combine(quote)
     }
 }
 
@@ -1320,7 +1748,11 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
                 isOutgoing: FfiConverterBool.read(from: &buf),
                 status: FfiConverterTypeMessageStatus.read(from: &buf),
                 attachments: FfiConverterSequenceTypeAttachment.read(from: &buf),
-                reactions: FfiConverterSequenceTypeReaction.read(from: &buf)
+                reactions: FfiConverterSequenceTypeReaction.read(from: &buf),
+                mentions: FfiConverterSequenceTypeMention.read(from: &buf),
+                readBy: FfiConverterSequenceString.read(from: &buf),
+                previews: FfiConverterSequenceTypeLinkPreview.read(from: &buf),
+                quote: FfiConverterOptionTypeQuote.read(from: &buf)
             )
     }
 
@@ -1335,6 +1767,10 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
         FfiConverterTypeMessageStatus.write(value.status, into: &buf)
         FfiConverterSequenceTypeAttachment.write(value.attachments, into: &buf)
         FfiConverterSequenceTypeReaction.write(value.reactions, into: &buf)
+        FfiConverterSequenceTypeMention.write(value.mentions, into: &buf)
+        FfiConverterSequenceString.write(value.readBy, into: &buf)
+        FfiConverterSequenceTypeLinkPreview.write(value.previews, into: &buf)
+        FfiConverterOptionTypeQuote.write(value.quote, into: &buf)
     }
 }
 
@@ -1350,6 +1786,111 @@ public func FfiConverterTypeMessage_lift(_ buf: RustBuffer) throws -> Message {
 #endif
 public func FfiConverterTypeMessage_lower(_ value: Message) -> RustBuffer {
     return FfiConverterTypeMessage.lower(value)
+}
+
+/**
+ * A quoted message (reply context)
+ */
+public struct Quote {
+    /**
+     * Timestamp of the quoted message (used as identifier)
+     */
+    public var id: UInt64
+    /**
+     * UUID of the original message author
+     */
+    public var authorId: String
+    /**
+     * Display name of the original author (if resolved)
+     */
+    public var authorName: String?
+    /**
+     * Text snippet of the quoted message
+     */
+    public var text: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Timestamp of the quoted message (used as identifier)
+         */ id: UInt64,
+        /**
+            * UUID of the original message author
+            */ authorId: String,
+        /**
+            * Display name of the original author (if resolved)
+            */ authorName: String?,
+        /**
+            * Text snippet of the quoted message
+            */ text: String?
+    ) {
+        self.id = id
+        self.authorId = authorId
+        self.authorName = authorName
+        self.text = text
+    }
+}
+
+extension Quote: Equatable, Hashable {
+    public static func == (lhs: Quote, rhs: Quote) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.authorId != rhs.authorId {
+            return false
+        }
+        if lhs.authorName != rhs.authorName {
+            return false
+        }
+        if lhs.text != rhs.text {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(authorId)
+        hasher.combine(authorName)
+        hasher.combine(text)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeQuote: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Quote {
+        return
+            try Quote(
+                id: FfiConverterUInt64.read(from: &buf),
+                authorId: FfiConverterString.read(from: &buf),
+                authorName: FfiConverterOptionString.read(from: &buf),
+                text: FfiConverterOptionString.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: Quote, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterString.write(value.authorId, into: &buf)
+        FfiConverterOptionString.write(value.authorName, into: &buf)
+        FfiConverterOptionString.write(value.text, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeQuote_lift(_ buf: RustBuffer) throws -> Quote {
+    return try FfiConverterTypeQuote.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeQuote_lower(_ value: Quote) -> RustBuffer {
+    return FfiConverterTypeQuote.lower(value)
 }
 
 /**
@@ -2151,6 +2692,11 @@ public protocol MessageListener: AnyObject {
     func onChannelUpdated(channel: Channel)
 
     /**
+     * Called when a read receipt is received (the contact read our messages)
+     */
+    func onReadReceipt(senderId: String, timestamps: [UInt64])
+
+    /**
      * Called when an error occurs during message receiving
      */
     func onError(error: String)
@@ -2159,6 +2705,16 @@ public protocol MessageListener: AnyObject {
      * Called when a background attachment download completes
      */
     func onAttachmentDownloaded(channelId: String, messageId: String, attachmentIndex: UInt32, attachment: Attachment)
+
+    /**
+     * Called when a link preview image download completes
+     */
+    func onLinkPreviewImageDownloaded(channelId: String, messageId: String, previewIndex: UInt32, attachment: Attachment)
+
+    /**
+     * Called when a contact starts or stops typing
+     */
+    func onTyping(channelId: String, senderId: String, started: Bool)
 }
 
 // Put the implementation in a struct so we don't pollute the top-level namespace
@@ -2235,6 +2791,31 @@ private enum UniffiCallbackInterfaceMessageListener {
                 writeReturn: writeReturn
             )
         },
+        onReadReceipt: { (
+            uniffiHandle: UInt64,
+            senderId: RustBuffer,
+            timestamps: RustBuffer,
+            _: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMessageListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.onReadReceipt(
+                    senderId: FfiConverterString.lift(senderId),
+                    timestamps: FfiConverterSequenceUInt64.lift(timestamps)
+                )
+            }
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
         onError: { (
             uniffiHandle: UInt64,
             error: RustBuffer,
@@ -2277,6 +2858,62 @@ private enum UniffiCallbackInterfaceMessageListener {
                     messageId: FfiConverterString.lift(messageId),
                     attachmentIndex: FfiConverterUInt32.lift(attachmentIndex),
                     attachment: FfiConverterTypeAttachment.lift(attachment)
+                )
+            }
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onLinkPreviewImageDownloaded: { (
+            uniffiHandle: UInt64,
+            channelId: RustBuffer,
+            messageId: RustBuffer,
+            previewIndex: UInt32,
+            attachment: RustBuffer,
+            _: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMessageListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.onLinkPreviewImageDownloaded(
+                    channelId: FfiConverterString.lift(channelId),
+                    messageId: FfiConverterString.lift(messageId),
+                    previewIndex: FfiConverterUInt32.lift(previewIndex),
+                    attachment: FfiConverterTypeAttachment.lift(attachment)
+                )
+            }
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onTyping: { (
+            uniffiHandle: UInt64,
+            channelId: RustBuffer,
+            senderId: RustBuffer,
+            started: Int8,
+            _: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMessageListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.onTyping(
+                    channelId: FfiConverterString.lift(channelId),
+                    senderId: FfiConverterString.lift(senderId),
+                    started: FfiConverterBool.lift(started)
                 )
             }
 
@@ -2420,6 +3057,54 @@ private struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
+private struct FfiConverterOptionTypeAttachment: FfiConverterRustBuffer {
+    typealias SwiftType = Attachment?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAttachment.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAttachment.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private struct FfiConverterOptionTypeQuote: FfiConverterRustBuffer {
+    typealias SwiftType = Quote?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeQuote.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeQuote.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
 private struct FfiConverterSequenceUInt64: FfiConverterRustBuffer {
     typealias SwiftType = [UInt64]
 
@@ -2512,6 +3197,81 @@ private struct FfiConverterSequenceTypeChannel: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             try seq.append(FfiConverterTypeChannel.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private struct FfiConverterSequenceTypeLinkPreview: FfiConverterRustBuffer {
+    typealias SwiftType = [LinkPreview]
+
+    public static func write(_ value: [LinkPreview], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLinkPreview.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LinkPreview] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LinkPreview]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            try seq.append(FfiConverterTypeLinkPreview.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private struct FfiConverterSequenceTypeLinkPreviewData: FfiConverterRustBuffer {
+    typealias SwiftType = [LinkPreviewData]
+
+    public static func write(_ value: [LinkPreviewData], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLinkPreviewData.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LinkPreviewData] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LinkPreviewData]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            try seq.append(FfiConverterTypeLinkPreviewData.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private struct FfiConverterSequenceTypeMention: FfiConverterRustBuffer {
+    typealias SwiftType = [Mention]
+
+    public static func write(_ value: [Mention], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMention.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Mention] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Mention]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            try seq.append(FfiConverterTypeMention.read(from: &buf))
         }
         return seq
     }
@@ -2641,6 +3401,12 @@ private var initializationResult: InitializationResult = {
     if uniffi_presage_rn_checksum_method_signalclient_send_message_with_attachments() != 27088 {
         return InitializationResult.apiChecksumMismatch
     }
+    if uniffi_presage_rn_checksum_method_signalclient_send_message_with_previews() != 33394 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_signalclient_send_message_with_quote() != 37684 {
+        return InitializationResult.apiChecksumMismatch
+    }
     if uniffi_presage_rn_checksum_method_signalclient_send_reaction() != 17691 {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2677,10 +3443,19 @@ private var initializationResult: InitializationResult = {
     if uniffi_presage_rn_checksum_method_messagelistener_on_channel_updated() != 13262 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_presage_rn_checksum_method_messagelistener_on_error() != 18718 {
+    if uniffi_presage_rn_checksum_method_messagelistener_on_read_receipt() != 27021 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_presage_rn_checksum_method_messagelistener_on_attachment_downloaded() != 6634 {
+    if uniffi_presage_rn_checksum_method_messagelistener_on_error() != 50510 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_messagelistener_on_attachment_downloaded() != 54381 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_messagelistener_on_link_preview_image_downloaded() != 21627 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_messagelistener_on_typing() != 49537 {
         return InitializationResult.apiChecksumMismatch
     }
 

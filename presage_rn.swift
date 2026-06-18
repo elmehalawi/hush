@@ -2710,6 +2710,11 @@ public protocol MessageListener: AnyObject {
      * Called when a link preview image download completes
      */
     func onLinkPreviewImageDownloaded(channelId: String, messageId: String, previewIndex: UInt32, attachment: Attachment)
+
+    /**
+     * Called when a contact starts or stops typing
+     */
+    func onTyping(channelId: String, senderId: String, started: Bool)
 }
 
 // Put the implementation in a struct so we don't pollute the top-level namespace
@@ -2882,6 +2887,33 @@ private enum UniffiCallbackInterfaceMessageListener {
                     messageId: FfiConverterString.lift(messageId),
                     previewIndex: FfiConverterUInt32.lift(previewIndex),
                     attachment: FfiConverterTypeAttachment.lift(attachment)
+                )
+            }
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onTyping: { (
+            uniffiHandle: UInt64,
+            channelId: RustBuffer,
+            senderId: RustBuffer,
+            started: Int8,
+            _: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMessageListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.onTyping(
+                    channelId: FfiConverterString.lift(channelId),
+                    senderId: FfiConverterString.lift(senderId),
+                    started: FfiConverterBool.lift(started)
                 )
             }
 
@@ -3421,6 +3453,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_messagelistener_on_link_preview_image_downloaded() != 21627 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_messagelistener_on_typing() != 49537 {
         return InitializationResult.apiChecksumMismatch
     }
 

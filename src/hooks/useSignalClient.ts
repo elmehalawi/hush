@@ -466,6 +466,9 @@ export function useSignalClient() {
     [],
   );
 
+  // Typing timeout management
+  const typingTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
   // Set up event listeners ONCE on mount
   useEffect(() => {
     console.log('Setting up event listeners, presageEventEmitter:', !!presageEventEmitter);
@@ -557,6 +560,27 @@ export function useSignalClient() {
           convertAttachment(event.image),
         );
       }),
+      presageEventEmitter.addListener('onTyping', (event: {channelId: string; senderId: string; started: boolean}) => {
+        const {setTyping} = useSignalStore.getState();
+        setTyping(event.channelId, event.senderId, event.started);
+
+        const timeoutKey = `${event.channelId}:${event.senderId}`;
+        // Clear any existing timeout for this sender
+        const existing = typingTimeouts.current.get(timeoutKey);
+        if (existing) {
+          clearTimeout(existing);
+          typingTimeouts.current.delete(timeoutKey);
+        }
+
+        if (event.started) {
+          // Auto-clear after 10 seconds if no new event
+          const timeout = setTimeout(() => {
+            useSignalStore.getState().setTyping(event.channelId, event.senderId, false);
+            typingTimeouts.current.delete(timeoutKey);
+          }, 10000);
+          typingTimeouts.current.set(timeoutKey, timeout);
+        }
+      }),
       presageEventEmitter.addListener('onError', (event: {message: string}) => {
         console.error('Signal error:', event.message);
         // If we're in linking state, update to failed
@@ -569,6 +593,9 @@ export function useSignalClient() {
 
     return () => {
       subscriptions.forEach(sub => sub.remove());
+      // Clear all typing timeouts
+      typingTimeouts.current.forEach(t => clearTimeout(t));
+      typingTimeouts.current.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps - only run once on mount

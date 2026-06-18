@@ -37,6 +37,9 @@ pub trait MessageListener: Send + Sync {
         preview_index: u32,
         attachment: Attachment,
     );
+
+    /// Called when a contact starts or stops typing
+    fn on_typing(&self, channel_id: String, sender_id: String, started: bool);
 }
 
 /// Callback interface for the device linking process

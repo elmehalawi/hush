@@ -51,7 +51,7 @@ class PresageModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onMessage", "onReaction", "onReadReceipt", "onChannelUpdated", "onAttachmentDownloaded", "onLinkPreviewImageDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions", "onReplyToMessage", "onContextMenuReaction"]
+        return ["onMessage", "onReaction", "onReadReceipt", "onChannelUpdated", "onAttachmentDownloaded", "onLinkPreviewImageDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions", "onReplyToMessage", "onContextMenuReaction", "onTyping"]
     }
 
     override func startObserving() {
@@ -360,6 +360,13 @@ class PresageModule: RCTEventEmitter {
                     "image": self.attachmentToDict(attachment),
                 ]
                 self.sendEventIfListening("onLinkPreviewImageDownloaded", body: body)
+            },
+            onTyping: { [weak self] channelId, senderId, started in
+                self?.sendEventIfListening("onTyping", body: [
+                    "channelId": channelId,
+                    "senderId": senderId,
+                    "started": started,
+                ])
             }
         )
 
@@ -1639,8 +1646,9 @@ class MessageListenerImpl: MessageListener {
     private let onErrorHandler: (String) -> Void
     private let onAttachmentDownloadedHandler: (String, String, UInt32, Attachment) -> Void
     private let onLinkPreviewImageDownloadedHandler: (String, String, UInt32, Attachment) -> Void
+    private let onTypingHandler: (String, String, Bool) -> Void
 
-    init(onMessage: @escaping (Message) -> Void, onReaction: @escaping (ReactionEvent) -> Void, onReadReceipt: @escaping (String, [UInt64]) -> Void, onChannelUpdated: @escaping (Channel) -> Void, onError: @escaping (String) -> Void, onAttachmentDownloaded: @escaping (String, String, UInt32, Attachment) -> Void, onLinkPreviewImageDownloaded: @escaping (String, String, UInt32, Attachment) -> Void) {
+    init(onMessage: @escaping (Message) -> Void, onReaction: @escaping (ReactionEvent) -> Void, onReadReceipt: @escaping (String, [UInt64]) -> Void, onChannelUpdated: @escaping (Channel) -> Void, onError: @escaping (String) -> Void, onAttachmentDownloaded: @escaping (String, String, UInt32, Attachment) -> Void, onLinkPreviewImageDownloaded: @escaping (String, String, UInt32, Attachment) -> Void, onTyping: @escaping (String, String, Bool) -> Void) {
         self.onMessageHandler = onMessage
         self.onReactionHandler = onReaction
         self.onReadReceiptHandler = onReadReceipt
@@ -1648,6 +1656,7 @@ class MessageListenerImpl: MessageListener {
         self.onErrorHandler = onError
         self.onAttachmentDownloadedHandler = onAttachmentDownloaded
         self.onLinkPreviewImageDownloadedHandler = onLinkPreviewImageDownloaded
+        self.onTypingHandler = onTyping
     }
 
     func onMessage(message: Message) {
@@ -1689,6 +1698,12 @@ class MessageListenerImpl: MessageListener {
     func onLinkPreviewImageDownloaded(channelId: String, messageId: String, previewIndex: UInt32, attachment: Attachment) {
         DispatchQueue.main.async {
             self.onLinkPreviewImageDownloadedHandler(channelId, messageId, previewIndex, attachment)
+        }
+    }
+
+    func onTyping(channelId: String, senderId: String, started: Bool) {
+        DispatchQueue.main.async {
+            self.onTypingHandler(channelId, senderId, started)
         }
     }
 }

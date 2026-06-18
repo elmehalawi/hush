@@ -1,6 +1,6 @@
-import React, {useMemo, useCallback} from 'react';
-import {View, Text, Pressable, StyleSheet, Image, NativeModules} from 'react-native';
-import {Channel} from '../store/signalStore';
+import React, {useMemo, useCallback, useEffect, useRef} from 'react';
+import {View, Text, Pressable, StyleSheet, Image, NativeModules, Animated} from 'react-native';
+import {Channel, useSignalStore} from '../store/signalStore';
 import {GlassView} from './GlassView';
 import {useColors} from '../theme/colors';
 import {useWindowFocused} from '../hooks/useWindowFocused';
@@ -51,6 +51,10 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
   const timeLabel = useMemo(
     () => (channel.lastMessageTimestamp ? formatTimestamp(channel.lastMessageTimestamp) : null),
     [channel.lastMessageTimestamp],
+  );
+
+  const isTyping = useSignalStore(state =>
+    (state.typingUsers[channel.id]?.length ?? 0) > 0,
   );
 
   const handlePressIn = useCallback((e: any) => {
@@ -121,7 +125,9 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
           )}
         </View>
         <View style={styles.secondRow}>
-          {channel.lastMessage ? (
+          {isTyping ? (
+            <ChannelTypingDots color={activeSelected ? 'rgba(255, 255, 255, 0.75)' : c.secondaryLabel} />
+          ) : channel.lastMessage ? (
             <Text style={[styles.preview, {color: c.secondaryLabel}, activeSelected && styles.previewFocusedSelected]} numberOfLines={1}>
               {channel.lastMessage}
             </Text>
@@ -138,6 +144,55 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
     </Pressable>
   );
 }
+
+function ChannelTypingDots({color}: {color: string}) {
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const makeDot = (dot: Animated.Value, delay: number) =>
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(dot, {toValue: 1, duration: 400, useNativeDriver: false}),
+            Animated.timing(dot, {toValue: 0, duration: 400, useNativeDriver: false}),
+          ]),
+        ),
+      ]);
+    const anim = Animated.parallel([makeDot(dot1, 0), makeDot(dot2, 200), makeDot(dot3, 400)]);
+    anim.start();
+    return () => anim.stop();
+  }, [dot1, dot2, dot3]);
+
+  const dot = (v: Animated.Value) => ({
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: color,
+    marginHorizontal: 1.5,
+    opacity: v.interpolate({inputRange: [0, 1], outputRange: [0.3, 1]}),
+    transform: [{scale: v.interpolate({inputRange: [0, 1], outputRange: [0.7, 1]})}],
+  });
+
+  return (
+    <View style={channelTypingStyles.row}>
+      <Animated.View style={dot(dot1)} />
+      <Animated.View style={dot(dot2)} />
+      <Animated.View style={dot(dot3)} />
+    </View>
+  );
+}
+
+const channelTypingStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 18,
+    flex: 1,
+  },
+});
 
 const styles = StyleSheet.create({
   container: {

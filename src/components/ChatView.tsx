@@ -5,6 +5,7 @@ import {MessageBubble} from './MessageBubble';
 import {GlassView} from './GlassView';
 import {GradientBlurView} from './GradientBlurView';
 import {useColors} from '../theme/colors';
+import {TypingIndicator} from './TypingIndicator';
 
 function formatTimeSeparator(timestamp: number, previousTimestamp: number | null): {datePart: string | null; time: string} {
   const now = new Date();
@@ -45,14 +46,26 @@ interface ChatViewProps {
   onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
 }
 
+const EMPTY_TYPING: {senderId: string; timestamp: number}[] = [];
+
 export function ChatView({channel, messages, onReply, onRetryDownload}: ChatViewProps) {
   const c = useColors();
   const scrollViewRef = useRef<ScrollView>(null);
   const userId = useSignalStore(state => state.userId);
+  const typingUsers = useSignalStore(state =>
+    channel ? state.typingUsers[channel.id] ?? EMPTY_TYPING : EMPTY_TYPING,
+  );
 
   useEffect(() => {
     scrollViewRef.current?.scrollToEnd({animated: false});
   }, [channel?.id, messages.length]);
+
+  // Scroll when typing indicator appears
+  useEffect(() => {
+    if (typingUsers.length > 0) {
+      scrollViewRef.current?.scrollToEnd({animated: true});
+    }
+  }, [typingUsers.length]);
 
   // Pre-compute cross-message album groups: consecutive media-only messages
   // from the same sender within 15 minutes are merged into a single album.
@@ -195,6 +208,9 @@ export function ChatView({channel, messages, onReply, onRetryDownload}: ChatView
             });
           })()
         )}
+        {typingUsers.map(({senderId}) => (
+          <TypingIndicator key={senderId} senderId={senderId} isGroup={channel.isGroup} />
+        ))}
       </ScrollView>
 
       {/* Gradient blur overlay at top - mimics Tahoe Messages */}
