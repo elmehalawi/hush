@@ -12,6 +12,7 @@ use presage::libsignal_service::configuration::SignalServers;
 use presage::libsignal_service::content::{Content, ContentBody};
 use presage::libsignal_service::protocol::{Aci, ServiceId};
 use presage::libsignal_service::sender::AttachmentSpec;
+use presage::libsignal_service::zkgroup::groups::{GroupMasterKey, GroupSecretParams};
 use presage::libsignal_service::zkgroup::profiles::ProfileKey;
 use presage::manager::Registered;
 use presage::model::identity::OnNewIdentity;
@@ -1639,6 +1640,24 @@ impl SignalClient {
                     runtime_handle.block_on(local.run_until(async move {
                         info!("Starting message receive loop");
 
+                        // Build group_identifier -> master_key_hex lookup for typing events.
+                        // The TypingMessage proto carries group_identifier bytes, but channel IDs
+                        // are hex-encoded master keys. This map bridges the two.
+                        let mut group_id_to_channel: HashMap<Vec<u8>, String> = HashMap::new();
+                        if let Ok(groups_iter) = manager_for_attachments.store().groups().await {
+                            let groups: Vec<_> = groups_iter.filter_map(|r| r.ok()).collect();
+                            for (master_key_bytes, _group) in &groups {
+                                if master_key_bytes.len() == 32 {
+                                    let mk: [u8; 32] = master_key_bytes.as_slice().try_into().unwrap();
+                                    let gm = GroupMasterKey::new(mk);
+                                    let params = GroupSecretParams::derive_from_master_key(gm);
+                                    let gid = params.get_group_identifier();
+                                    group_id_to_channel.insert(gid.to_vec(), hex::encode(master_key_bytes));
+                                }
+                            }
+                        }
+                        info!("Built group typing lookup with {} entries", group_id_to_channel.len());
+
                         let mut manager_for_stream = manager_for_stream;
                         loop {
                             if stop_flag.load(Ordering::SeqCst) {
@@ -1694,8 +1713,21 @@ impl SignalClient {
                                         }
 
                                         // Handle typing indicators
-                                        if let Some(ProcessedContent::Typing { channel_id, sender_id, started }) = &result {
-                                            listener.on_typing(channel_id.clone(), sender_id.clone(), *started);
+                                        if let Some(ProcessedContent::Typing { group_id, sender_id, started }) = &result {
+                                            let channel_id = if let Some(gid) = group_id {
+                                                // Look up master key hex from group identifier
+                                                match group_id_to_channel.get(gid) {
+                                                    Some(ch) => ch.clone(),
+                                                    None => {
+                                                        warn!("Typing event for unknown group, skipping");
+                                                        continue;
+                                                    }
+                                                }
+                                            } else {
+                                                // DM: channel_id is the sender UUID
+                                                sender_id.clone()
+                                            };
+                                            listener.on_typing(channel_id, sender_id.clone(), *started);
                                             continue;
                                         }
 
@@ -2459,8 +2491,10 @@ enum ProcessedContent {
     Reaction(ReactionEvent),
     /// A read receipt from a contact (timestamps of our messages they read)
     ReadReceipt { sender_id: String, timestamps: Vec<u64> },
-    /// A typing indicator (started or stopped)
-    Typing { channel_id: String, sender_id: String, started: bool },
+    /// A typing indicator (started or stopped).
+    /// `group_id` is the raw bytes from the typing message (group identifier, not master key).
+    /// For DMs it is None.
+    Typing { group_id: Option<Vec<u8>>, sender_id: String, started: bool },
 }
 
 /// Extract channel_id from a DataMessage (group context or sender UUID)
@@ -2804,13 +2838,8 @@ fn process_content(
         }
         ContentBody::TypingMessage(typing) => {
             let started = typing.action == Some(typing_message::Action::Started as i32);
-            let channel_id = if let Some(ref group_id) = typing.group_id {
-                hex::encode(group_id)
-            } else {
-                sender_uuid.to_string()
-            };
             Some(ProcessedContent::Typing {
-                channel_id,
+                group_id: typing.group_id.clone(),
                 sender_id: sender_uuid.to_string(),
                 started,
             })
