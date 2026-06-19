@@ -57,3 +57,5 @@ releases/
 .vscode/
 *.swp
 *.swo
+
+rust/presage-rn/generated/**
