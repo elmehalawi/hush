@@ -70,6 +70,15 @@ export function AudioAttachmentView({filePath, isOutgoing}: AudioAttachmentViewP
     PresageModule.getAudioDuration(filePath)
       .then((dur: number) => setDuration(dur))
       .catch(() => {});
+
+    // Auto-load cached transcription if available
+    PresageModule.getCachedTranscription(filePath)
+      .then((result: any) => {
+        if (result?.text) {
+          setTranscription(result.text);
+        }
+      })
+      .catch(() => {});
   }, [filePath]);
 
   useEffect(() => {

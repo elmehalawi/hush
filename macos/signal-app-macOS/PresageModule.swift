@@ -1053,6 +1053,19 @@ class PresageModule: RCTEventEmitter {
         }
     }
 
+    @objc(getCachedTranscription:resolver:rejecter:)
+    func getCachedTranscription(_ filePath: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.global(qos: .utility).async {
+            let cacheFile = filePath + ".transcription.json"
+            if let cachedData = FileManager.default.contents(atPath: cacheFile),
+               let cached = try? JSONSerialization.jsonObject(with: cachedData) as? [String: Any] {
+                resolver(cached)
+            } else {
+                resolver(nil)
+            }
+        }
+    }
+
     @objc(isTranscriptionModelReady:rejecter:)
     func isTranscriptionModelReady(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
         resolver(transcriptionEngine?.isModelLoaded() ?? false)
