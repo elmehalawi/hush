@@ -27,6 +27,7 @@ function formatTime(seconds: number): string {
 
 // Generate consistent waveform heights from a file path
 function generateWaveform(filePath: string): number[] {
+  if (!filePath) return Array(BAR_COUNT).fill(BAR_MIN_HEIGHT);
   let hash = 0;
   for (let i = 0; i < filePath.length; i++) {
     hash = ((hash << 5) - hash + filePath.charCodeAt(i)) | 0;

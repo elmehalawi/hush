@@ -537,7 +537,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
 
   const audioContent = hasAudio ? (
     <View>
-      {audioAttachments.map((attachment, index) => (
+      {audioAttachments.filter(a => a.filePath).map((attachment, index) => (
         <AudioAttachmentView
           key={`audio-${index}`}
           filePath={attachment.filePath!}
