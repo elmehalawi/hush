@@ -70,24 +70,39 @@ interface ChatViewProps {
 
 const EMPTY_TYPING: {senderId: string; timestamp: number}[] = [];
 
-export function ChatView({channel, messages, onReply, onRetryDownload}: ChatViewProps) {
-  const c = useColors();
-  const scrollViewRef = useRef<ScrollView>(null);
-  const userId = useSignalStore(state => state.userId);
+/**
+ * Isolated component that subscribes to typing state independently,
+ * so typing events don't trigger a re-render of the entire message list.
+ */
+function TypingSection({channelId, isGroup, scrollViewRef}: {channelId: string; isGroup: boolean; scrollViewRef: React.RefObject<ScrollView>}) {
   const typingUsers = useSignalStore(state =>
-    channel ? state.typingUsers[channel.id] ?? EMPTY_TYPING : EMPTY_TYPING,
+    state.typingUsers[channelId] ?? EMPTY_TYPING,
   );
-
-  useEffect(() => {
-    scrollViewRef.current?.scrollToEnd({animated: false});
-  }, [channel?.id, messages.length]);
 
   // Scroll when typing indicator appears
   useEffect(() => {
     if (typingUsers.length > 0) {
       scrollViewRef.current?.scrollToEnd({animated: true});
     }
-  }, [typingUsers.length]);
+  }, [typingUsers.length, scrollViewRef]);
+
+  return (
+    <>
+      {typingUsers.map(({senderId}) => (
+        <TypingIndicator key={senderId} senderId={senderId} isGroup={isGroup} />
+      ))}
+    </>
+  );
+}
+
+export function ChatView({channel, messages, onReply, onRetryDownload}: ChatViewProps) {
+  const c = useColors();
+  const scrollViewRef = useRef<ScrollView>(null);
+  const userId = useSignalStore(state => state.userId);
+
+  useEffect(() => {
+    scrollViewRef.current?.scrollToEnd({animated: false});
+  }, [channel?.id, messages.length]);
 
   // Pre-compute cross-message album groups: consecutive media-only messages
   // from the same sender within 15 minutes are merged into a single album.
@@ -241,9 +256,7 @@ export function ChatView({channel, messages, onReply, onRetryDownload}: ChatView
             });
           })()
         )}
-        {typingUsers.map(({senderId}) => (
-          <TypingIndicator key={senderId} senderId={senderId} isGroup={channel.isGroup} />
-        ))}
+        <TypingSection channelId={channel.id} isGroup={channel.isGroup} scrollViewRef={scrollViewRef} />
       </ScrollView>
 
       {/* Gradient blur overlay at top - mimics Tahoe Messages */}

@@ -32,12 +32,12 @@ export function TypingIndicator({senderId, isGroup}: TypingIndicatorProps) {
             Animated.timing(dot, {
               toValue: 1,
               duration: 400,
-              useNativeDriver: true,
+              useNativeDriver: false,
             }),
             Animated.timing(dot, {
               toValue: 0,
               duration: 400,
-              useNativeDriver: true,
+              useNativeDriver: false,
             }),
           ]),
         ),
