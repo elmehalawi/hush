@@ -3,12 +3,27 @@
     <channel>
         <title>Hush</title>
         <item>
+            <title>1.9.4</title>
+            <pubDate>Sat, 20 Jun 2026 13:04:07 -0500</pubDate>
+            <sparkle:version>48</sparkle:version>
+            <sparkle:shortVersionString>1.9.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/elmehalawi/hush/releases/download/v1.9.4/Hush-1.9.4.dmg" length="32421678" type="application/octet-stream" sparkle:edSignature="LRW77Nzuk8poXB4cX8iZikJQ3TAHmJ+90TxKc8YZmEY37uvhDGJstDRQ6zD5dhMg5xl/Z3zP7pqMSy4sAJGsAA=="/>
+            <sparkle:deltas>
+                <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush48-47.delta" sparkle:deltaFrom="47" length="2189450" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="yvRBsryrvPCFDzt7QA/wi3sXsYiF9HgeSAuXqy6HgiQaqd2HuO9Vcrr2asco6Mh5T9Z3DIC+UczgSnVY4RhwBw=="/>
+                <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush48-46.delta" sparkle:deltaFrom="46" length="2206850" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="7q5oFsNMsjxwbBVjoG2SC/0Bxa/nwaRTHQx/bY376kvrd5EvIb1ThSVCa7SvGtZ3CAE6bO9BeM2zFoVLrmC9Ag=="/>
+                <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush48-45.delta" sparkle:deltaFrom="45" length="2206702" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="xLTLvWunwy0JPUxraDhyM3caER5o+bWcYLkePGwG2gkqNBJLtZ4eMUZ3Mkz27PSVKitxEa3FkCdhrIcZHs0vBg=="/>
+                <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush48-44.delta" sparkle:deltaFrom="44" length="2311790" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="dzFP71VAUeO6iTKXFEz5Ji2KlE5H8mw/s9gTfcn7oHs6ROvHVXAVYKRjr21zwl9H6XdE2kgB/DZtSOV+/YshBw=="/>
+                <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush48-43.delta" sparkle:deltaFrom="43" length="2369110" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="nXT8zDmZJzgVwSMvYtl29RisdOwUANMhSdAUZwam68EJD/FGhaC4f1qmqcAkdiG3NViQPwH3ad+t/nRdAPK3Bg=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.9.3</title>
             <pubDate>Fri, 19 Jun 2026 15:04:33 -0500</pubDate>
             <sparkle:version>47</sparkle:version>
             <sparkle:shortVersionString>1.9.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/elmehalawi/hush/releases/download/v1.9.3/Hush-1.9.3.dmg" length="31983030" type="application/octet-stream" sparkle:edSignature="HqtgErvEkXyom7O41MalMOREV6paHgf96VF3Ktzx11paNPNLVZoFxvkTymfXf1JOrQm3KrQtub28BGrfyq8UBA=="/>
+            <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush-1.9.3.dmg" length="31983030" type="application/octet-stream" sparkle:edSignature="HqtgErvEkXyom7O41MalMOREV6paHgf96VF3Ktzx11paNPNLVZoFxvkTymfXf1JOrQm3KrQtub28BGrfyq8UBA=="/>
             <sparkle:deltas>
                 <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush47-46.delta" sparkle:deltaFrom="46" length="1486858" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="ZGHtz53sUDPOcEdgIg6lWMYQz+znnZ0VaOi0tgqmfMoN31TQHz1I+FRxODIziMGO9c/1YH1762ja40JTC+ziAg=="/>
                 <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush47-45.delta" sparkle:deltaFrom="45" length="1487890" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="PvbAFJ6v0q3GBFxEU6bF3Kehi8+eOf+rBa5gMSL1TsQQAPyU6qj9bOlvQRjPTDXyUpGw38dmHdusEpIgHY6cAQ=="/>
@@ -30,21 +45,6 @@
                 <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush46-43.delta" sparkle:deltaFrom="43" length="2138222" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="SGl+0YWxH4mExvGOmbjZ/YNglE3w3chfpB3ducjjuIUvPRmuDhS0ktJww4ck4b3ScSYVFbOrLbWBZkN/J5AAAg=="/>
                 <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush46-42.delta" sparkle:deltaFrom="42" length="2141782" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="q1vv9ke/odJUShN35oxtqUTkWLmgvTVdq0ESlzkorXtjPmF27vFjAWEFymx8duMNRIrvttck/jvKyaHCYLFhCw=="/>
                 <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush46-41.delta" sparkle:deltaFrom="41" length="2141254" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="dygzVRXVYLgwcmzdyeZCTNXc9eV4j9X6ApXoQtR8wc02tg84jkLf4zY+y2lvTlg80JET3YwV948c0kLNPR9hDg=="/>
-            </sparkle:deltas>
-        </item>
-        <item>
-            <title>1.9.1</title>
-            <pubDate>Thu, 18 Jun 2026 19:02:08 -0500</pubDate>
-            <sparkle:version>45</sparkle:version>
-            <sparkle:shortVersionString>1.9.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush-1.9.1.dmg" length="31982593" type="application/octet-stream" sparkle:edSignature="ARGSpwl7N0BnAPwHlRA7t076MGVKbEIt7moYzenfvGe7pmqk4Wjml0K0v8bkL7MZkUVY8lW+s+LFw79SK7oMAQ=="/>
-            <sparkle:deltas>
-                <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush45-44.delta" sparkle:deltaFrom="44" length="1797862" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="ezzBK+3B0CfAA/yMdv3Fih1/ZMCF03KptBpWeX5j3+aA3xM+dbK3DLAOY4YmEoKrUxYJQ/ByaP9jkz8gDYe6BA=="/>
-                <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush45-43.delta" sparkle:deltaFrom="43" length="2138170" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="pdUl1sC3TiTz3yhutNexe0Ju9srTwA6qEHhd1aKzcpz/P4l9V8ioiXZDK87E3+UFl8tmMysZQpc7E+EOk4SWBg=="/>
-                <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush45-42.delta" sparkle:deltaFrom="42" length="2141258" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="XPsuRbHGcKlgjPjJpw1g04QWezILHY6KBtIKxRjNA1+ST03jZ0aZR0PDOOHPNr8N/T2Bcqw55iE6onqS2tu0Cw=="/>
-                <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush45-41.delta" sparkle:deltaFrom="41" length="2141382" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="XFmzgNlH1qzURQqxloKq8LmSLJvTXC3UD2BfWF7PRJUrfvGteekpBQ+fMwYkhBWF6/uDzLSa3NDbIkKhCdiWDQ=="/>
-                <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush45-40.delta" sparkle:deltaFrom="40" length="2201130" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="IP5gE91Cx0hV5rUdO97fWqgm7LopFy15vGbgUbd3ra2nEenLr4iEeEuCv0rsy4oimw2R8cgksCaTN9ASHDqOBQ=="/>
             </sparkle:deltas>
         </item>
     </channel>
