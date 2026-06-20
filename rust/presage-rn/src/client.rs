@@ -17,7 +17,7 @@ use presage::libsignal_service::zkgroup::profiles::ProfileKey;
 use presage::manager::Registered;
 use presage::model::identity::OnNewIdentity;
 use presage::proto::attachment_pointer::AttachmentIdentifier;
-use presage::proto::{receipt_message, sync_message, typing_message, AttachmentPointer, DataMessage, GroupContextV2, Preview, ReceiptMessage, SyncMessage};
+use presage::proto::{call_message, receipt_message, sync_message, typing_message, AttachmentPointer, DataMessage, GroupContextV2, Preview, ReceiptMessage, SyncMessage};
 use presage::store::{ContentsStore, Thread};
 use presage_store_sqlite::SqliteStore;
 use tracing::{error, info, warn};
@@ -25,7 +25,7 @@ use uuid::Uuid;
 
 use crate::callbacks::{LinkingCallback, MessageListener};
 use crate::error::SignalError;
-use crate::types::{Attachment, Channel, LinkPreview, LinkPreviewData, Mention, Message, MessageStatus, Quote, Reaction, ReactionEvent, SessionInfo};
+use crate::types::{Attachment, Channel, LinkPreview, LinkPreviewData, Mention, Message, MessageStatus, MessageType, Quote, Reaction, ReactionEvent, SessionInfo};
 
 type PresageManager = presage::Manager<SqliteStore, Registered>;
 
@@ -483,6 +483,24 @@ impl SignalClient {
                                             (None, &vec![] as &Vec<AttachmentPointer>, &vec![] as &Vec<presage::proto::BodyRange>)
                                         }
                                     }
+                                    ContentBody::CallMessage(call) => {
+                                        if call.offer.is_some() {
+                                            let is_video = call.offer.as_ref()
+                                                .and_then(|o| o.r#type)
+                                                .map(|t| t == call_message::offer::Type::OfferVideoCall as i32)
+                                                .unwrap_or(false);
+                                            let label = if is_outgoing {
+                                                if is_video { "Video call" } else { "Voice call" }
+                                            } else if is_video {
+                                                "Missed video call"
+                                            } else {
+                                                "Missed voice call"
+                                            };
+                                            (Some(label.to_string()), &vec![] as &Vec<AttachmentPointer>, &vec![] as &Vec<presage::proto::BodyRange>)
+                                        } else {
+                                            continue;
+                                        }
+                                    }
                                     _ => (None, &vec![] as &Vec<AttachmentPointer>, &vec![] as &Vec<presage::proto::BodyRange>),
                                 };
                                 let mut last_msg = body.or_else(|| {
@@ -562,14 +580,26 @@ impl SignalClient {
 
             let mut messages_with_pointers = Vec::new();
             let mut reaction_events = Vec::new();
+            // Track call offer id → message index, and answered call ids
+            let mut call_offer_indices: HashMap<u64, usize> = HashMap::new();
+            let mut answered_call_ids: HashSet<u64> = HashSet::new();
 
             if let Ok(iter) = manager.store().messages(&thread, ..).await {
                 // Messages come DESC (newest first); take `limit` newest
                 let limit = limit as usize;
                 for result in iter {
                     if let Ok(content) = result {
+                        // Extract call offer id before process_content consumes it
+                        let call_offer_id = match &content.body {
+                            ContentBody::CallMessage(call) => call.offer.as_ref().and_then(|o| o.id),
+                            _ => None,
+                        };
                         match process_content(&content, my_user_id, Some(&channel_id)) {
                             Some(ProcessedContent::Message(msg, pointers, raw_mentions, raw_previews, raw_quote)) => {
+                                let idx = messages_with_pointers.len();
+                                if let Some(cid) = call_offer_id {
+                                    call_offer_indices.insert(cid, idx);
+                                }
                                 messages_with_pointers.push((msg, pointers, raw_mentions, raw_previews, raw_quote));
                                 if limit > 0 && messages_with_pointers.len() >= limit {
                                     break;
@@ -578,10 +608,25 @@ impl SignalClient {
                             Some(ProcessedContent::Reaction(reaction)) => {
                                 reaction_events.push(reaction);
                             }
+                            Some(ProcessedContent::CallAnswer { call_id }) => {
+                                answered_call_ids.insert(call_id);
+                            }
                             Some(ProcessedContent::ReadReceipt { .. }) => {}
                             Some(ProcessedContent::Typing { .. }) => {}
                             None => {}
                         }
+                    }
+                }
+            }
+
+            // Upgrade missed calls to answered if we saw a corresponding Answer
+            for (call_id, idx) in &call_offer_indices {
+                if answered_call_ids.contains(call_id) {
+                    let msg = &mut messages_with_pointers[*idx].0;
+                    match msg.message_type {
+                        MessageType::MissedAudioCall => msg.message_type = MessageType::AudioCall,
+                        MessageType::MissedVideoCall => msg.message_type = MessageType::VideoCall,
+                        _ => {}
                     }
                 }
             }
@@ -835,6 +880,7 @@ impl SignalClient {
                 read_by: vec![],
                 previews: vec![],
                 quote: None,
+                message_type: MessageType::Regular,
             })
         })
         })
@@ -994,6 +1040,7 @@ impl SignalClient {
                     read_by: vec![],
                     previews: vec![],
                     quote: None,
+                    message_type: MessageType::Regular,
                 })
             })
         })
@@ -1228,6 +1275,7 @@ impl SignalClient {
                     read_by: vec![],
                     previews,
                     quote: None,
+                    message_type: MessageType::Regular,
                 })
             })
         })
@@ -1464,6 +1512,7 @@ impl SignalClient {
                     read_by: vec![],
                     previews,
                     quote: Some(quote_for_return),
+                    message_type: MessageType::Regular,
                 })
             })
         })
@@ -2495,6 +2544,8 @@ enum ProcessedContent {
     /// `group_id` is the raw bytes from the typing message (group identifier, not master key).
     /// For DMs it is None.
     Typing { group_id: Option<Vec<u8>>, sender_id: String, started: bool },
+    /// A call answer (indicates a call with the given offer id was answered)
+    CallAnswer { call_id: u64 },
 }
 
 /// Extract channel_id from a DataMessage (group context or sender UUID)
@@ -2745,6 +2796,7 @@ fn process_content(
                     read_by: vec![],
                     previews: vec![],
                     quote: None,
+                    message_type: MessageType::Regular,
                 },
                 pointers,
                 raw_mentions,
@@ -2814,6 +2866,7 @@ fn process_content(
                             read_by: vec![],
                             previews: vec![],
                             quote: None,
+                            message_type: MessageType::Regular,
                         },
                         pointers,
                         raw_mentions,
@@ -2843,6 +2896,55 @@ fn process_content(
                 sender_id: sender_uuid.to_string(),
                 started,
             })
+        }
+        ContentBody::CallMessage(call) => {
+            if let Some(offer) = &call.offer {
+                let is_video = offer.r#type == Some(call_message::offer::Type::OfferVideoCall as i32);
+                let channel_id = fallback_channel_id
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| sender_uuid.to_string());
+                // Outgoing offers are calls we placed; incoming default to missed
+                // (will be upgraded to answered if a CallAnswer is found during post-processing)
+                let message_type = if is_outgoing {
+                    if is_video { MessageType::VideoCall } else { MessageType::AudioCall }
+                } else if is_video {
+                    MessageType::MissedVideoCall
+                } else {
+                    MessageType::MissedAudioCall
+                };
+                Some(ProcessedContent::Message(
+                    Message {
+                        id: timestamp.to_string(),
+                        channel_id,
+                        sender_id: sender_uuid.to_string(),
+                        sender_name: None,
+                        body: None,
+                        timestamp,
+                        is_outgoing,
+                        status: MessageStatus::Delivered,
+                        attachments: vec![],
+                        reactions: vec![],
+                        mentions: vec![],
+                        read_by: vec![],
+                        previews: vec![],
+                        quote: None,
+                        message_type,
+                    },
+                    vec![],
+                    vec![],
+                    vec![],
+                    None,
+                ))
+            } else if let Some(answer) = &call.answer {
+                // Answer means the call was picked up — used to upgrade missed → answered
+                if let Some(call_id) = answer.id {
+                    Some(ProcessedContent::CallAnswer { call_id })
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         }
         _ => None,
     }

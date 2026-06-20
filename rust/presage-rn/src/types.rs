@@ -151,6 +151,23 @@ pub struct Message {
     pub previews: Vec<LinkPreview>,
     /// Quoted message (reply context)
     pub quote: Option<Quote>,
+    /// Type of message (regular, missed call, etc.)
+    pub message_type: MessageType,
+}
+
+/// Type of message (regular text/media or call event)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum MessageType {
+    /// Normal user-visible message (text, attachments, etc.)
+    Regular,
+    /// Incoming audio call that was not answered
+    MissedAudioCall,
+    /// Incoming video call that was not answered
+    MissedVideoCall,
+    /// Audio call that was answered/completed
+    AudioCall,
+    /// Video call that was answered/completed
+    VideoCall,
 }
 
 /// Message delivery status

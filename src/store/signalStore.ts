@@ -64,6 +64,7 @@ export interface Message {
   readBy: string[];
   linkPreviews: LinkPreview[];
   quote?: Quote;
+  messageType?: 'regular' | 'missedAudioCall' | 'missedVideoCall' | 'audioCall' | 'videoCall';
 }
 
 export type LinkingState =
@@ -194,7 +195,12 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
           !message.isOutgoing && message.channelId !== selectedChannelId ? 1 : 0;
         updatedChannels[channelIndex] = {
           ...channel,
-          lastMessage: message.body || channel.lastMessage,
+          lastMessage: message.body
+            || (message.messageType === 'missedVideoCall' ? 'Missed video call' : undefined)
+            || (message.messageType === 'missedAudioCall' ? 'Missed voice call' : undefined)
+            || (message.messageType === 'videoCall' ? 'Video call' : undefined)
+            || (message.messageType === 'audioCall' ? 'Voice call' : undefined)
+            || channel.lastMessage,
           lastMessageTimestamp: message.timestamp,
           unreadCount: channel.unreadCount + unreadDelta,
         };

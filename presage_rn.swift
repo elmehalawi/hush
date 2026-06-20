@@ -1603,6 +1603,10 @@ public struct Message {
      * Quoted message (reply context)
      */
     public var quote: Quote?
+    /**
+     * Type of message (regular, missed call, etc.)
+     */
+    public var messageType: MessageType
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1648,7 +1652,10 @@ public struct Message {
             */ previews: [LinkPreview],
         /**
             * Quoted message (reply context)
-            */ quote: Quote?
+            */ quote: Quote?,
+        /**
+            * Type of message (regular, missed call, etc.)
+            */ messageType: MessageType
     ) {
         self.id = id
         self.channelId = channelId
@@ -1664,6 +1671,7 @@ public struct Message {
         self.readBy = readBy
         self.previews = previews
         self.quote = quote
+        self.messageType = messageType
     }
 }
 
@@ -1711,6 +1719,9 @@ extension Message: Equatable, Hashable {
         if lhs.quote != rhs.quote {
             return false
         }
+        if lhs.messageType != rhs.messageType {
+            return false
+        }
         return true
     }
 
@@ -1729,6 +1740,7 @@ extension Message: Equatable, Hashable {
         hasher.combine(readBy)
         hasher.combine(previews)
         hasher.combine(quote)
+        hasher.combine(messageType)
     }
 }
 
@@ -1752,7 +1764,8 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
                 mentions: FfiConverterSequenceTypeMention.read(from: &buf),
                 readBy: FfiConverterSequenceString.read(from: &buf),
                 previews: FfiConverterSequenceTypeLinkPreview.read(from: &buf),
-                quote: FfiConverterOptionTypeQuote.read(from: &buf)
+                quote: FfiConverterOptionTypeQuote.read(from: &buf),
+                messageType: FfiConverterTypeMessageType.read(from: &buf)
             )
     }
 
@@ -1771,6 +1784,7 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
         FfiConverterSequenceString.write(value.readBy, into: &buf)
         FfiConverterSequenceTypeLinkPreview.write(value.previews, into: &buf)
         FfiConverterOptionTypeQuote.write(value.quote, into: &buf)
+        FfiConverterTypeMessageType.write(value.messageType, into: &buf)
     }
 }
 
@@ -2380,6 +2394,94 @@ public func FfiConverterTypeMessageStatus_lower(_ value: MessageStatus) -> RustB
 }
 
 extension MessageStatus: Equatable, Hashable {}
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Type of message (regular text/media or call event)
+ */
+
+public enum MessageType {
+    /**
+     * Normal user-visible message (text, attachments, etc.)
+     */
+    case regular
+    /**
+     * Incoming audio call that was not answered
+     */
+    case missedAudioCall
+    /**
+     * Incoming video call that was not answered
+     */
+    case missedVideoCall
+    /**
+     * Audio call that was answered/completed
+     */
+    case audioCall
+    /**
+     * Video call that was answered/completed
+     */
+    case videoCall
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMessageType: FfiConverterRustBuffer {
+    typealias SwiftType = MessageType
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MessageType {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        case 1: return .regular
+
+        case 2: return .missedAudioCall
+
+        case 3: return .missedVideoCall
+
+        case 4: return .audioCall
+
+        case 5: return .videoCall
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MessageType, into buf: inout [UInt8]) {
+        switch value {
+        case .regular:
+            writeInt(&buf, Int32(1))
+
+        case .missedAudioCall:
+            writeInt(&buf, Int32(2))
+
+        case .missedVideoCall:
+            writeInt(&buf, Int32(3))
+
+        case .audioCall:
+            writeInt(&buf, Int32(4))
+
+        case .videoCall:
+            writeInt(&buf, Int32(5))
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMessageType_lift(_ buf: RustBuffer) throws -> MessageType {
+    return try FfiConverterTypeMessageType.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMessageType_lower(_ value: MessageType) -> RustBuffer {
+    return FfiConverterTypeMessageType.lower(value)
+}
+
+extension MessageType: Equatable, Hashable {}
 
 /**
  * Errors that can occur when using the Signal client

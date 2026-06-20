@@ -1513,6 +1513,7 @@ class PresageModule: RCTEventEmitter {
         if let quote = message.quote {
             dict["quote"] = quoteToDict(quote)
         }
+        dict["messageType"] = messageTypeToString(message.messageType)
         return dict
     }
 
@@ -1523,6 +1524,16 @@ class PresageModule: RCTEventEmitter {
             "authorName": quote.authorName,
             "text": quote.text,
         ]
+    }
+
+    private func messageTypeToString(_ messageType: MessageType) -> String {
+        switch messageType {
+        case .regular: return "regular"
+        case .missedAudioCall: return "missedAudioCall"
+        case .missedVideoCall: return "missedVideoCall"
+        case .audioCall: return "audioCall"
+        case .videoCall: return "videoCall"
+        }
     }
 
     private func messageStatusToString(_ status: MessageStatus) -> String {

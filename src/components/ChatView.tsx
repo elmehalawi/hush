@@ -7,6 +7,28 @@ import {GradientBlurView} from './GradientBlurView';
 import {useColors} from '../theme/colors';
 import {TypingIndicator} from './TypingIndicator';
 
+function isCallEvent(messageType?: Message['messageType']): boolean {
+  return messageType === 'missedAudioCall' || messageType === 'missedVideoCall' ||
+    messageType === 'audioCall' || messageType === 'videoCall';
+}
+
+function callEventLabel(messageType: Message['messageType']): string {
+  switch (messageType) {
+    case 'missedVideoCall': return 'Missed video call';
+    case 'missedAudioCall': return 'Missed voice call';
+    case 'videoCall': return 'Video call';
+    case 'audioCall': return 'Voice call';
+    default: return '';
+  }
+}
+
+function CallIcon({color}: {color: string}) {
+  // U+1F4DE: telephone receiver
+  return (
+    <Text style={{fontSize: 10, color, lineHeight: 14}}>{'\uD83D\uDCDE\uFE0E'}</Text>
+  );
+}
+
 function formatTimeSeparator(timestamp: number, previousTimestamp: number | null): {datePart: string | null; time: string} {
   const now = new Date();
   const date = new Date(timestamp);
@@ -202,7 +224,18 @@ export function ChatView({channel, messages, onReply, onRetryDownload}: ChatView
                       </View>
                     );
                   })()}
-                  <MessageBubble message={message} isGroup={channel.isGroup} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} onReply={onReply} userId={userId} onRetryDownload={onRetryDownload} showReadReceipt={index === lastReadIndex} crossAlbumAttachments={crossAlbumMap.get(message.id)} />
+                  {isCallEvent(message.messageType) ? (
+                    <View style={styles.callEventContainer}>
+                      <View style={[styles.callEventPill, {backgroundColor: c.separator}]}>
+                        <CallIcon color={c.secondaryLabel} />
+                        <Text style={[styles.callEventText, {color: c.secondaryLabel}]}>
+                          {callEventLabel(message.messageType)}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <MessageBubble message={message} isGroup={channel.isGroup} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} onReply={onReply} userId={userId} onRetryDownload={onRetryDownload} showReadReceipt={index === lastReadIndex} crossAlbumAttachments={crossAlbumMap.get(message.id)} />
+                  )}
                 </React.Fragment>
               );
             });
@@ -338,5 +371,22 @@ const styles = StyleSheet.create({
   noMessagesHint: {
     fontSize: 13,
     marginTop: 4,
+  },
+  callEventContainer: {
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 16,
+  },
+  callEventPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  callEventText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 });
