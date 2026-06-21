@@ -1,0 +1,58 @@
+[package]
+name = "hush-call"
+version = "0.1.0"
+edition = "2021"
+description = "CLI tool for testing Signal voice/video calling via ringrtc"
+
+[[bin]]
+name = "hush-call"
+path = "src/main.rs"
+
+[dependencies]
+# Signal protocol (presage for messaging/provisioning)
+presage = { git = "https://github.com/whisperfish/presage", rev = "c3d4dd56444e" }
+presage-store-sqlite = { git = "https://github.com/whisperfish/presage", rev = "c3d4dd56444e" }
+
+# ringrtc (WebRTC calling)
+ringrtc = { path = "../ringrtc/src/rust", features = ["prebuilt_webrtc"] }
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time", "signal"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+log = "0.4"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+prost = "0.14"
+
+# Utilities
+anyhow = "1"
+uuid = { version = "1", features = ["v4"] }
+futures-util = "0.3"
+futures-channel = "0.3"
+hex = "0.4"
+parking_lot = "0.12"
+rand = "0.8"
+url = "2"
+base64 = "0.22"
+qr2term = "0.3"
+
+[patch.crates-io]
+# Required by ringrtc's zkgroup dependency
+"curve25519-dalek" = { git = 'https://github.com/signalapp/curve25519-dalek', tag = 'signal-curve25519-4.1.3' }
+# Required by presage-store-sqlite
+libsqlite3-sys = { version = "0.36.0", git = "https://github.com/whisperfish/rusqlite", rev = "2a42b3354c9194700d08aa070f70a131a470e7dc" }
+# Relax hax-lib pins from =0.3.5 to >=0.3.5 so presage's libsignal v0.87.4 can coexist with ringrtc's libsignal v0.89.2
+libcrux-ml-kem = { path = "/tmp/libcrux-ml-kem-patched" }
+libcrux-intrinsics = { path = "/tmp/libcrux-intrinsics-patched" }
+libcrux-sha3 = { path = "/tmp/libcrux-sha3-patched" }
+libcrux-secrets = { path = "/tmp/libcrux-secrets-patched" }
+core-models = { path = "/tmp/core-models-patched" }
+hax-lib-macros = { path = "/tmp/hax-lib-macros-patched" }

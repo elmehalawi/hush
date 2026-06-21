@@ -1,0 +1,3 @@
+[submodule "rust/ringrtc"]
+	path = rust/ringrtc
+	url = https://github.com/signalapp/ringrtc.git
