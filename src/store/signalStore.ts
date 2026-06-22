@@ -9,6 +9,7 @@ export interface Channel {
   lastMessage?: string;
   lastMessageTimestamp?: number;
   avatarPath?: string;
+  phoneNumber?: string;
 }
 
 export interface Attachment {
@@ -156,7 +157,28 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
 
   setLinkingState: (state: LinkingState) => set({linkingState: state}),
 
-  setChannels: (channels: Channel[]) => set({channels}),
+  setChannels: (incoming: Channel[]) => {
+    const {channels: existing} = get();
+    if (existing.length === 0) {
+      set({channels: incoming});
+      return;
+    }
+    const existingMap = new Map<string, Channel>();
+    for (const ch of existing) {
+      existingMap.set(ch.id, ch);
+    }
+    const merged = incoming.map(ch => {
+      const prev = existingMap.get(ch.id);
+      if (!prev) return ch;
+      // Preserve the existing real name if the incoming name is empty or a UUID
+      const name =
+        ch.name && !UUID_RE.test(ch.name)
+          ? ch.name
+          : (prev.name && !UUID_RE.test(prev.name) ? prev.name : ch.name);
+      return {...ch, name, phoneNumber: ch.phoneNumber || prev.phoneNumber};
+    });
+    set({channels: merged});
+  },
 
   setSelectedChannelId: (id: string | null) => set({selectedChannelId: id}),
 
@@ -288,10 +310,8 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
       // Merge: keep existing fields if new channel has empty/placeholder values
       const existing = newChannels[index];
       // Don't overwrite a real name with a UUID-looking string
-      const isUuid = (s: string) =>
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
       const newName =
-        channel.name && (!isUuid(channel.name) || !existing.name || isUuid(existing.name))
+        channel.name && (!UUID_RE.test(channel.name) || !existing.name || UUID_RE.test(existing.name))
           ? channel.name
           : existing.name;
       newChannels[index] = {
@@ -299,6 +319,7 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
         lastMessage: channel.lastMessage || existing.lastMessage,
         lastMessageTimestamp: channel.lastMessageTimestamp || existing.lastMessageTimestamp,
         avatarPath: channel.avatarPath || existing.avatarPath,
+        phoneNumber: channel.phoneNumber || existing.phoneNumber,
         name: newName,
       };
       set({channels: newChannels});
@@ -482,4 +503,16 @@ export function resolveContactName(
   }
 
   return undefined;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Return a display-safe name for a channel.
+ * Falls back to phone number or "Unknown" instead of showing a raw UUID.
+ */
+export function channelDisplayName(channel: Channel): string {
+  if (channel.name && !UUID_RE.test(channel.name)) return channel.name;
+  if (channel.phoneNumber) return channel.phoneNumber;
+  return 'Unknown';
 }

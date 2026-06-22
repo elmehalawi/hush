@@ -22,6 +22,7 @@ interface NativeChannel {
   lastMessage: string | null;
   lastMessageTimestamp: number | null;
   avatarPath: string | null;
+  phoneNumber: string | null;
 }
 
 interface NativeAttachment {
@@ -98,6 +99,7 @@ function convertChannel(native: NativeChannel): Channel {
     lastMessage: native.lastMessage || undefined,
     lastMessageTimestamp: native.lastMessageTimestamp || undefined,
     avatarPath: native.avatarPath || undefined,
+    phoneNumber: native.phoneNumber || undefined,
   };
 }
 

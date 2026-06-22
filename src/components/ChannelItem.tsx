@@ -1,6 +1,6 @@
 import React, {useMemo, useCallback, useEffect, useRef} from 'react';
 import {View, Text, Pressable, StyleSheet, Image, NativeModules, Animated} from 'react-native';
-import {Channel, useSignalStore} from '../store/signalStore';
+import {Channel, useSignalStore, channelDisplayName} from '../store/signalStore';
 import {GlassView} from './GlassView';
 import {useColors} from '../theme/colors';
 import {useWindowFocused} from '../hooks/useWindowFocused';
@@ -53,6 +53,8 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
     [channel.lastMessageTimestamp],
   );
 
+  const displayName = channelDisplayName(channel);
+
   const isTyping = useSignalStore(state =>
     (state.typingUsers[channel.id]?.length ?? 0) > 0,
   );
@@ -79,7 +81,7 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
             <>
               <GlassView style={StyleSheet.absoluteFill} cornerRadius={20} tintColor="rgba(30, 120, 255, 0.45)" />
               <Text style={styles.avatarText}>
-                {channel.isGroup ? '#' : channel.name.charAt(0).toUpperCase()}
+                {channel.isGroup ? '#' : displayName.charAt(0).toUpperCase()}
               </Text>
             </>
           )}
@@ -108,7 +110,7 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
           <>
             <GlassView style={StyleSheet.absoluteFill} cornerRadius={20} tintColor="rgba(30, 120, 255, 0.45)" />
             <Text style={styles.avatarText}>
-              {channel.isGroup ? '#' : channel.name.charAt(0).toUpperCase()}
+              {channel.isGroup ? '#' : displayName.charAt(0).toUpperCase()}
             </Text>
           </>
         )}
@@ -116,7 +118,7 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={[styles.name, {color: c.label}, activeSelected && styles.nameFocusedSelected]} numberOfLines={1}>
-            {channel.name}
+            {displayName}
           </Text>
           {timeLabel && (
             <Text style={[styles.timestamp, {color: c.tertiaryLabel}, activeSelected && styles.timestampFocusedSelected]}>

@@ -701,8 +701,7 @@ impl SignalClient {
                         let name = if let Ok(uuid) = sid.parse::<Uuid>() {
                             let service_id = ServiceId::from(Aci::from(uuid));
                             let (n, _) = resolve_contact_name_readonly(manager, uuid, &service_id).await;
-                            // Only use the name if it's a real name, not a UUID fallback
-                            if n.is_empty() || n == uuid.to_string() { None } else { Some(n) }
+                            if n.is_empty() { None } else { Some(n) }
                         } else {
                             None
                         };
@@ -729,7 +728,7 @@ impl SignalClient {
                         } else {
                             let sid = ServiceId::from(Aci::from(uuid));
                             let (n, _) = resolve_contact_name_readonly(manager, uuid, &sid).await;
-                            if n.is_empty() || n == uuid.to_string() { None } else { Some(n) }
+                            if n.is_empty() { None } else { Some(n) }
                         }
                     } else {
                         None
@@ -1999,7 +1998,7 @@ impl SignalClient {
                                                     } else {
                                                         let sid = ServiceId::from(Aci::from(uuid));
                                                         let (n, _) = resolve_contact_name_readonly(&manager_for_attachments, uuid, &sid).await;
-                                                        if n.is_empty() || n == uuid.to_string() { None } else { Some(n) }
+                                                        if n.is_empty() { None } else { Some(n) }
                                                     }
                                                 } else {
                                                     None
@@ -2036,13 +2035,7 @@ impl SignalClient {
                                                     let (name, phone) = if let Ok(uuid) = channel_id.parse::<Uuid>() {
                                                         let sid = ServiceId::from(Aci::from(uuid));
                                                         let (n, p) = resolve_contact_name_readonly(&manager_for_attachments, uuid, &sid).await;
-                                                        // If name is just the UUID fallback, use empty string
-                                                        // so the JS store keeps the existing resolved name
-                                                        if n == uuid.to_string() {
-                                                            (String::new(), p)
-                                                        } else {
-                                                            (n, p)
-                                                        }
+                                                        (n, p)
                                                     } else { (String::new(), None) };
                                                     let avatar_file = avatars_dir.join(&channel_id);
                                                     let avatar = if avatar_file.exists() {
@@ -2929,7 +2922,7 @@ async fn resolve_mentions(
         let name = if let Ok(uuid) = uuid_str.parse::<Uuid>() {
             let sid = ServiceId::from(Aci::from(uuid));
             let (n, _) = resolve_contact_name_readonly(manager, uuid, &sid).await;
-            if n.is_empty() || n == uuid.to_string() {
+            if n.is_empty() {
                 uuid_str.clone()
             } else {
                 n
@@ -3207,24 +3200,36 @@ async fn resolve_contact_name(
     uuid: Uuid,
     service_id: &ServiceId,
 ) -> (String, Option<String>) {
-    // Try contact name first
-    if let Ok(Some(contact)) = manager.store().contact_by_id(service_id).await {
-        if !contact.name.is_empty() {
-            return (
-                contact.name.clone(),
-                contact.phone_number.as_ref().map(|p| p.to_string()),
-            );
-        }
-    }
+    let mut phone_number: Option<String> = None;
 
-    // Try cached profile name, or fetch from network
-    if let Ok(Some(profile_key)) = manager.store().profile_key(service_id).await {
+    // Try contact name first; also extract profile key and phone from the record
+    let contact_profile_key = if let Ok(Some(contact)) =
+        manager.store().contact_by_id(service_id).await
+    {
+        phone_number = contact.phone_number.as_ref().map(|p| p.to_string());
+        if !contact.name.is_empty() {
+            return (contact.name.clone(), phone_number);
+        }
+        <Vec<u8> as TryInto<[u8; 32]>>::try_into(contact.profile_key.clone())
+            .ok()
+            .map(ProfileKey::create)
+    } else {
+        None
+    };
+
+    // Resolve the profile key: prefer store, fall back to contact record
+    let profile_key = match manager.store().profile_key(service_id).await {
+        Ok(Some(pk)) => Some(pk),
+        _ => contact_profile_key,
+    };
+
+    if let Some(profile_key) = profile_key {
         // Check local cache first
         if let Ok(Some(profile)) = manager.store().profile(uuid, profile_key).await {
             if let Some(profile_name) = &profile.name {
                 let name = profile_name.to_string();
                 if !name.is_empty() {
-                    return (name, None);
+                    return (name, phone_number);
                 }
             }
         }
@@ -3235,18 +3240,70 @@ async fn resolve_contact_name(
                 if let Some(profile_name) = &profile.name {
                     let name = profile_name.to_string();
                     if !name.is_empty() {
-                        return (name, None);
+                        return (name, phone_number);
                     }
                 }
             }
             Err(e) => {
-                warn!("Failed to fetch profile for {}: {}", uuid, e);
+                warn!("resolve_contact_name({}): network fetch failed: {}", uuid, e);
             }
         }
     }
 
-    // Final fallback: UUID string
-    (uuid.to_string(), None)
+    // Profile key missing or produced no name — scan stored messages for an
+    // incoming DataMessage with the contact's real profile key, and also
+    // extract phone number from outgoing SyncMessage destination_e164.
+    let thread = Thread::Contact(*service_id);
+    let mut found_pk = None;
+    if let Ok(messages) = manager.store().messages(&thread, ..).await {
+        let mut count = 0;
+        for msg in messages.flatten() {
+            count += 1;
+            match &msg.body {
+                ContentBody::DataMessage(dm) => {
+                    // Only use profile key from messages actually sent BY this contact
+                    if msg.metadata.sender == *service_id {
+                        if let Some(ref pk_bytes) = dm.profile_key {
+                            if let Ok(key_bytes) = <Vec<u8> as TryInto<[u8; 32]>>::try_into(pk_bytes.clone()) {
+                                found_pk = Some(ProfileKey::create(key_bytes));
+                                break;
+                            }
+                        }
+                    }
+                }
+                ContentBody::SynchronizeMessage(sm) => {
+                    // Extract phone number from outgoing message destination
+                    if phone_number.is_none() {
+                        if let Some(e164) = sm.sent.as_ref().and_then(|s| s.destination_e164.clone()) {
+                            if !e164.is_empty() {
+                                phone_number = Some(e164);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+            if count >= 50 { break; }
+        }
+    }
+    if let Some(pk) = found_pk {
+        match manager.retrieve_profile_by_uuid(uuid, pk).await {
+            Ok(profile) => {
+                if let Some(profile_name) = &profile.name {
+                    let name = profile_name.to_string();
+                    if !name.is_empty() {
+                        return (name, phone_number);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("resolve_contact_name({}): network fetch with msg key failed: {}", uuid, e);
+            }
+        }
+    }
+
+    // Final fallback: empty string (never return the UUID as a name)
+    (String::new(), phone_number)
 }
 
 /// Read-only variant that only checks local store (no network fetch).
@@ -3256,30 +3313,42 @@ async fn resolve_contact_name_readonly(
     uuid: Uuid,
     service_id: &ServiceId,
 ) -> (String, Option<String>) {
-    // Try contact name first
-    if let Ok(Some(contact)) = manager.store().contact_by_id(service_id).await {
-        if !contact.name.is_empty() {
-            return (
-                contact.name.clone(),
-                contact.phone_number.as_ref().map(|p| p.to_string()),
-            );
-        }
-    }
+    let mut phone_number: Option<String> = None;
 
-    // Try cached profile name
-    if let Ok(Some(profile_key)) = manager.store().profile_key(service_id).await {
+    // Try contact name first; also extract profile key and phone from the record
+    let contact_profile_key = if let Ok(Some(contact)) =
+        manager.store().contact_by_id(service_id).await
+    {
+        phone_number = contact.phone_number.as_ref().map(|p| p.to_string());
+        if !contact.name.is_empty() {
+            return (contact.name.clone(), phone_number);
+        }
+        <Vec<u8> as TryInto<[u8; 32]>>::try_into(contact.profile_key.clone())
+            .ok()
+            .map(ProfileKey::create)
+    } else {
+        None
+    };
+
+    // Resolve the profile key: prefer store, fall back to contact record
+    let profile_key = match manager.store().profile_key(service_id).await {
+        Ok(Some(pk)) => Some(pk),
+        _ => contact_profile_key,
+    };
+
+    if let Some(profile_key) = profile_key {
         if let Ok(Some(profile)) = manager.store().profile(uuid, profile_key).await {
             if let Some(profile_name) = &profile.name {
                 let name = profile_name.to_string();
                 if !name.is_empty() {
-                    return (name, None);
+                    return (name, phone_number);
                 }
             }
         }
     }
 
-    // Final fallback: UUID string
-    (uuid.to_string(), None)
+    // Final fallback: empty string (never return the UUID as a name)
+    (String::new(), phone_number)
 }
 
 /// Load read state from disk, returning empty map on any error.

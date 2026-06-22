@@ -233,14 +233,23 @@ class PresageModule: RCTEventEmitter {
                         self.channelAvatarCache[channel.id] = avatarPath
                     }
                     self.avatarCacheLock.unlock()
-                    // For contacts without a Signal profile picture, try macOS Contacts
-                    if channel.avatarPath == nil && !channel.isGroup {
-                        if let path = self.findContactPhoto(phoneNumber: channel.phoneNumber, name: channel.name, channelId: channel.id) {
-                            dict["avatarPath"] = path
-                            // Also cache the macOS Contacts avatar
-                            self.avatarCacheLock.lock()
-                            self.channelAvatarCache[channel.id] = path
-                            self.avatarCacheLock.unlock()
+                    if !channel.isGroup {
+                        if channel.name.isEmpty {
+                            if let contactName = self.findContactName(phoneNumber: channel.phoneNumber) {
+                                dict["name"] = contactName
+                                self.avatarCacheLock.lock()
+                                self.channelNameCache[channel.id] = contactName
+                                self.avatarCacheLock.unlock()
+                            }
+                        }
+                        // For contacts without a Signal profile picture, try macOS Contacts
+                        if channel.avatarPath == nil {
+                            if let path = self.findContactPhoto(phoneNumber: channel.phoneNumber, name: (dict["name"] as? String) ?? channel.name, channelId: channel.id) {
+                                dict["avatarPath"] = path
+                                self.avatarCacheLock.lock()
+                                self.channelAvatarCache[channel.id] = path
+                                self.avatarCacheLock.unlock()
+                            }
                         }
                     }
                     return dict
@@ -326,16 +335,27 @@ class PresageModule: RCTEventEmitter {
                 ])
             },
             onChannelUpdated: { [weak self] channel in
-                self?.avatarCacheLock.lock()
+                guard let self = self else { return }
+                var dict = self.channelToDict(channel)
+                self.avatarCacheLock.lock()
                 if !channel.name.isEmpty {
-                    self?.channelNameCache[channel.id] = channel.name
+                    self.channelNameCache[channel.id] = channel.name
                 }
-                self?.channelIsGroupCache[channel.id] = channel.isGroup
+                self.channelIsGroupCache[channel.id] = channel.isGroup
                 if let avatarPath = channel.avatarPath {
-                    self?.channelAvatarCache[channel.id] = avatarPath
+                    self.channelAvatarCache[channel.id] = avatarPath
                 }
-                self?.avatarCacheLock.unlock()
-                self?.sendEventIfListening("onChannelUpdated", body: self?.channelToDict(channel))
+                self.avatarCacheLock.unlock()
+                // For contacts without a name, try macOS system Contacts
+                if channel.name.isEmpty && !channel.isGroup {
+                    if let contactName = self.findContactName(phoneNumber: channel.phoneNumber) {
+                        dict["name"] = contactName
+                        self.avatarCacheLock.lock()
+                        self.channelNameCache[channel.id] = contactName
+                        self.avatarCacheLock.unlock()
+                    }
+                }
+                self.sendEventIfListening("onChannelUpdated", body: dict)
             },
             onError: { [weak self] error in
                 self?.sendEventIfListening("onError", body: ["message": error])
@@ -1435,6 +1455,63 @@ class PresageModule: RCTEventEmitter {
     private lazy var contactStore = CNContactStore()
     private var contactsAccessGranted: Bool?
 
+    /// Cache of phone-number-digits → display name from macOS Contacts.
+    /// Built once per app launch to avoid repeated CNContactStore enumeration.
+    private var contactNameByDigits: [String: String]?
+
+    private func buildContactNameCache() {
+        guard contactNameByDigits == nil else { return }
+
+        // Check / request access on first call
+        if contactsAccessGranted == nil {
+            let semaphore = DispatchSemaphore(value: 0)
+            contactStore.requestAccess(for: .contacts) { granted, _ in
+                self.contactsAccessGranted = granted
+                semaphore.signal()
+            }
+            semaphore.wait()
+        }
+        guard contactsAccessGranted == true else {
+            contactNameByDigits = [:]
+            return
+        }
+
+        var cache: [String: String] = [:]
+        let keysToFetch: [CNKeyDescriptor] = [
+            CNContactGivenNameKey as CNKeyDescriptor,
+            CNContactFamilyNameKey as CNKeyDescriptor,
+            CNContactPhoneNumbersKey as CNKeyDescriptor,
+        ]
+        let request = CNContactFetchRequest(keysToFetch: keysToFetch)
+        do {
+            try contactStore.enumerateContacts(with: request) { contact, _ in
+                let given = contact.givenName
+                let family = contact.familyName
+                guard !given.isEmpty || !family.isEmpty else { return }
+                let displayName = family.isEmpty ? given : "\(given) \(family)"
+                for labeledValue in contact.phoneNumbers {
+                    let digits = labeledValue.value.stringValue.filter { $0.isNumber }
+                    let key = String(digits.suffix(10))
+                    if !key.isEmpty {
+                        cache[key] = displayName
+                    }
+                }
+            }
+        } catch {
+            NSLog("PresageModule: buildContactNameCache failed: %@", "\(error)")
+        }
+        contactNameByDigits = cache
+    }
+
+    /// Look up a contact name from macOS Contacts by phone number.
+    private func findContactName(phoneNumber: String?) -> String? {
+        guard let phone = phoneNumber, !phone.isEmpty else { return nil }
+        buildContactNameCache()
+        let digits = phone.filter { $0.isNumber }
+        let key = String(digits.suffix(10))
+        return contactNameByDigits?[key]
+    }
+
     /// Look up a contact photo from macOS Contacts by phone number (preferred) or name (fallback).
     /// Writes the image to the avatars directory and returns the file path.
     private func findContactPhoto(phoneNumber: String?, name: String, channelId: String) -> String? {
@@ -1466,13 +1543,18 @@ class PresageModule: RCTEventEmitter {
 
         // Try phone number match first (most reliable)
         if let phone = phoneNumber, !phone.isEmpty {
-            let phonePredicate = CNContact.predicateForContacts(matching: CNPhoneNumber(stringValue: phone))
-            if let contacts = try? contactStore.unifiedContacts(matching: phonePredicate, keysToFetch: keysToFetch) {
-                for contact in contacts {
-                    if contact.imageDataAvailable, let imageData = contact.imageData {
-                        try? FileManager.default.createDirectory(atPath: avatarsDir, withIntermediateDirectories: true)
-                        if FileManager.default.createFile(atPath: filePath, contents: imageData) {
-                            return filePath
+            let digits = phone.filter { $0.isNumber }
+            let variants = Set([phone, digits, String(digits.suffix(10))])
+            for variant in variants {
+                guard !variant.isEmpty else { continue }
+                let phonePredicate = CNContact.predicateForContacts(matching: CNPhoneNumber(stringValue: variant))
+                if let contacts = try? contactStore.unifiedContacts(matching: phonePredicate, keysToFetch: keysToFetch) {
+                    for contact in contacts {
+                        if contact.imageDataAvailable, let imageData = contact.imageData {
+                            try? FileManager.default.createDirectory(atPath: avatarsDir, withIntermediateDirectories: true)
+                            if FileManager.default.createFile(atPath: filePath, contents: imageData) {
+                                return filePath
+                            }
                         }
                     }
                 }
