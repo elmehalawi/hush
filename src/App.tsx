@@ -31,7 +31,20 @@ function App(): React.JSX.Element {
     startReceiving,
     markAsRead,
     retryDownload,
+    unlink,
+    startCall,
+    acceptCall,
+    hangupCall,
+    setCallMuted,
   } = useSignalClient();
+
+  // Ref to prevent multiple linking calls - declared early so handleUnlink can reset it
+  const linkingStarted = useRef(false);
+
+  const handleUnlink = useCallback(async () => {
+    linkingStarted.current = false;
+    await unlink();
+  }, [unlink]);
 
   const handleSelectChannel = useCallback(
     async (channelId: string) => {
@@ -64,9 +77,8 @@ function App(): React.JSX.Element {
     init();
   }, [initialize]);
 
-  // Start linking if not linked - use ref to prevent multiple calls
+  // Start linking if not linked
   // IMPORTANT: Wait for listenersReady to avoid race condition where QR event is missed
-  const linkingStarted = useRef(false);
   useEffect(() => {
     if (!isInitializing && listenersReady && !isLinked && linkingState.type === 'notStarted' && !linkingStarted.current) {
       linkingStarted.current = true;
@@ -122,7 +134,17 @@ function App(): React.JSX.Element {
   // Linked - show main screen
   return (
     <View style={styles.container}>
-      <MainScreen onSendMessage={sendMessage} onSelectChannel={handleSelectChannel} onReact={sendReaction} onRetryDownload={retryDownload} />
+      <MainScreen
+        onSendMessage={sendMessage}
+        onSelectChannel={handleSelectChannel}
+        onReact={sendReaction}
+        onRetryDownload={retryDownload}
+        onUnlink={handleUnlink}
+        onStartCall={startCall}
+        onAcceptCall={acceptCall}
+        onHangupCall={hangupCall}
+        onToggleCallMute={setCallMuted}
+      />
     </View>
   );
 }

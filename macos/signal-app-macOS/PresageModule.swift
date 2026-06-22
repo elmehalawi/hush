@@ -5,7 +5,6 @@ import AppKit
 import AVKit
 import UserNotifications
 import Intents
-
 @objc(PresageModule)
 class PresageModule: RCTEventEmitter {
 
@@ -51,7 +50,7 @@ class PresageModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onMessage", "onReaction", "onReadReceipt", "onChannelUpdated", "onAttachmentDownloaded", "onLinkPreviewImageDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions", "onReplyToMessage", "onContextMenuReaction", "onTyping"]
+        return ["onMessage", "onReaction", "onReadReceipt", "onChannelUpdated", "onAttachmentDownloaded", "onLinkPreviewImageDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions", "onReplyToMessage", "onContextMenuReaction", "onTyping", "onIncomingCall", "onCallStateChanged", "onCallEnded"]
     }
 
     override func startObserving() {
@@ -370,6 +369,33 @@ class PresageModule: RCTEventEmitter {
             }
         )
 
+        // Wire up call event listener
+        let callListener = CallEventListenerImpl(
+            onIncomingCall: { [weak self] call in
+                self?.sendEventIfListening("onIncomingCall", body: [
+                    "remotePeerId": call.remotePeerId,
+                    "callId": NSNumber(value: call.callId),
+                    "isVideo": call.isVideo,
+                ])
+
+            },
+            onCallStateChanged: { [weak self] peerId, state, callId in
+                self?.sendEventIfListening("onCallStateChanged", body: [
+                    "remotePeerId": peerId,
+                    "state": state,
+                    "callId": NSNumber(value: callId),
+                ])
+            },
+            onCallEnded: { [weak self] peerId, reason in
+                self?.sendEventIfListening("onCallEnded", body: [
+                    "remotePeerId": peerId,
+                    "reason": reason,
+                ])
+
+            }
+        )
+        client.setCallListener(listener: callListener)
+
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 try client.startReceiving(listener: listener)
@@ -389,6 +415,84 @@ class PresageModule: RCTEventEmitter {
         client.stopReceiving()
         resolver(nil)
     }
+
+    @objc(unlink:rejecter:)
+    func unlink(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let client = client else {
+            rejecter("NOT_INITIALIZED", "Client not initialized", nil)
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try client.unlink()
+                NSLog("PresageModule: Device unlinked")
+                resolver(nil)
+            } catch {
+                NSLog("PresageModule: Unlink failed: %@", error.localizedDescription)
+                rejecter("UNLINK_ERROR", "Failed to unlink: \(error.localizedDescription)", error)
+            }
+        }
+    }
+
+    // MARK: - Call Methods
+
+    @objc(startCall:isVideo:resolver:rejecter:)
+    func startCall(_ channelId: String, isVideo: Bool, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let client = client else {
+            rejecter("NOT_INITIALIZED", "Client not initialized", nil)
+            return
+        }
+        do {
+            try client.startCall(channelId: channelId, isVideo: isVideo)
+            resolver(nil)
+        } catch {
+            rejecter("CALL_ERROR", "Failed to start call: \(error.localizedDescription)", error)
+        }
+    }
+
+    @objc(acceptCall:resolver:rejecter:)
+    func acceptCall(_ callId: UInt64, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let client = client else {
+            rejecter("NOT_INITIALIZED", "Client not initialized", nil)
+            return
+        }
+        do {
+            try client.acceptCall(callId: callId)
+            resolver(nil)
+        } catch {
+            rejecter("CALL_ERROR", "Failed to accept call: \(error.localizedDescription)", error)
+        }
+    }
+
+    @objc(hangupCall:rejecter:)
+    func hangupCall(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let client = client else {
+            rejecter("NOT_INITIALIZED", "Client not initialized", nil)
+            return
+        }
+        do {
+            try client.hangupCall()
+            resolver(nil)
+        } catch {
+            rejecter("CALL_ERROR", "Failed to hang up: \(error.localizedDescription)", error)
+        }
+    }
+
+    @objc(setCallMuted:resolver:rejecter:)
+    func setCallMuted(_ muted: Bool, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        guard let client = client else {
+            rejecter("NOT_INITIALIZED", "Client not initialized", nil)
+            return
+        }
+        do {
+            try client.setCallMuted(muted: muted)
+            resolver(nil)
+        } catch {
+            rejecter("CALL_ERROR", "Failed to set muted: \(error.localizedDescription)", error)
+        }
+    }
+
+    // MARK: - Retry Download
 
     @objc(retryDownload:messageId:attachmentIndex:resolver:rejecter:)
     func retryDownload(_ channelId: String, messageId: String, attachmentIndex: UInt32, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
@@ -1628,9 +1732,40 @@ class PresageModule: RCTEventEmitter {
             NSApp.activate(ignoringOtherApps: true)
         }
     }
+
 }
 
 // MARK: - Callback Implementations
+
+class CallEventListenerImpl: CallEventListener {
+    private let onIncomingCallHandler: (CallInfo) -> Void
+    private let onCallStateChangedHandler: (String, String, UInt64) -> Void
+    private let onCallEndedHandler: (String, String) -> Void
+
+    init(onIncomingCall: @escaping (CallInfo) -> Void, onCallStateChanged: @escaping (String, String, UInt64) -> Void, onCallEnded: @escaping (String, String) -> Void) {
+        self.onIncomingCallHandler = onIncomingCall
+        self.onCallStateChangedHandler = onCallStateChanged
+        self.onCallEndedHandler = onCallEnded
+    }
+
+    func onIncomingCall(call: CallInfo) {
+        DispatchQueue.main.async {
+            self.onIncomingCallHandler(call)
+        }
+    }
+
+    func onCallStateChanged(remotePeerId: String, state: String, callId: UInt64) {
+        DispatchQueue.main.async {
+            self.onCallStateChangedHandler(remotePeerId, state, callId)
+        }
+    }
+
+    func onCallEnded(remotePeerId: String, reason: String) {
+        DispatchQueue.main.async {
+            self.onCallEndedHandler(remotePeerId, reason)
+        }
+    }
+}
 
 class LinkingCallbackImpl: LinkingCallback {
     private let onQrCodeHandler: (String) -> Void

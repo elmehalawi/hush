@@ -81,6 +81,18 @@ export interface ReactionEvent {
   remove: boolean;
 }
 
+// Call types
+export type CallStatus = 'idle' | 'outgoing' | 'incoming' | 'ringing' | 'connected' | 'reconnecting' | 'ended';
+
+export interface ActiveCall {
+  remotePeerId: string;
+  callId: number;
+  isVideo: boolean;
+  status: CallStatus;
+  isMuted: boolean;
+  startedAt?: number;
+}
+
 interface SignalStore {
   // State
   isLinked: boolean;
@@ -90,6 +102,7 @@ interface SignalStore {
   messages: Record<string, Message[]>; // channelId -> messages
   userId: string | null;
   typingUsers: Record<string, {senderId: string; timestamp: number}[]>; // channelId -> active typers
+  activeCall: ActiveCall | null;
 
   // Actions
   setIsLinked: (linked: boolean) => void;
@@ -97,6 +110,11 @@ interface SignalStore {
   setChannels: (channels: Channel[]) => void;
   setSelectedChannelId: (id: string | null) => void;
   setUserId: (id: string | null) => void;
+
+  // Call actions
+  setActiveCall: (call: ActiveCall | null) => void;
+  updateCallStatus: (status: CallStatus) => void;
+  setCallMuted: (muted: boolean) => void;
 
   // Message actions
   addMessage: (message: Message) => void;
@@ -119,6 +137,7 @@ interface SignalStore {
   ) => void;
   markMessagesAsRead: (senderId: string, timestamps: number[]) => void;
   setTyping: (channelId: string, senderId: string, started: boolean) => void;
+  resetStore: () => void;
 }
 
 export const useSignalStore = create<SignalStore>((set, get) => ({
@@ -130,6 +149,7 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
   messages: {},
   userId: null,
   typingUsers: {},
+  activeCall: null,
 
   // Actions
   setIsLinked: (linked: boolean) => set({isLinked: linked}),
@@ -141,6 +161,26 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
   setSelectedChannelId: (id: string | null) => set({selectedChannelId: id}),
 
   setUserId: (id: string | null) => set({userId: id}),
+
+  setActiveCall: (call: ActiveCall | null) => set({activeCall: call}),
+
+  updateCallStatus: (status: CallStatus) => {
+    const {activeCall} = get();
+    if (!activeCall) return;
+    set({
+      activeCall: {
+        ...activeCall,
+        status,
+        startedAt: status === 'connected' && !activeCall.startedAt ? Date.now() : activeCall.startedAt,
+      },
+    });
+  },
+
+  setCallMuted: (muted: boolean) => {
+    const {activeCall} = get();
+    if (!activeCall) return;
+    set({activeCall: {...activeCall, isMuted: muted}});
+  },
 
   addReaction: (event: ReactionEvent) => {
     const {messages} = get();
@@ -402,6 +442,18 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
       }
     }
   },
+
+  resetStore: () =>
+    set({
+      isLinked: false,
+      linkingState: {type: 'notStarted'},
+      channels: [],
+      selectedChannelId: null,
+      messages: {},
+      userId: null,
+      typingUsers: {},
+      activeCall: null,
+    }),
 }));
 
 /**

@@ -22,13 +22,15 @@ interface SessionEntry {
 interface SessionsModalProps {
   visible: boolean;
   onClose: () => void;
+  onUnlink?: () => void;
 }
 
-export function SessionsModal({visible, onClose}: SessionsModalProps) {
+export function SessionsModal({visible, onClose, onUnlink}: SessionsModalProps) {
   const c = useColors();
   const [sessions, setSessions] = useState<SessionEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [resettingId, setResettingId] = useState<string | null>(null);
+  const [unlinking, setUnlinking] = useState(false);
 
   const loadSessions = useCallback(async () => {
     if (!PresageModule) return;
@@ -48,6 +50,17 @@ export function SessionsModal({visible, onClose}: SessionsModalProps) {
       loadSessions();
     }
   }, [visible, loadSessions]);
+
+  const handleUnlink = useCallback(async () => {
+    if (!onUnlink) return;
+    setUnlinking(true);
+    try {
+      onUnlink();
+      onClose();
+    } finally {
+      setUnlinking(false);
+    }
+  }, [onUnlink, onClose]);
 
   const handleReset = useCallback(async (address: string) => {
     if (!PresageModule) return;
@@ -117,6 +130,22 @@ export function SessionsModal({visible, onClose}: SessionsModalProps) {
               ))
             )}
           </ScrollView>
+          {onUnlink && (
+            <Pressable
+              style={({pressed}) => [
+                styles.unlinkButton,
+                pressed && styles.unlinkButtonPressed,
+                unlinking && styles.resetButtonDisabled,
+              ]}
+              onPress={handleUnlink}
+              disabled={unlinking}>
+              {unlinking ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Text style={styles.unlinkText}>Unlink Device</Text>
+              )}
+            </Pressable>
+          )}
         </View>
       </Pressable>
     </Pressable>
@@ -133,7 +162,7 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     width: 420,
-    maxHeight: 500,
+    maxHeight: 540,
     borderRadius: 16,
     overflow: 'hidden',
   },
@@ -166,7 +195,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   list: {
-    maxHeight: 380,
+    maxHeight: 320,
   },
   loader: {
     paddingVertical: 40,
@@ -219,5 +248,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     color: '#FF6B6B',
+  },
+  unlinkButton: {
+    marginTop: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 59, 48, 0.25)',
+    alignItems: 'center',
+  },
+  unlinkButtonPressed: {
+    backgroundColor: 'rgba(255, 59, 48, 0.45)',
+  },
+  unlinkText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FF453A',
   },
 });

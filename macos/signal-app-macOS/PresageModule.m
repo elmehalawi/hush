@@ -45,6 +45,9 @@ RCT_EXTERN_METHOD(startReceiving:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(stopReceiving:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(unlink:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(markAsRead:(NSString *)channelId
                   upToTimestamp:(double)upToTimestamp
                   senderUuid:(NSString *)senderUuid
@@ -160,6 +163,22 @@ RCT_EXTERN_METHOD(sendMessageWithQuote:(NSString *)channelId
                   attachmentPaths:(NSArray *)attachmentPaths
                   linkPreviews:(NSArray *)linkPreviews
                   quote:(NSDictionary *)quote
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(startCall:(NSString *)channelId
+                  isVideo:(BOOL)isVideo
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(acceptCall:(double)callId
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(hangupCall:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(setCallMuted:(BOOL)muted
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 

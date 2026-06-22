@@ -6,6 +6,7 @@ import {ChatView} from '../components/ChatView';
 import {MessageInput, MessageInputHandle, ReplyingTo} from '../components/MessageInput';
 import {GlassContainerView} from '../components/GlassContainerView';
 import {DropTargetView} from '../components/DropTargetView';
+import {CallScreen} from '../components/CallScreen';
 import {SessionsModal} from '../components/SessionsModal';
 import {useColors} from '../theme/colors';
 
@@ -35,14 +36,20 @@ interface MainScreenProps {
   onSelectChannel: (channelId: string) => void;
   onReact?: (channelId: string, emoji: string, targetTimestamp: number, remove: boolean) => void;
   onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
+  onUnlink?: () => void;
+  onStartCall?: (channelId: string, isVideo: boolean) => void;
+  onAcceptCall?: (callId: number) => void;
+  onHangupCall?: () => void;
+  onToggleCallMute?: (muted: boolean) => void;
 }
 
-export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDownload}: MainScreenProps) {
+export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDownload, onUnlink, onStartCall, onAcceptCall, onHangupCall, onToggleCallMute}: MainScreenProps) {
   const c = useColors();
   const channels = useSignalStore(state => state.channels);
   const selectedChannelId = useSignalStore(state => state.selectedChannelId);
   const messages = useSignalStore(state => state.messages);
   const userId = useSignalStore(state => state.userId);
+  const activeCall = useSignalStore(state => state.activeCall);
   const setSelectedChannelId = useSignalStore(state => state.setSelectedChannelId);
 
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
@@ -193,6 +200,7 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
           messages={channelMessages}
           onReply={handleReply}
           onRetryDownload={onRetryDownload}
+          onStartCall={onStartCall}
         />
       </DropTargetView>
 
@@ -225,7 +233,17 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
       <SessionsModal
         visible={settingsVisible}
         onClose={() => setSettingsVisible(false)}
+        onUnlink={onUnlink}
       />
+
+      {activeCall && onAcceptCall && onHangupCall && onToggleCallMute && (
+        <CallScreen
+          activeCall={activeCall}
+          onAccept={onAcceptCall}
+          onHangup={onHangupCall}
+          onToggleMute={onToggleCallMute}
+        />
+      )}
     </View>
   );
 }

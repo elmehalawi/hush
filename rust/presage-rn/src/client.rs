@@ -23,9 +23,12 @@ use presage_store_sqlite::SqliteStore;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::callbacks::{LinkingCallback, MessageListener};
+use crate::call_manager::{HushCallManager, OutgoingSignaling};
+use crate::callbacks::{CallEventListener, LinkingCallback, MessageListener};
 use crate::error::SignalError;
-use crate::types::{Attachment, Channel, LinkPreview, LinkPreviewData, Mention, Message, MessageStatus, MessageType, Quote, Reaction, ReactionEvent, SessionInfo};
+use crate::signaling::{call_message_to_ringrtc, is_hangup_for_self, ringrtc_to_call_message};
+use crate::types::{Attachment, CallDirection, CallInfo, Channel, LinkPreview, LinkPreviewData, Mention, Message, MessageStatus, MessageType, Quote, Reaction, ReactionEvent, SessionInfo};
+use ringrtc::common::CallId;
 
 type PresageManager = presage::Manager<SqliteStore, Registered>;
 
@@ -54,6 +57,10 @@ pub struct SignalClient {
     inflight_downloads: Arc<RwLock<HashSet<String>>>,
     /// Outgoing message timestamps → list of reader UUIDs, persisted to read_receipts.json
     read_receipts: Arc<RwLock<HashMap<u64, Vec<String>>>>,
+    /// ringrtc call manager (lazy-initialized on first call)
+    call_manager: std::sync::OnceLock<Arc<tokio::sync::Mutex<HushCallManager>>>,
+    /// Call event listener for forwarding ringrtc events to Swift
+    call_listener: Arc<RwLock<Option<Arc<dyn CallEventListener>>>>,
 }
 
 #[uniffi::export]
@@ -127,6 +134,8 @@ impl SignalClient {
             listener: Arc::new(RwLock::new(None)),
             inflight_downloads: Arc::new(RwLock::new(HashSet::new())),
             read_receipts: Arc::new(RwLock::new(read_receipts)),
+            call_manager: std::sync::OnceLock::new(),
+            call_listener: Arc::new(RwLock::new(None)),
         }))
     }
 
@@ -1666,6 +1675,7 @@ impl SignalClient {
         let self_listener = self.listener.clone();
         let manager_for_stream = manager.clone();
         let manager_for_attachments = manager.clone();
+        let manager_for_signaling = manager.clone();
         let read_receipts = self.read_receipts.clone();
         let data_dir_for_receipts = self.data_dir.clone();
         let attachments_dir = self.data_dir.join("attachments");
@@ -1675,6 +1685,65 @@ impl SignalClient {
         let runtime_handle = self.runtime.handle().clone();
         let read_state = self.read_state.clone();
         let inflight = self.inflight_downloads.clone();
+
+        // Initialize call manager (ringrtc) — lazy, on first start_receiving
+        let device_id = manager.device_id();
+        let my_aci_uuid = my_user_id;
+
+        // Initialize call manager if not already done
+        let call_manager_arc: Option<Arc<tokio::sync::Mutex<HushCallManager>>>;
+        let mut signaling_rx_opt: Option<tokio::sync::mpsc::UnboundedReceiver<OutgoingSignaling>> = None;
+
+        if self.call_manager.get().is_some() {
+            call_manager_arc = Some(self.call_manager.get().unwrap().clone());
+        } else {
+            match HushCallManager::new(u32::from(device_id)) {
+                Ok(mut hcm) => {
+                    // Wire up the callback bridge
+                    let call_listener = self.call_listener.clone();
+                    struct CallbackBridge {
+                        listener: Arc<RwLock<Option<Arc<dyn CallEventListener>>>>,
+                    }
+                    impl crate::call_manager::CallEventCallback for CallbackBridge {
+                        fn on_call_state(&self, peer_id: String, state: String, call_id: u64) {
+                            if let Some(ref l) = *self.listener.read() {
+                                l.on_call_state_changed(peer_id, state, call_id);
+                            }
+                        }
+                        fn on_incoming_call(&self, peer_id: String, call_id: u64, is_video: bool) {
+                            if let Some(ref l) = *self.listener.read() {
+                                l.on_incoming_call(CallInfo {
+                                    remote_peer_id: peer_id,
+                                    call_id,
+                                    is_video,
+                                    direction: CallDirection::Incoming,
+                                });
+                            }
+                        }
+                        fn on_call_ended(&self, peer_id: String, reason: String) {
+                            if let Some(ref l) = *self.listener.read() {
+                                l.on_call_ended(peer_id, reason);
+                            }
+                        }
+                    }
+                    hcm.set_callback(Arc::new(CallbackBridge { listener: call_listener }));
+
+                    // Take signaling_rx before wrapping in Mutex
+                    signaling_rx_opt = hcm.take_signaling_rx();
+
+                    let arc = Arc::new(tokio::sync::Mutex::new(hcm));
+                    let _ = self.call_manager.set(arc.clone());
+                    call_manager_arc = Some(arc);
+                    info!("ringrtc CallManager initialized");
+                }
+                Err(e) => {
+                    warn!("Failed to initialize call manager: {}. Calls will be unavailable.", e);
+                    call_manager_arc = None;
+                }
+            }
+        }
+
+        let call_manager_for_receive = call_manager_arc.clone();
 
         std::thread::Builder::new()
             .name("signal-receive".to_string())
@@ -1688,6 +1757,41 @@ impl SignalClient {
                     let runtime_handle_inner = runtime_handle.clone();
                     runtime_handle.block_on(local.run_until(async move {
                         info!("Starting message receive loop");
+
+                        // Spawn outgoing call signaling send loop
+                        if let Some(mut signaling_rx) = signaling_rx_opt {
+                            let mut manager_for_sig = manager_for_signaling;
+                            tokio::task::spawn_local(async move {
+                                info!("Call signaling send loop started");
+                                while let Some(out) = signaling_rx.recv().await {
+                                    let call_msg = ringrtc_to_call_message(out.call_id, &out.message);
+                                    let mut final_msg = call_msg;
+                                    if let Some(dev) = out.receiver_device_id {
+                                        final_msg.destination_device_id = Some(dev as u32);
+                                    }
+                                    match out.recipient_id.parse::<Uuid>() {
+                                        Ok(uuid) => {
+                                            let aci = Aci::from(uuid);
+                                            let body = ContentBody::CallMessage(final_msg);
+                                            let now = std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default()
+                                                .as_millis() as u64;
+                                            if let Err(e) = manager_for_sig
+                                                .send_message(ServiceId::from(aci), body, now)
+                                                .await
+                                            {
+                                                warn!("Failed to send call signaling: {}", e);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            warn!("Invalid recipient UUID for signaling: {}", e);
+                                        }
+                                    }
+                                }
+                                info!("Call signaling send loop ended");
+                            });
+                        }
 
                         // Build group_identifier -> master_key_hex lookup for typing events.
                         // The TypingMessage proto carries group_identifier bytes, but channel IDs
@@ -1726,6 +1830,49 @@ impl SignalClient {
                                         let result = stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
                                             match received {
                                                 presage::model::messages::Received::Content(content) => {
+                                                    // Route CallMessage to ringrtc before process_content
+                                                    if let ContentBody::CallMessage(ref call_msg) = content.body {
+                                                        if let Some(ref cm_arc) = call_manager_for_receive {
+                                                            let sender_uuid = content.metadata.sender.raw_uuid();
+                                                            let sender_device = u32::from(content.metadata.sender_device);
+
+                                                            // Filter: ignore hangups for our own device
+                                                            if !is_hangup_for_self(call_msg, u32::from(device_id)) {
+                                                                // Check destination_device_id filter
+                                                                let dominated = call_msg.destination_device_id
+                                                                    .map(|d| d != u32::from(device_id))
+                                                                    .unwrap_or(false);
+
+                                                                if !dominated {
+                                                                    if let Some(parsed) = call_message_to_ringrtc(call_msg) {
+                                                                        // We need to get identity keys for the call
+                                                                        // For now, use empty identity keys (ringrtc works without them for basic calls)
+                                                                        let sender_identity = sender_uuid.as_bytes().to_vec();
+                                                                        let receiver_identity = my_aci_uuid.as_bytes().to_vec();
+
+                                                                        // Can't await inside stacker, so spawn a blocking task
+                                                                        let cm = cm_arc.clone();
+                                                                        let sid = sender_uuid.to_string();
+                                                                        let rt = runtime_handle_inner.clone();
+                                                                        rt.spawn(async move {
+                                                                            let mut cm_guard = cm.lock().await;
+                                                                            if let Err(e) = cm_guard.handle_incoming_signaling(
+                                                                                &sid,
+                                                                                sender_device,
+                                                                                parsed.call_id,
+                                                                                parsed.message,
+                                                                                sender_identity,
+                                                                                receiver_identity,
+                                                                            ) {
+                                                                                warn!("Failed to route signaling to ringrtc: {}", e);
+                                                                            }
+                                                                        });
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    // Fall through to process_content for call history (missed call pills)
                                                     process_content(&content, my_user_id, None)
                                                 }
                                                 presage::model::messages::Received::QueueEmpty => {
@@ -1979,6 +2126,32 @@ impl SignalClient {
         // Clear the shared listener (in-flight tasks hold their own Arc clones)
         *self.listener.write() = None;
         info!("Stop receiving requested");
+    }
+
+    /// Unlink this device and clear all local data
+    pub fn unlink(&self) -> Result<(), SignalError> {
+        // 1. Stop receiving messages
+        self.stop_receiving();
+        // 2. Reset receive guards so a fresh start_receiving() works after re-linking
+        self.is_receiving.store(false, Ordering::SeqCst);
+        // 3. Drop the presage manager
+        *self.manager.write() = None;
+        // 3. Clear user_id
+        *self.user_id.write() = None;
+        // 4. Clear in-memory state
+        *self.read_state.write() = HashMap::new();
+        *self.read_receipts.write() = HashMap::new();
+        *self.inflight_downloads.write() = HashSet::new();
+        // 5. Delete database file
+        let _ = std::fs::remove_file(&self.store_path);
+        // 6. Delete data subdirectories (attachments, avatars)
+        let _ = std::fs::remove_dir_all(self.data_dir.join("attachments"));
+        let _ = std::fs::remove_dir_all(self.data_dir.join("avatars"));
+        // 7. Delete persisted JSON files
+        let _ = std::fs::remove_file(self.data_dir.join("read_state.json"));
+        let _ = std::fs::remove_file(self.data_dir.join("read_receipts.json"));
+        info!("Device unlinked, all data cleared");
+        Ok(())
     }
 
     /// Send an emoji reaction to a message
@@ -2408,6 +2581,78 @@ impl SignalClient {
                 message: format!("Message {} not found in channel {}", message_id, channel_id),
             })
         })
+    }
+
+    // ---- Call methods ----
+
+    /// Set the call event listener (called from Swift)
+    pub fn set_call_listener(&self, listener: Box<dyn CallEventListener>) {
+        let listener: Arc<dyn CallEventListener> = Arc::from(listener);
+        *self.call_listener.write() = Some(listener);
+        info!("Call event listener set");
+    }
+
+
+    /// Start an outgoing call to a contact
+    pub fn start_call(&self, channel_id: String, is_video: bool) -> Result<(), SignalError> {
+        let cm_arc = self.call_manager.get().ok_or(SignalError::InternalError {
+            message: "Call manager not initialized. Call startReceiving first.".to_string(),
+        })?;
+
+        let cm_arc = cm_arc.clone();
+        self.runtime.spawn(async move {
+            let mut cm = cm_arc.lock().await;
+            if let Err(e) = cm.start_outgoing_call(&channel_id, is_video) {
+                warn!("Failed to start call: {}", e);
+            }
+        });
+        Ok(())
+    }
+
+    /// Accept an incoming call
+    pub fn accept_call(&self, call_id: u64) -> Result<(), SignalError> {
+        let cm_arc = self.call_manager.get().ok_or(SignalError::InternalError {
+            message: "Call manager not initialized.".to_string(),
+        })?;
+
+        let cm_arc = cm_arc.clone();
+        self.runtime.spawn(async move {
+            let mut cm = cm_arc.lock().await;
+            if let Err(e) = cm.accept_call(CallId::new(call_id)) {
+                warn!("Failed to accept call: {}", e);
+            }
+        });
+        Ok(())
+    }
+
+    /// Hang up the current call
+    pub fn hangup_call(&self) -> Result<(), SignalError> {
+        let cm_arc = self.call_manager.get().ok_or(SignalError::InternalError {
+            message: "Call manager not initialized.".to_string(),
+        })?;
+
+        let cm_arc = cm_arc.clone();
+        self.runtime.spawn(async move {
+            let mut cm = cm_arc.lock().await;
+            if let Err(e) = cm.hangup() {
+                warn!("Failed to hangup: {}", e);
+            }
+        });
+        Ok(())
+    }
+
+    /// Toggle microphone mute
+    pub fn set_call_muted(&self, muted: bool) -> Result<(), SignalError> {
+        let cm_arc = self.call_manager.get().ok_or(SignalError::InternalError {
+            message: "Call manager not initialized.".to_string(),
+        })?;
+
+        let cm_arc = cm_arc.clone();
+        self.runtime.spawn(async move {
+            let cm = cm_arc.lock().await;
+            cm.set_muted(muted);
+        });
+        Ok(())
     }
 }
 

@@ -1,6 +1,6 @@
 import {useEffect, useRef, useCallback} from 'react';
 import {NativeModules, NativeEventEmitter, Platform} from 'react-native';
-import {useSignalStore, Message, Channel, Attachment, LinkPreview, Mention, Quote, Reaction, ReactionEvent} from '../store/signalStore';
+import {useSignalStore, Message, Channel, Attachment, LinkPreview, Mention, Quote, Reaction, ReactionEvent, ActiveCall} from '../store/signalStore';
 
 // Get the native module
 const {PresageModule} = NativeModules;
@@ -398,6 +398,69 @@ export function useSignalClient() {
     [],
   );
 
+  // Call methods
+  const startCall = useCallback(
+    async (channelId: string, isVideo: boolean) => {
+      if (!PresageModule || !isInitialized.current) return;
+
+      // Optimistic state update
+      useSignalStore.getState().setActiveCall({
+        remotePeerId: channelId,
+        callId: 0, // Will be updated by onCallStateChanged
+        isVideo,
+        status: 'outgoing',
+        isMuted: false,
+      });
+
+      try {
+        await PresageModule.startCall(channelId, isVideo);
+      } catch (error) {
+        console.error('Failed to start call:', error);
+        useSignalStore.getState().setActiveCall(null);
+      }
+    },
+    [],
+  );
+
+  const acceptCall = useCallback(
+    async (callId: number) => {
+      if (!PresageModule || !isInitialized.current) return;
+
+      try {
+        await PresageModule.acceptCall(callId);
+      } catch (error) {
+        console.error('Failed to accept call:', error);
+      }
+    },
+    [],
+  );
+
+  const hangupCall = useCallback(async () => {
+    if (!PresageModule) return;
+
+    try {
+      await PresageModule.hangupCall();
+    } catch (error) {
+      console.error('Failed to hangup call:', error);
+    }
+    useSignalStore.getState().setActiveCall(null);
+  }, []);
+
+  const setCallMuted = useCallback(
+    async (muted: boolean) => {
+      if (!PresageModule || !isInitialized.current) return;
+
+      useSignalStore.getState().setCallMuted(muted);
+
+      try {
+        await PresageModule.setCallMuted(muted);
+      } catch (error) {
+        console.error('Failed to set call muted:', error);
+      }
+    },
+    [],
+  );
+
   // Start receiving messages
   const startReceiving = useCallback(async () => {
     if (!PresageModule || !isInitialized.current) return;
@@ -467,6 +530,17 @@ export function useSignalClient() {
     },
     [],
   );
+
+  // Unlink this device and clear all local data
+  const unlink = useCallback(async () => {
+    if (!PresageModule) return;
+    try {
+      await PresageModule.unlink();
+      useSignalStore.getState().resetStore();
+    } catch (error) {
+      console.error('Failed to unlink:', error);
+    }
+  }, []);
 
   // Typing timeout management
   const typingTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -583,6 +657,46 @@ export function useSignalClient() {
           typingTimeouts.current.set(timeoutKey, timeout);
         }
       }),
+      presageEventEmitter.addListener('onIncomingCall', (event: {remotePeerId: string; callId: number; isVideo: boolean}) => {
+        const {setActiveCall} = useSignalStore.getState();
+        setActiveCall({
+          remotePeerId: event.remotePeerId,
+          callId: event.callId,
+          isVideo: event.isVideo,
+          status: 'incoming',
+          isMuted: false,
+        });
+      }),
+      presageEventEmitter.addListener('onCallStateChanged', (event: {remotePeerId: string; state: string; callId: number}) => {
+        const {activeCall, updateCallStatus, setActiveCall} = useSignalStore.getState();
+        const state = event.state as ActiveCall['status'];
+        if (activeCall) {
+          updateCallStatus(state);
+          // Also update callId if it was initially 0 (outgoing call)
+          if (activeCall.callId === 0 && event.callId !== 0) {
+            setActiveCall({...activeCall, callId: event.callId, status: state});
+          }
+        } else {
+          // Call state changed but no active call — set one up (e.g. outgoing)
+          setActiveCall({
+            remotePeerId: event.remotePeerId,
+            callId: event.callId,
+            isVideo: false,
+            status: state,
+            isMuted: false,
+          });
+        }
+      }),
+      presageEventEmitter.addListener('onCallEnded', (event: {remotePeerId: string; reason: string}) => {
+        const {activeCall, setActiveCall} = useSignalStore.getState();
+        if (activeCall) {
+          // Show "ended" briefly, then clear
+          setActiveCall({...activeCall, status: 'ended'});
+          setTimeout(() => {
+            useSignalStore.getState().setActiveCall(null);
+          }, 1500);
+        }
+      }),
       presageEventEmitter.addListener('onError', (event: {message: string}) => {
         console.error('Signal error:', event.message);
         // If we're in linking state, update to failed
@@ -620,5 +734,10 @@ export function useSignalClient() {
     stopReceiving,
     markAsRead,
     retryDownload,
+    unlink,
+    startCall,
+    acceptCall,
+    hangupCall,
+    setCallMuted,
   };
 }

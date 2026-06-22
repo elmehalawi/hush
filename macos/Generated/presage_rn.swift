@@ -497,6 +497,11 @@ private struct FfiConverterString: FfiConverter {
  */
 public protocol SignalClientProtocol: AnyObject {
     /**
+     * Accept an incoming call
+     */
+    func acceptCall(callId: UInt64) throws
+
+    /**
      * Fetch profile avatars for all contacts and group avatars from the network.
      * Writes avatar images to disk so that get_channels() can return their paths.
      */
@@ -521,6 +526,11 @@ public protocol SignalClientProtocol: AnyObject {
      * Get the current user's UUID (if linked)
      */
     func getUserId() -> String?
+
+    /**
+     * Hang up the current call
+     */
+    func hangupCall() throws
 
     /**
      * Check if the client is linked to a Signal account
@@ -579,6 +589,21 @@ public protocol SignalClientProtocol: AnyObject {
     func sendReadReceipt(senderUuid: String, timestamps: [UInt64]) throws
 
     /**
+     * Set the call event listener (called from Swift)
+     */
+    func setCallListener(listener: CallEventListener)
+
+    /**
+     * Toggle microphone mute
+     */
+    func setCallMuted(muted: Bool) throws
+
+    /**
+     * Start an outgoing call to a contact
+     */
+    func startCall(channelId: String, isVideo: Bool) throws
+
+    /**
      * Start the device linking process with callbacks
      * This function blocks until linking is complete
      * The callback's on_qr_code_url will be called with the QR URL to display
@@ -597,6 +622,11 @@ public protocol SignalClientProtocol: AnyObject {
      * Stop receiving messages
      */
     func stopReceiving()
+
+    /**
+     * Unlink this device and clear all local data
+     */
+    func unlink() throws
 }
 
 /**
@@ -663,6 +693,15 @@ open class SignalClient:
     }
 
     /**
+     * Accept an incoming call
+     */
+    open func acceptCall(callId: UInt64) throws { try rustCallWithError(FfiConverterTypeSignalError.lift) {
+        uniffi_presage_rn_fn_method_signalclient_accept_call(self.uniffiClonePointer(),
+                                                             FfiConverterUInt64.lower(callId), $0)
+    }
+    }
+
+    /**
      * Fetch profile avatars for all contacts and group avatars from the network.
      * Writes avatar images to disk so that get_channels() can return their paths.
      */
@@ -707,6 +746,14 @@ open class SignalClient:
         return try! FfiConverterOptionString.lift(try! rustCall {
             uniffi_presage_rn_fn_method_signalclient_get_user_id(self.uniffiClonePointer(), $0)
         })
+    }
+
+    /**
+     * Hang up the current call
+     */
+    open func hangupCall() throws { try rustCallWithError(FfiConverterTypeSignalError.lift) {
+        uniffi_presage_rn_fn_method_signalclient_hangup_call(self.uniffiClonePointer(), $0)
+    }
     }
 
     /**
@@ -827,6 +874,34 @@ open class SignalClient:
     }
 
     /**
+     * Set the call event listener (called from Swift)
+     */
+    open func setCallListener(listener: CallEventListener) { try! rustCall {
+        uniffi_presage_rn_fn_method_signalclient_set_call_listener(self.uniffiClonePointer(),
+                                                                   FfiConverterCallbackInterfaceCallEventListener.lower(listener), $0)
+    }
+    }
+
+    /**
+     * Toggle microphone mute
+     */
+    open func setCallMuted(muted: Bool) throws { try rustCallWithError(FfiConverterTypeSignalError.lift) {
+        uniffi_presage_rn_fn_method_signalclient_set_call_muted(self.uniffiClonePointer(),
+                                                                FfiConverterBool.lower(muted), $0)
+    }
+    }
+
+    /**
+     * Start an outgoing call to a contact
+     */
+    open func startCall(channelId: String, isVideo: Bool) throws { try rustCallWithError(FfiConverterTypeSignalError.lift) {
+        uniffi_presage_rn_fn_method_signalclient_start_call(self.uniffiClonePointer(),
+                                                            FfiConverterString.lower(channelId),
+                                                            FfiConverterBool.lower(isVideo), $0)
+    }
+    }
+
+    /**
      * Start the device linking process with callbacks
      * This function blocks until linking is complete
      * The callback's on_qr_code_url will be called with the QR URL to display
@@ -855,6 +930,14 @@ open class SignalClient:
      */
     open func stopReceiving() { try! rustCall {
         uniffi_presage_rn_fn_method_signalclient_stop_receiving(self.uniffiClonePointer(), $0)
+    }
+    }
+
+    /**
+     * Unlink this device and clear all local data
+     */
+    open func unlink() throws { try rustCallWithError(FfiConverterTypeSignalError.lift) {
+        uniffi_presage_rn_fn_method_signalclient_unlink(self.uniffiClonePointer(), $0)
     }
     }
 }
@@ -1037,6 +1120,86 @@ public func FfiConverterTypeAttachment_lift(_ buf: RustBuffer) throws -> Attachm
 #endif
 public func FfiConverterTypeAttachment_lower(_ value: Attachment) -> RustBuffer {
     return FfiConverterTypeAttachment.lower(value)
+}
+
+/**
+ * Information about an active call
+ */
+public struct CallInfo {
+    public var remotePeerId: String
+    public var callId: UInt64
+    public var isVideo: Bool
+    public var direction: CallDirection
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(remotePeerId: String, callId: UInt64, isVideo: Bool, direction: CallDirection) {
+        self.remotePeerId = remotePeerId
+        self.callId = callId
+        self.isVideo = isVideo
+        self.direction = direction
+    }
+}
+
+extension CallInfo: Equatable, Hashable {
+    public static func == (lhs: CallInfo, rhs: CallInfo) -> Bool {
+        if lhs.remotePeerId != rhs.remotePeerId {
+            return false
+        }
+        if lhs.callId != rhs.callId {
+            return false
+        }
+        if lhs.isVideo != rhs.isVideo {
+            return false
+        }
+        if lhs.direction != rhs.direction {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(remotePeerId)
+        hasher.combine(callId)
+        hasher.combine(isVideo)
+        hasher.combine(direction)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCallInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CallInfo {
+        return
+            try CallInfo(
+                remotePeerId: FfiConverterString.read(from: &buf),
+                callId: FfiConverterUInt64.read(from: &buf),
+                isVideo: FfiConverterBool.read(from: &buf),
+                direction: FfiConverterTypeCallDirection.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: CallInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.remotePeerId, into: &buf)
+        FfiConverterUInt64.write(value.callId, into: &buf)
+        FfiConverterBool.write(value.isVideo, into: &buf)
+        FfiConverterTypeCallDirection.write(value.direction, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCallInfo_lift(_ buf: RustBuffer) throws -> CallInfo {
+    return try FfiConverterTypeCallInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCallInfo_lower(_ value: CallInfo) -> RustBuffer {
+    return FfiConverterTypeCallInfo.lower(value)
 }
 
 /**
@@ -2225,6 +2388,61 @@ public func FfiConverterTypeSessionInfo_lower(_ value: SessionInfo) -> RustBuffe
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * Direction of a call (incoming or outgoing)
+ */
+
+public enum CallDirection {
+    case incoming
+    case outgoing
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCallDirection: FfiConverterRustBuffer {
+    typealias SwiftType = CallDirection
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CallDirection {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        case 1: return .incoming
+
+        case 2: return .outgoing
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: CallDirection, into buf: inout [UInt8]) {
+        switch value {
+        case .incoming:
+            writeInt(&buf, Int32(1))
+
+        case .outgoing:
+            writeInt(&buf, Int32(2))
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCallDirection_lift(_ buf: RustBuffer) throws -> CallDirection {
+    return try FfiConverterTypeCallDirection.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCallDirection_lower(_ value: CallDirection) -> RustBuffer {
+    return FfiConverterTypeCallDirection.lower(value)
+}
+
+extension CallDirection: Equatable, Hashable {}
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Linking state for the QR code flow
  */
 
@@ -2617,6 +2835,172 @@ extension SignalError: Foundation.LocalizedError {
 }
 
 /**
+ * Callback interface for call events (ringrtc → Swift/React Native)
+ */
+public protocol CallEventListener: AnyObject {
+    /**
+     * Called when an incoming call is received
+     */
+    func onIncomingCall(call: CallInfo)
+
+    /**
+     * Called when the call state changes (outgoing, ringing, connected, reconnecting)
+     */
+    func onCallStateChanged(remotePeerId: String, state: String, callId: UInt64)
+
+    /**
+     * Called when a call ends (normal hangup, rejected, error, etc.)
+     */
+    func onCallEnded(remotePeerId: String, reason: String)
+}
+
+// Magic number for the Rust proxy to call using the same mechanism as every other method,
+// to free the callback once it's dropped by Rust.
+private let IDX_CALLBACK_FREE: Int32 = 0
+// Callback return codes
+private let UNIFFI_CALLBACK_SUCCESS: Int32 = 0
+private let UNIFFI_CALLBACK_ERROR: Int32 = 1
+private let UNIFFI_CALLBACK_UNEXPECTED_ERROR: Int32 = 2
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+private enum UniffiCallbackInterfaceCallEventListener {
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    static var vtable: UniffiVTableCallbackInterfaceCallEventListener = .init(
+        onIncomingCall: { (
+            uniffiHandle: UInt64,
+            call: RustBuffer,
+            _: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceCallEventListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.onIncomingCall(
+                    call: FfiConverterTypeCallInfo.lift(call)
+                )
+            }
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onCallStateChanged: { (
+            uniffiHandle: UInt64,
+            remotePeerId: RustBuffer,
+            state: RustBuffer,
+            callId: UInt64,
+            _: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceCallEventListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.onCallStateChanged(
+                    remotePeerId: FfiConverterString.lift(remotePeerId),
+                    state: FfiConverterString.lift(state),
+                    callId: FfiConverterUInt64.lift(callId)
+                )
+            }
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onCallEnded: { (
+            uniffiHandle: UInt64,
+            remotePeerId: RustBuffer,
+            reason: RustBuffer,
+            _: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceCallEventListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.onCallEnded(
+                    remotePeerId: FfiConverterString.lift(remotePeerId),
+                    reason: FfiConverterString.lift(reason)
+                )
+            }
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        uniffiFree: { (uniffiHandle: UInt64) in
+            let result = try? FfiConverterCallbackInterfaceCallEventListener.handleMap.remove(handle: uniffiHandle)
+            if result == nil {
+                print("Uniffi callback interface CallEventListener: handle missing in uniffiFree")
+            }
+        }
+    )
+}
+
+private func uniffiCallbackInitCallEventListener() {
+    uniffi_presage_rn_fn_init_callback_vtable_calleventlistener(&UniffiCallbackInterfaceCallEventListener.vtable)
+}
+
+// FfiConverter protocol for callback interfaces
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private enum FfiConverterCallbackInterfaceCallEventListener {
+    fileprivate static var handleMap = UniffiHandleMap<CallEventListener>()
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+extension FfiConverterCallbackInterfaceCallEventListener: FfiConverter {
+    typealias SwiftType = CallEventListener
+    typealias FfiType = UInt64
+
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
+    public static func lift(_ handle: UInt64) throws -> SwiftType {
+        try handleMap.get(handle: handle)
+    }
+
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
+    public static func lower(_ v: SwiftType) -> UInt64 {
+        return handleMap.insert(obj: v)
+    }
+
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
+    public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(v))
+    }
+}
+
+/**
  * Callback interface for the device linking process
  */
 public protocol LinkingCallback: AnyObject {
@@ -2635,14 +3019,6 @@ public protocol LinkingCallback: AnyObject {
      */
     func onLinkingError(error: String)
 }
-
-// Magic number for the Rust proxy to call using the same mechanism as every other method,
-// to free the callback once it's dropped by Rust.
-private let IDX_CALLBACK_FREE: Int32 = 0
-// Callback return codes
-private let UNIFFI_CALLBACK_SUCCESS: Int32 = 0
-private let UNIFFI_CALLBACK_ERROR: Int32 = 1
-private let UNIFFI_CALLBACK_UNEXPECTED_ERROR: Int32 = 2
 
 // Put the implementation in a struct so we don't pollute the top-level namespace
 private enum UniffiCallbackInterfaceLinkingCallback {
@@ -3470,6 +3846,9 @@ private var initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if uniffi_presage_rn_checksum_method_signalclient_accept_call() != 54245 {
+        return InitializationResult.apiChecksumMismatch
+    }
     if uniffi_presage_rn_checksum_method_signalclient_fetch_all_avatars() != 14777 {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3483,6 +3862,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_get_user_id() != 54671 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_signalclient_hangup_call() != 15862 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_signalclient_is_linked() != 59372 {
@@ -3515,6 +3897,15 @@ private var initializationResult: InitializationResult = {
     if uniffi_presage_rn_checksum_method_signalclient_send_read_receipt() != 45772 {
         return InitializationResult.apiChecksumMismatch
     }
+    if uniffi_presage_rn_checksum_method_signalclient_set_call_listener() != 53274 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_signalclient_set_call_muted() != 58634 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_signalclient_start_call() != 5776 {
+        return InitializationResult.apiChecksumMismatch
+    }
     if uniffi_presage_rn_checksum_method_signalclient_start_linking() != 23009 {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3524,7 +3915,19 @@ private var initializationResult: InitializationResult = {
     if uniffi_presage_rn_checksum_method_signalclient_stop_receiving() != 44465 {
         return InitializationResult.apiChecksumMismatch
     }
+    if uniffi_presage_rn_checksum_method_signalclient_unlink() != 32777 {
+        return InitializationResult.apiChecksumMismatch
+    }
     if uniffi_presage_rn_checksum_constructor_signalclient_new() != 63884 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_calleventlistener_on_incoming_call() != 41354 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_calleventlistener_on_call_state_changed() != 35737 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_presage_rn_checksum_method_calleventlistener_on_call_ended() != 64819 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_presage_rn_checksum_method_linkingcallback_on_qr_code_url() != 50761 {
@@ -3561,6 +3964,7 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
 
+    uniffiCallbackInitCallEventListener()
     uniffiCallbackInitLinkingCallback()
     uniffiCallbackInitMessageListener()
     return InitializationResult.ok
