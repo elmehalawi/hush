@@ -31,6 +31,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 mime_guess = "2"
 rusqlite = { version = "0.38", git = "https://github.com/whisperfish/rusqlite", rev = "2a42b3354c9194700d08aa070f70a131a470e7dc" }
+ringrtc = { path = "../ringrtc/src/rust", features = ["prebuilt_webrtc"] }
+prost = "0.14"
+anyhow = "1"
 
 [build-dependencies]
 uniffi = { version = "0.28", features = ["build"] }
@@ -41,3 +44,12 @@ uniffi = { version = "0.28", features = ["build"] }
 "curve25519-dalek" = { git = 'https://github.com/signalapp/curve25519-dalek', tag = 'signal-curve25519-4.1.3' }
 # presage-store-sqlite needs sqlcipher support from this fork
 libsqlite3-sys = { version = "0.36.0", git = "https://github.com/whisperfish/rusqlite", rev = "2a42b3354c9194700d08aa070f70a131a470e7dc" }
+# Vendored forks that relax the `hax-lib = "=0.3.5"` pin to ">=0.3.5" (and the
+# matching hax-lib-macros-types pin) so presage's libsignal v0.87.4 can coexist
+# with ringrtc's libsignal v0.89.2. The only change from the crates.io sources is
+# the relaxed version requirement; see vendor/ for the full sources.
+libcrux-ml-kem = { path = "vendor/libcrux-ml-kem" }
+libcrux-intrinsics = { path = "vendor/libcrux-intrinsics" }
+libcrux-sha3 = { path = "vendor/libcrux-sha3" }
+libcrux-secrets = { path = "vendor/libcrux-secrets" }
+core-models = { path = "vendor/core-models" }

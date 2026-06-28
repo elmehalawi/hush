@@ -138,6 +138,13 @@ cargo run --bin uniffi-bindgen generate \
 cp "$GENERATED_DIR/presage_rn.swift" "$SCRIPT_DIR/presage_rn.swift"
 cp "$GENERATED_DIR/presage_rn.swift" "$SCRIPT_DIR/rust/macos/Generated/presage_rn.swift" 2>/dev/null || true
 
+# Copy FFI header to all locations that might be picked up by bridging header
+cp "$GENERATED_DIR/presage_rnFFI.h" "$MACOS_DIR/signal-app-macOS/presage_rnFFI.h" 2>/dev/null || true
+cp "$GENERATED_DIR/presage_rnFFI.h" "$SCRIPT_DIR/presage_rnFFI.h" 2>/dev/null || true
+cp "$GENERATED_DIR/presage_rnFFI.h" "$SCRIPT_DIR/rust/generated/presage_rnFFI.h" 2>/dev/null || true
+cp "$GENERATED_DIR/presage_rnFFI.h" "$SCRIPT_DIR/rust/macos/Generated/presage_rnFFI.h" 2>/dev/null || true
+cp "$GENERATED_DIR/presage_rnFFI.h" "$RUST_DIR/generated/presage_rnFFI.h" 2>/dev/null || true
+
 echo "  Generated: $GENERATED_DIR/presage_rn.swift"
 
 # Step 2.5: Copy the static library to the Generated directory for Xcode linking
@@ -150,6 +157,13 @@ if [ -f "$STATIC_LIB" ]; then
 else
     log_error "Static library not found at $STATIC_LIB"
     exit 1
+fi
+
+# Copy libwebrtc.a for ringrtc linking
+WEBRTC_LIB="$SCRIPT_DIR/rust/ringrtc/out/release/obj/libwebrtc.a"
+if [ -f "$WEBRTC_LIB" ]; then
+    cp "$WEBRTC_LIB" "$GENERATED_DIR/"
+    echo "  Copied: $GENERATED_DIR/libwebrtc.a"
 fi
 
 # Step 2.6: Build whisper-transcribe Rust library

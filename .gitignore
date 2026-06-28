@@ -33,6 +33,8 @@ yarn-error.log
 rust/presage-rn/target/
 rust/whisper-transcribe/target/
 rust/test-provisioning/target/
+rust/hush-call/target/
+rust/ringrtc/target/
 
 # Build artifacts (static libraries)
 *.a
