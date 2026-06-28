@@ -204,6 +204,22 @@ pub struct SessionInfo {
     pub is_self: bool,
 }
 
+/// Direction of a call (incoming or outgoing)
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum CallDirection {
+    Incoming,
+    Outgoing,
+}
+
+/// Information about an active call
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct CallInfo {
+    pub remote_peer_id: String,
+    pub call_id: u64,
+    pub is_video: bool,
+    pub direction: CallDirection,
+}
+
 /// Linking state for the QR code flow
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum LinkingState {

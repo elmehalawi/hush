@@ -1,6 +1,6 @@
 //! Callback interfaces for receiving messages and events
 
-use crate::types::{Attachment, Channel, Message, ReactionEvent};
+use crate::types::{Attachment, CallInfo, Channel, Message, ReactionEvent};
 
 /// Callback interface for receiving real-time updates from Signal
 #[uniffi::export(callback_interface)]
@@ -40,6 +40,19 @@ pub trait MessageListener: Send + Sync {
 
     /// Called when a contact starts or stops typing
     fn on_typing(&self, channel_id: String, sender_id: String, started: bool);
+}
+
+/// Callback interface for call events (ringrtc → Swift/React Native)
+#[uniffi::export(callback_interface)]
+pub trait CallEventListener: Send + Sync {
+    /// Called when an incoming call is received
+    fn on_incoming_call(&self, call: CallInfo);
+
+    /// Called when the call state changes (outgoing, ringing, connected, reconnecting)
+    fn on_call_state_changed(&self, remote_peer_id: String, state: String, call_id: u64);
+
+    /// Called when a call ends (normal hangup, rejected, error, etc.)
+    fn on_call_ended(&self, remote_peer_id: String, reason: String);
 }
 
 /// Callback interface for the device linking process

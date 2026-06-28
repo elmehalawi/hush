@@ -1,6 +1,6 @@
 import React, {useRef, useEffect, useMemo} from 'react';
-import {View, ScrollView, Text, StyleSheet, Image} from 'react-native';
-import {Message, Attachment, Channel, useSignalStore} from '../store/signalStore';
+import {View, ScrollView, Text, StyleSheet, Image, TouchableOpacity} from 'react-native';
+import {Message, Attachment, Channel, useSignalStore, channelDisplayName} from '../store/signalStore';
 import {MessageBubble} from './MessageBubble';
 import {GlassView} from './GlassView';
 import {GradientBlurView} from './GradientBlurView';
@@ -66,6 +66,7 @@ interface ChatViewProps {
   messages: Message[];
   onReply?: (message: Message) => void;
   onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
+  onStartCall?: (channelId: string, isVideo: boolean) => void;
 }
 
 const EMPTY_TYPING: {senderId: string; timestamp: number}[] = [];
@@ -95,7 +96,7 @@ function TypingSection({channelId, isGroup, scrollViewRef}: {channelId: string; 
   );
 }
 
-export function ChatView({channel, messages, onReply, onRetryDownload}: ChatViewProps) {
+export function ChatView({channel, messages, onReply, onRetryDownload, onStartCall}: ChatViewProps) {
   const c = useColors();
   const scrollViewRef = useRef<ScrollView>(null);
   const userId = useSignalStore(state => state.userId);
@@ -174,7 +175,8 @@ export function ChatView({channel, messages, onReply, onRetryDownload}: ChatView
     );
   }
 
-  const initial = channel.isGroup ? '#' : channel.name.charAt(0).toUpperCase();
+  const displayName = channelDisplayName(channel);
+  const initial = channel.isGroup ? '#' : displayName.charAt(0).toUpperCase();
 
   return (
     <View style={styles.container}>
@@ -263,8 +265,8 @@ export function ChatView({channel, messages, onReply, onRetryDownload}: ChatView
       <GradientBlurView style={styles.topBlur} />
 
       {/* Small glass pill header */}
-      <View style={styles.headerPillContainer} pointerEvents="none">
-        <View style={styles.headerPillWrapper}>
+      <View style={styles.headerPillContainer} pointerEvents="box-none">
+        <View style={styles.headerPillWrapper} pointerEvents="box-none">
           <View style={styles.pillAvatar}>
             {channel.avatarPath ? (
               <Image
@@ -278,11 +280,26 @@ export function ChatView({channel, messages, onReply, onRetryDownload}: ChatView
               </>
             )}
           </View>
-          <View style={styles.headerPill}>
-            <GlassView style={StyleSheet.absoluteFill} cornerRadius={20} />
-            <Text style={[styles.pillName, {color: c.label}]} numberOfLines={1}>
-              {channel.name}
-            </Text>
+          <View style={styles.headerNameRow}>
+            {!channel.isGroup && onStartCall ? (
+              <TouchableOpacity
+                style={styles.callButton}
+                onPress={() => onStartCall(channel.id, false)}
+                activeOpacity={0.7}
+              >
+                <GlassView style={StyleSheet.absoluteFill} cornerRadius={14} />
+                <Text style={styles.callButtonIcon}>{'\u{1F4DE}\uFE0E'}</Text>
+              </TouchableOpacity>
+            ) : null}
+            <View style={styles.headerPill}>
+              <GlassView style={StyleSheet.absoluteFill} cornerRadius={20} />
+              <Text style={[styles.pillName, {color: c.label}]} numberOfLines={1}>
+                {displayName}
+              </Text>
+            </View>
+            {!channel.isGroup && onStartCall ? (
+              <View style={styles.callButtonSpacer} />
+            ) : null}
           </View>
         </View>
       </View>
@@ -329,12 +346,33 @@ const styles = StyleSheet.create({
   headerPillWrapper: {
     alignItems: 'center',
   },
+  headerNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: -6,
+    gap: 4,
+  },
+  callButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  callButtonSpacer: {
+    width: 28,
+    height: 28,
+  },
+  callButtonIcon: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
   headerPill: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 8,
     paddingHorizontal: 20,
-    marginTop: -6,
   },
   pillAvatar: {
     width: 40,

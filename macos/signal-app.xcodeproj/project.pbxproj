@@ -533,12 +533,21 @@
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
+					"-lwebrtc",
 					"-framework",
 					Metal,
 					"-framework",
 					Accelerate,
 					"-framework",
 					MetalPerformanceShadersGraph,
+					"-framework",
+					CoreAudio,
+					"-framework",
+					AudioToolbox,
+					"-framework",
+					CoreGraphics,
+					"-framework",
+					ScreenCaptureKit,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = Hush;
@@ -574,12 +583,21 @@
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
+					"-lwebrtc",
 					"-framework",
 					Metal,
 					"-framework",
 					Accelerate,
 					"-framework",
 					MetalPerformanceShadersGraph,
+					"-framework",
+					CoreAudio,
+					"-framework",
+					AudioToolbox,
+					"-framework",
+					CoreGraphics,
+					"-framework",
+					ScreenCaptureKit,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = Hush;
