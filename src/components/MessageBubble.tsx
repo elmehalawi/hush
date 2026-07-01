@@ -513,8 +513,13 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
     </>
   ) : null;
 
-  // First media attachment for context menu file actions
-  const firstMediaAttachment = mediaAttachments.length > 0 ? mediaAttachments[0] : null;
+  // First downloaded attachment for context menu file actions (any type, not
+  // just media — so PDFs, docx, etc. also get Save/Open items). Prefer media,
+  // then fall back to any non-audio file that has been downloaded.
+  const firstFileAttachment =
+    mediaAttachments.find(a => a.filePath) ||
+    nonAudioAttachments.find(a => a.filePath) ||
+    null;
 
   const handleBubblePressIn = useCallback((e: any) => {
     if (e.nativeEvent?.button === 2) {
@@ -528,11 +533,11 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
         authorName,
         message.channelId,
         myReaction?.emoji || '',
-        firstMediaAttachment?.filePath || '',
-        firstMediaAttachment?.fileName || '',
+        firstFileAttachment?.filePath || '',
+        firstFileAttachment?.fileName || '',
       );
     }
-  }, [message.body, message.timestamp, message.senderId, message.senderName, message.isOutgoing, message.channelId, myReaction?.emoji, firstMediaAttachment?.filePath, firstMediaAttachment?.fileName]);
+  }, [message.body, message.timestamp, message.senderId, message.senderName, message.isOutgoing, message.channelId, myReaction?.emoji, firstFileAttachment?.filePath, firstFileAttachment?.fileName]);
 
   const audioContent = hasAudio ? (
     <View>
