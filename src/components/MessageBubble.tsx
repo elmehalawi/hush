@@ -3,8 +3,10 @@ import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeMod
 import {Message, Attachment, Mention, Reaction, useSignalStore, resolveContactName} from '../store/signalStore';
 import {AudioAttachmentView} from './AudioAttachmentView';
 import {AlbumView, AlbumViewHandle} from './AlbumView';
+import {AttachmentThumbnail} from './AttachmentThumbnail';
 import {LinkPreviewCard} from './LinkPreviewCard';
 import {AnimatedSwipeGestureView} from './NativeSwipeGestureView';
+import {isImageType, isVideoType, isAudioType} from '../utils/attachmentIcon';
 import {useColors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
@@ -141,18 +143,6 @@ function LinkifiedText({text, isOutgoing, mentions, channelId}: {text: string; i
   );
 }
 
-function isImageType(contentType: string) {
-  return contentType.startsWith('image/');
-}
-
-function isVideoType(contentType: string) {
-  return contentType.startsWith('video/');
-}
-
-function isAudioType(contentType: string) {
-  return contentType.startsWith('audio/');
-}
-
 function AttachmentView({
   attachment,
   isOutgoing,
@@ -247,11 +237,20 @@ function AttachmentView({
     );
   }
 
-  // Generic file attachment
+  // Generic file attachment — render the native OS file-type icon (shared with
+  // the compose-bar attachment strip via AttachmentThumbnail).
   return (
     <Pressable onPressIn={handlePressIn}>
       <View style={[styles.fileAttachment, isOutgoing && styles.fileAttachmentOutgoing]}>
-        <Text style={[styles.fileIcon]}>{'📎'}</Text>
+        <AttachmentThumbnail
+          size={40}
+          contentType={attachment.contentType}
+          filePath={attachment.filePath}
+          thumbnailPath={attachment.thumbnailPath}
+          background={false}
+          borderRadius={6}
+          style={styles.fileIcon}
+        />
         <Text
           style={[styles.fileName, {color: c.incomingBody}, isOutgoing && styles.fileNameOutgoing]}
           numberOfLines={2}>
@@ -840,8 +839,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   fileIcon: {
-    fontSize: 20,
-    marginRight: 8,
+    marginRight: 10,
   },
   fileName: {
     fontSize: 13,

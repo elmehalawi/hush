@@ -11,7 +11,6 @@ import {
   TextInput,
   StyleSheet,
   useColorScheme,
-  Image,
   Text,
   ScrollView,
   TouchableOpacity,
@@ -21,6 +20,7 @@ import {
 import {GlassView} from './GlassView';
 import {GlassButton} from './GlassButton';
 import {LinkPreviewCard} from './LinkPreviewCard';
+import {AttachmentThumbnail} from './AttachmentThumbnail';
 import {
   findFirstUrl,
   fetchLinkPreview,
@@ -376,58 +376,13 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
                 contentContainerStyle={styles.previewRowContent}>
                 {attachments.map((attachment, index) => (
                   <View key={`${attachment.path}-${index}`} style={styles.previewItem}>
-                    <View style={styles.previewThumb}>
-                      {attachment.type === 'image' ? (
-                        attachment.thumbnailPath ? (
-                          <Image
-                            source={{uri: `file://${attachment.thumbnailPath}`}}
-                            style={styles.previewImage}
-                            resizeMode="cover"
-                          />
-                        ) : (
-                          <View style={[styles.previewImage, styles.filePlaceholder]}>
-                            <Text style={styles.fileEmoji}>🖼</Text>
-                          </View>
-                        )
-                      ) : attachment.type === 'video' ? (
-                        <View style={styles.previewImage}>
-                          {attachment.thumbnailPath ? (
-                            <Image
-                              source={{
-                                uri: `file://${attachment.thumbnailPath}`,
-                              }}
-                              style={styles.previewImage}
-                              resizeMode="cover"
-                            />
-                          ) : (
-                            <View
-                              style={[
-                                styles.previewImage,
-                                styles.filePlaceholder,
-                              ]}>
-                              <Text style={styles.fileEmoji}>🎥</Text>
-                            </View>
-                          )}
-                          <View style={styles.playOverlay}>
-                            <Text style={styles.playIcon}>▶</Text>
-                          </View>
-                        </View>
-                      ) : (
-                        <View style={styles.filePreview}>
-                          {attachment.thumbnailPath ? (
-                            <Image
-                              source={{
-                                uri: `file://${attachment.thumbnailPath}`,
-                              }}
-                              style={styles.fileIcon}
-                              resizeMode="contain"
-                            />
-                          ) : (
-                            <Text style={styles.fileEmoji}>📄</Text>
-                          )}
-                        </View>
-                      )}
-                    </View>
+                    <AttachmentThumbnail
+                      size={72}
+                      kind={attachment.type}
+                      filePath={attachment.path}
+                      thumbnailPath={attachment.thumbnailPath}
+                      borderRadius={10}
+                    />
                     {attachment.type === 'file' && (
                       <Text
                         style={[
@@ -569,56 +524,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: 80,
   },
-  previewThumb: {
-    width: 72,
-    height: 72,
-    borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(128, 128, 128, 0.1)',
-  },
-  previewImage: {
-    width: 72,
-    height: 72,
-  },
-  filePlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(128, 128, 128, 0.15)',
-  },
-  filePreview: {
-    width: 72,
-    height: 72,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(128, 128, 128, 0.1)',
-  },
-  fileIcon: {
-    width: 48,
-    height: 48,
-  },
-  fileEmoji: {
-    fontSize: 28,
-  },
   fileName: {
     fontSize: 10,
     color: '#666666',
     marginTop: 2,
     textAlign: 'center',
     width: 72,
-  },
-  playOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-  },
-  playIcon: {
-    color: '#FFFFFF',
-    fontSize: 24,
   },
   removeButton: {
     position: 'absolute',
