@@ -113,6 +113,7 @@ export function ChatView({channel, messages, onReply, onRetryDownload, onStartCa
 
     function isMediaOnlyMessage(msg: Message): boolean {
       if (msg.body) return false;
+      if (msg.quote) return false;
       const hasAudio = msg.attachments.some(a => a.contentType.startsWith('audio/'));
       if (hasAudio) return false;
       const mediaCount = msg.attachments.filter(

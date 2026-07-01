@@ -461,7 +461,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
       : {borderTopLeftRadius: 4};
 
   // Any message with media attachments renders bubble-free; text gets its own caption bubble
-  const useBubbleMediaOnly = crossAlbumAttachments ? true : hasMedia && nonAudioAttachments.length === mediaAttachments.length;
+  const useBubbleMediaOnly = crossAlbumAttachments ? true : hasMedia && nonAudioAttachments.length === mediaAttachments.length && !message.quote;
   const bubbleStyle = useBubbleMediaOnly
     ? [
         styles.bubbleMediaOnly,
