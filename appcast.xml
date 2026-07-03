@@ -3,6 +3,14 @@
     <channel>
         <title>Hush</title>
         <item>
+            <title>1.10.0</title>
+            <pubDate>Fri, 03 Jul 2026 00:12:48 -0500</pubDate>
+            <sparkle:version>49</sparkle:version>
+            <sparkle:shortVersionString>1.10.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/elmehalawi/hush/releases/download/v1.10.0/Hush-1.10.0.dmg" length="38849892" type="application/octet-stream" sparkle:edSignature="kxmeHqp8vY1xqTl4va8W4KWxu/m6fif3mY1PnRjmx1NEsj3OlIugHJZ5nOXDX0fiLL5K7uYT8NcwJXuJFEqwCw=="/>
+        </item>
+        <item>
             <title>1.9.4</title>
             <pubDate>Sat, 20 Jun 2026 13:04:07 -0500</pubDate>
             <sparkle:version>48</sparkle:version>
