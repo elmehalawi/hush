@@ -1354,7 +1354,7 @@ class PresageModule: RCTEventEmitter {
                 menu.addItem(NSMenuItem.separator())
 
                 let saveItem = NSMenuItem(title: "Save to Downloads", action: #selector(self.handleSaveToDownloads(_:)), keyEquivalent: "")
-                saveItem.representedObject = attachmentFilePath
+                saveItem.representedObject = ["path": attachmentFilePath, "name": attachmentFileName]
                 saveItem.target = self
                 menu.addItem(saveItem)
 
@@ -1394,7 +1394,7 @@ class PresageModule: RCTEventEmitter {
             let menu = NSMenu()
 
             let saveItem = NSMenuItem(title: "Save to Downloads", action: #selector(self.handleSaveToDownloads(_:)), keyEquivalent: "")
-            saveItem.representedObject = filePath
+            saveItem.representedObject = ["path": filePath, "name": fileName]
             saveItem.target = self
             menu.addItem(saveItem)
 
@@ -1411,10 +1411,14 @@ class PresageModule: RCTEventEmitter {
     }
 
     @objc private func handleSaveToDownloads(_ sender: NSMenuItem) {
-        guard let filePath = sender.representedObject as? String else { return }
+        guard let info = sender.representedObject as? [String: String],
+              let filePath = info["path"], !filePath.isEmpty else { return }
         let fileManager = FileManager.default
         guard let downloadsURL = fileManager.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return }
-        let fileName = (filePath as NSString).lastPathComponent
+        // Prefer the original sender-provided filename (includes correct extension);
+        // fall back to the cached disk name only if it's unavailable.
+        let originalName = info["name"] ?? ""
+        let fileName = originalName.isEmpty ? (filePath as NSString).lastPathComponent : originalName
         let nameWithoutExt = (fileName as NSString).deletingPathExtension
         let ext = (fileName as NSString).pathExtension
 

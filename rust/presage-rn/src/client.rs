@@ -3439,6 +3439,16 @@ fn extension_from_content_type(content_type: &str) -> &str {
         "audio/aac" => "aac",
         "audio/mpeg" => "mp3",
         "audio/ogg" => "ogg",
+        "application/pdf" => "pdf",
+        "application/zip" => "zip",
+        "application/msword" => "doc",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "docx",
+        "application/vnd.ms-excel" => "xls",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => "xlsx",
+        "application/vnd.ms-powerpoint" => "ppt",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => "pptx",
+        "text/plain" => "txt",
+        "text/csv" => "csv",
         _ => "bin",
     }
 }
