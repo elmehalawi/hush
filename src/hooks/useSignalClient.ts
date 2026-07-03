@@ -87,6 +87,7 @@ interface NativeMessage {
   linkPreviews: NativeLinkPreview[] | null;
   quote: NativeQuote | null;
   messageType: string | null;
+  edited: boolean | null;
 }
 
 // Convert native channel to store channel
@@ -164,6 +165,7 @@ function convertMessage(native: NativeMessage): Message {
     linkPreviews: (native.linkPreviews || []).map(convertLinkPreview),
     quote: native.quote ? convertQuote(native.quote) : undefined,
     messageType: (native.messageType as Message['messageType']) || undefined,
+    edited: native.edited ?? false,
   };
 }
 

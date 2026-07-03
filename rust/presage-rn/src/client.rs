@@ -17,7 +17,7 @@ use presage::libsignal_service::zkgroup::profiles::ProfileKey;
 use presage::manager::Registered;
 use presage::model::identity::OnNewIdentity;
 use presage::proto::attachment_pointer::AttachmentIdentifier;
-use presage::proto::{call_message, receipt_message, sync_message, typing_message, AttachmentPointer, DataMessage, GroupContextV2, Preview, ReceiptMessage, SyncMessage};
+use presage::proto::{call_message, receipt_message, sync_message, typing_message, AttachmentPointer, DataMessage, EditMessage, GroupContextV2, Preview, ReceiptMessage, SyncMessage};
 use presage::store::{ContentsStore, Thread};
 use presage_store_sqlite::SqliteStore;
 use tracing::{error, info, warn};
@@ -57,6 +57,10 @@ pub struct SignalClient {
     inflight_downloads: Arc<RwLock<HashSet<String>>>,
     /// Outgoing message timestamps → list of reader UUIDs, persisted to read_receipts.json
     read_receipts: Arc<RwLock<HashMap<u64, Vec<String>>>>,
+    /// Original timestamps of messages that have been edited, persisted to
+    /// edited_messages.json. Used to show an "edited" indicator that survives
+    /// restarts (the presage store keeps no edit marker of its own).
+    edited_messages: Arc<RwLock<HashSet<u64>>>,
     /// ringrtc call manager (lazy-initialized on first call)
     call_manager: std::sync::OnceLock<Arc<tokio::sync::Mutex<HushCallManager>>>,
     /// Call event listener for forwarding ringrtc events to Swift
@@ -121,6 +125,7 @@ impl SignalClient {
         // Load persisted read state
         let read_state = load_read_state(&data_dir);
         let read_receipts = load_read_receipts(&data_dir);
+        let edited_messages = load_edited_messages(&data_dir);
 
         Ok(Arc::new(Self {
             manager: RwLock::new(manager),
@@ -134,6 +139,7 @@ impl SignalClient {
             listener: Arc::new(RwLock::new(None)),
             inflight_downloads: Arc::new(RwLock::new(HashSet::new())),
             read_receipts: Arc::new(RwLock::new(read_receipts)),
+            edited_messages: Arc::new(RwLock::new(edited_messages)),
             call_manager: std::sync::OnceLock::new(),
             call_listener: Arc::new(RwLock::new(None)),
         }))
@@ -614,6 +620,16 @@ impl SignalClient {
                                     break;
                                 }
                             }
+                            // A raw edit blob in the store is unusual (presage normally
+                            // unwraps edits into plain DataMessages), but handle it
+                            // defensively: treat the new content as a normal message
+                            // keyed under the original timestamp.
+                            Some(ProcessedContent::Edit(msg, pointers, raw_mentions, raw_previews, raw_quote, _)) => {
+                                messages_with_pointers.push((msg, pointers, raw_mentions, raw_previews, raw_quote));
+                                if limit > 0 && messages_with_pointers.len() >= limit {
+                                    break;
+                                }
+                            }
                             Some(ProcessedContent::Reaction(reaction)) => {
                                 reaction_events.push(reaction);
                             }
@@ -782,6 +798,17 @@ impl SignalClient {
                 }
             }
 
+            // Flag messages that have been edited (persisted across restarts)
+            let edited = self.edited_messages.read();
+            if !edited.is_empty() {
+                for msg in &mut messages {
+                    if edited.contains(&msg.timestamp) {
+                        msg.edited = true;
+                    }
+                }
+            }
+            drop(edited);
+
             // messages() returns DESC order; reverse to chronological
             messages.reverse();
             Ok(messages)
@@ -889,6 +916,7 @@ impl SignalClient {
                 previews: vec![],
                 quote: None,
                 message_type: MessageType::Regular,
+                edited: false,
             })
         })
         })
@@ -1049,6 +1077,7 @@ impl SignalClient {
                     previews: vec![],
                     quote: None,
                     message_type: MessageType::Regular,
+                    edited: false,
                 })
             })
         })
@@ -1284,6 +1313,7 @@ impl SignalClient {
                     previews,
                     quote: None,
                     message_type: MessageType::Regular,
+                    edited: false,
                 })
             })
         })
@@ -1521,6 +1551,7 @@ impl SignalClient {
                     previews,
                     quote: Some(quote_for_return),
                     message_type: MessageType::Regular,
+                    edited: false,
                 })
             })
         })
@@ -1676,6 +1707,7 @@ impl SignalClient {
         let manager_for_attachments = manager.clone();
         let manager_for_signaling = manager.clone();
         let read_receipts = self.read_receipts.clone();
+        let edited_messages = self.edited_messages.clone();
         let data_dir_for_receipts = self.data_dir.clone();
         let attachments_dir = self.data_dir.join("attachments");
         let _ = std::fs::create_dir_all(&attachments_dir);
@@ -1926,9 +1958,12 @@ impl SignalClient {
                                             continue;
                                         }
 
-                                        // Check cache only (no blocking downloads)
-                                        let (mut message, pointers, raw_mentions, raw_previews, raw_quote) = match result {
-                                            Some(ProcessedContent::Message(msg, ptrs, raw_mentions, raw_previews, raw_quote)) => (msg, ptrs, raw_mentions, raw_previews, raw_quote),
+                                        // Check cache only (no blocking downloads).
+                                        // `edit_ts` is Some(stale duplicate timestamp) when this
+                                        // is an edit, so we can reconcile the store below.
+                                        let (mut message, pointers, raw_mentions, raw_previews, raw_quote, edit_ts) = match result {
+                                            Some(ProcessedContent::Message(msg, ptrs, raw_mentions, raw_previews, raw_quote)) => (msg, ptrs, raw_mentions, raw_previews, raw_quote, None),
+                                            Some(ProcessedContent::Edit(msg, ptrs, raw_mentions, raw_previews, raw_quote, edit_ts)) => (msg, ptrs, raw_mentions, raw_previews, raw_quote, Some(edit_ts)),
                                             _ => continue,
                                         };
 
@@ -2076,6 +2111,31 @@ impl SignalClient {
                                                 }
                                             }
 
+                                            // Reconcile the store for edits. presage saves the
+                                            // edited content under the edit's OWN timestamp instead
+                                            // of replacing the original, leaving a duplicate row.
+                                            // Move the edited content back onto the original
+                                            // timestamp, delete the duplicate, and persist the
+                                            // edited flag so it survives restarts.
+                                            if let Some(edit_ts) = edit_ts {
+                                                let target_ts = message.timestamp;
+                                                if let Some(thread) = thread_from_channel_id(&message.channel_id) {
+                                                    let mut store = manager_for_attachments.store().clone();
+                                                    if let Ok(Some(mut edited_content)) = store.message(&thread, edit_ts).await {
+                                                        edited_content.metadata.timestamp = target_ts;
+                                                        if let Err(e) = store.save_message(&thread, edited_content).await {
+                                                            warn!("Failed to re-save edited message at original ts: {}", e);
+                                                        }
+                                                    }
+                                                    if let Err(e) = store.delete_message(&thread, edit_ts).await {
+                                                        warn!("Failed to delete duplicate edit row: {}", e);
+                                                    }
+                                                }
+                                                let mut edited = edited_messages.write();
+                                                edited.insert(target_ts);
+                                                save_edited_messages(&data_dir_for_receipts, &edited);
+                                            }
+
                                             listener.on_message(message);
                                         }
                                     }
@@ -2134,6 +2194,7 @@ impl SignalClient {
         // 4. Clear in-memory state
         *self.read_state.write() = HashMap::new();
         *self.read_receipts.write() = HashMap::new();
+        *self.edited_messages.write() = HashSet::new();
         *self.inflight_downloads.write() = HashSet::new();
         // 5. Delete database file
         let _ = std::fs::remove_file(&self.store_path);
@@ -2143,6 +2204,7 @@ impl SignalClient {
         // 7. Delete persisted JSON files
         let _ = std::fs::remove_file(self.data_dir.join("read_state.json"));
         let _ = std::fs::remove_file(self.data_dir.join("read_receipts.json"));
+        let _ = std::fs::remove_file(self.data_dir.join("edited_messages.json"));
         info!("Device unlinked, all data cleared");
         Ok(())
     }
@@ -2774,6 +2836,18 @@ enum ProcessedContent {
         Vec<(LinkPreview, Option<AttachmentPointer>)>,
         Option<(u64, String, Option<String>)>,
     ),
+    /// An edit of an existing message. The inner `Message` carries the NEW content
+    /// keyed under the ORIGINAL (target) timestamp and has `edited = true`. The
+    /// trailing `u64` is the edit's own envelope timestamp — the stale duplicate
+    /// row presage inserted, which we delete from the store.
+    Edit(
+        Message,
+        Vec<AttachmentPointer>,
+        Vec<(u32, u32, String)>,
+        Vec<(LinkPreview, Option<AttachmentPointer>)>,
+        Option<(u64, String, Option<String>)>,
+        u64,
+    ),
     /// A reaction on an existing message
     Reaction(ReactionEvent),
     /// A read receipt from a contact (timestamps of our messages they read)
@@ -2784,6 +2858,19 @@ enum ProcessedContent {
     Typing { group_id: Option<Vec<u8>>, sender_id: String, started: bool },
     /// A call answer (indicates a call with the given offer id was answered)
     CallAnswer { call_id: u64 },
+}
+
+/// Resolve a `Thread` from a channel_id string (64-hex group master key, or a
+/// contact UUID). Returns None if the id is malformed.
+fn thread_from_channel_id(channel_id: &str) -> Option<Thread> {
+    if channel_id.len() == 64 {
+        let key_bytes = hex::decode(channel_id).ok()?;
+        let key: [u8; 32] = key_bytes.try_into().ok()?;
+        Some(Thread::Group(key))
+    } else {
+        let uuid: Uuid = channel_id.parse().ok()?;
+        Some(Thread::Contact(ServiceId::from(Aci::from(uuid))))
+    }
 }
 
 /// Extract channel_id from a DataMessage (group context or sender UUID)
@@ -2975,6 +3062,57 @@ fn replace_mention_placeholders(body: &str, mentions: &mut [Mention]) -> String 
     result
 }
 
+/// Build a `ProcessedContent::Edit` from an edit's new `DataMessage`.
+///
+/// The resulting `Message` is keyed under `target_ts` (the original message's
+/// timestamp) and flagged `edited`, so the client replaces the original in place.
+/// `edit_ts` is the edit's own envelope timestamp — the stale duplicate row that
+/// presage inserted, which the receive loop deletes from the store.
+fn build_edit_message(
+    data_message: &DataMessage,
+    target_ts: u64,
+    edit_ts: u64,
+    channel_id: String,
+    sender_id: String,
+    is_outgoing: bool,
+) -> Option<ProcessedContent> {
+    let body = data_message.body.clone();
+    let pointers = data_message.attachments.clone();
+    let raw_mentions = extract_mentions(&data_message.body_ranges);
+    let raw_previews = extract_previews(data_message);
+    let raw_quote = extract_raw_quote(data_message);
+
+    Some(ProcessedContent::Edit(
+        Message {
+            id: target_ts.to_string(),
+            channel_id,
+            sender_id,
+            sender_name: None,
+            body,
+            timestamp: target_ts,
+            is_outgoing,
+            status: if is_outgoing {
+                MessageStatus::Sent
+            } else {
+                MessageStatus::Delivered
+            },
+            attachments: vec![],
+            reactions: vec![],
+            mentions: vec![],
+            read_by: vec![],
+            previews: vec![],
+            quote: None,
+            message_type: MessageType::Regular,
+            edited: true,
+        },
+        pointers,
+        raw_mentions,
+        raw_previews,
+        raw_quote,
+        edit_ts,
+    ))
+}
+
 /// Process incoming content and convert to our Message type or a reaction event.
 /// `fallback_channel_id` is used when the content doesn't carry a destination
 /// (e.g. stored SynchronizeMessage blobs that lack destination_service_id).
@@ -3035,6 +3173,7 @@ fn process_content(
                     previews: vec![],
                     quote: None,
                     message_type: MessageType::Regular,
+                    edited: false,
                 },
                 pointers,
                 raw_mentions,
@@ -3044,6 +3183,30 @@ fn process_content(
         }
         ContentBody::SynchronizeMessage(sync) => {
             if let Some(sent) = &sync.sent {
+                // An edit we made from another device (sync'd to us)
+                if let Some(EditMessage {
+                    target_sent_timestamp: Some(target_ts),
+                    data_message: Some(dm),
+                }) = &sent.edit_message
+                {
+                    let channel_id = if let Some(group_v2) = &dm.group_v2 {
+                        group_v2.master_key.as_ref().map(hex::encode)?
+                    } else if let Some(dest) = &sent.destination_service_id {
+                        dest.clone()
+                    } else if let Some(fallback) = fallback_channel_id {
+                        fallback.to_string()
+                    } else {
+                        return None;
+                    };
+                    return build_edit_message(
+                        dm,
+                        *target_ts,
+                        timestamp,
+                        channel_id,
+                        my_user_id.to_string(),
+                        true,
+                    );
+                }
                 if let Some(dm) = &sent.message {
                     // Check if this is a reaction we sent from another device
                     if let Some(reaction) = &dm.reaction {
@@ -3105,6 +3268,7 @@ fn process_content(
                             previews: vec![],
                             quote: None,
                             message_type: MessageType::Regular,
+                            edited: false,
                         },
                         pointers,
                         raw_mentions,
@@ -3167,6 +3331,7 @@ fn process_content(
                         previews: vec![],
                         quote: None,
                         message_type,
+                        edited: false,
                     },
                     vec![],
                     vec![],
@@ -3183,6 +3348,20 @@ fn process_content(
             } else {
                 None
             }
+        }
+        ContentBody::EditMessage(EditMessage {
+            target_sent_timestamp: Some(target_ts),
+            data_message: Some(dm),
+        }) => {
+            let channel_id = channel_id_from_dm(dm, sender_uuid)?;
+            build_edit_message(
+                dm,
+                *target_ts,
+                timestamp,
+                channel_id,
+                sender_uuid.to_string(),
+                is_outgoing,
+            )
         }
         _ => None,
     }
@@ -3395,6 +3574,30 @@ fn save_read_receipts(data_dir: &std::path::Path, receipts: &HashMap<u64, Vec<St
         }
         Err(e) => {
             warn!("Failed to serialize read receipts: {}", e);
+        }
+    }
+}
+
+/// Load the set of edited message timestamps from disk.
+fn load_edited_messages(data_dir: &std::path::Path) -> HashSet<u64> {
+    let path = data_dir.join("edited_messages.json");
+    match std::fs::read_to_string(&path) {
+        Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
+        Err(_) => HashSet::new(),
+    }
+}
+
+/// Persist the set of edited message timestamps to disk. Best-effort.
+fn save_edited_messages(data_dir: &std::path::Path, edited: &HashSet<u64>) {
+    let path = data_dir.join("edited_messages.json");
+    match serde_json::to_string(edited) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(&path, json) {
+                warn!("Failed to write edited_messages.json: {}", e);
+            }
+        }
+        Err(e) => {
+            warn!("Failed to serialize edited messages: {}", e);
         }
     }
 }

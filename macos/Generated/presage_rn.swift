@@ -1770,6 +1770,10 @@ public struct Message {
      * Type of message (regular, missed call, etc.)
      */
     public var messageType: MessageType
+    /**
+     * Whether this message has been edited by its sender
+     */
+    public var edited: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1818,7 +1822,10 @@ public struct Message {
             */ quote: Quote?,
         /**
             * Type of message (regular, missed call, etc.)
-            */ messageType: MessageType
+            */ messageType: MessageType,
+        /**
+            * Whether this message has been edited by its sender
+            */ edited: Bool
     ) {
         self.id = id
         self.channelId = channelId
@@ -1835,6 +1842,7 @@ public struct Message {
         self.previews = previews
         self.quote = quote
         self.messageType = messageType
+        self.edited = edited
     }
 }
 
@@ -1885,6 +1893,9 @@ extension Message: Equatable, Hashable {
         if lhs.messageType != rhs.messageType {
             return false
         }
+        if lhs.edited != rhs.edited {
+            return false
+        }
         return true
     }
 
@@ -1904,6 +1915,7 @@ extension Message: Equatable, Hashable {
         hasher.combine(previews)
         hasher.combine(quote)
         hasher.combine(messageType)
+        hasher.combine(edited)
     }
 }
 
@@ -1928,7 +1940,8 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
                 readBy: FfiConverterSequenceString.read(from: &buf),
                 previews: FfiConverterSequenceTypeLinkPreview.read(from: &buf),
                 quote: FfiConverterOptionTypeQuote.read(from: &buf),
-                messageType: FfiConverterTypeMessageType.read(from: &buf)
+                messageType: FfiConverterTypeMessageType.read(from: &buf),
+                edited: FfiConverterBool.read(from: &buf)
             )
     }
 
@@ -1948,6 +1961,7 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
         FfiConverterSequenceTypeLinkPreview.write(value.previews, into: &buf)
         FfiConverterOptionTypeQuote.write(value.quote, into: &buf)
         FfiConverterTypeMessageType.write(value.messageType, into: &buf)
+        FfiConverterBool.write(value.edited, into: &buf)
     }
 }
 

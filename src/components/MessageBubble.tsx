@@ -610,6 +610,11 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
           [No content]
         </Text>
       )}
+      {message.edited && (
+        <Text style={[styles.editedLabel, {color: c.incomingBody}, isOutgoing && styles.bodyOutgoing]}>
+          edited
+        </Text>
+      )}
     </>
   );
 
@@ -869,6 +874,12 @@ const styles = StyleSheet.create({
   },
   bodyOutgoing: {
     color: 'white',
+  },
+  editedLabel: {
+    fontSize: 10,
+    opacity: 0.6,
+    marginTop: 2,
+    alignSelf: 'flex-end',
   },
   link: {
     textDecorationLine: 'underline',

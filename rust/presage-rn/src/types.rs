@@ -153,6 +153,8 @@ pub struct Message {
     pub quote: Option<Quote>,
     /// Type of message (regular, missed call, etc.)
     pub message_type: MessageType,
+    /// Whether this message has been edited by its sender
+    pub edited: bool,
 }
 
 /// Type of message (regular text/media or call event)

@@ -66,6 +66,7 @@ export interface Message {
   linkPreviews: LinkPreview[];
   quote?: Quote;
   messageType?: 'regular' | 'missedAudioCall' | 'missedVideoCall' | 'audioCall' | 'videoCall';
+  edited?: boolean;
 }
 
 export type LinkingState =
@@ -246,6 +247,11 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
     const {messages, channels, selectedChannelId, typingUsers} = get();
     const channelMessages = messages[message.channelId] || [];
 
+    // An edit (or a redelivery) arrives with the same id as an existing message.
+    // Replace it in place rather than appending a duplicate.
+    const existingIndex = channelMessages.findIndex(m => m.id === message.id);
+    const isReplacement = existingIndex >= 0;
+
     // Update the channel's last message info for sorting
     const channelIndex = channels.findIndex(c => c.id === message.channelId);
     let updatedChannels = channels;
@@ -254,7 +260,7 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
       if (!channel.lastMessageTimestamp || message.timestamp >= channel.lastMessageTimestamp) {
         updatedChannels = [...channels];
         const unreadDelta =
-          !message.isOutgoing && message.channelId !== selectedChannelId ? 1 : 0;
+          !isReplacement && !message.isOutgoing && message.channelId !== selectedChannelId ? 1 : 0;
         updatedChannels[channelIndex] = {
           ...channel,
           lastMessage: message.body
@@ -282,12 +288,26 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
       }
     }
 
+    let updatedChannelMessages: Message[];
+    if (isReplacement) {
+      const existing = channelMessages[existingIndex];
+      updatedChannelMessages = [...channelMessages];
+      updatedChannelMessages[existingIndex] = {
+        ...message,
+        // Preserve reactions/read state; an edit event doesn't carry them
+        reactions: message.reactions.length > 0 ? message.reactions : existing.reactions,
+        readBy: message.readBy.length > 0 ? message.readBy : existing.readBy,
+      };
+    } else {
+      updatedChannelMessages = [...channelMessages, message];
+    }
+
     set({
       channels: updatedChannels,
       typingUsers: updatedTyping,
       messages: {
         ...messages,
-        [message.channelId]: [...channelMessages, message],
+        [message.channelId]: updatedChannelMessages,
       },
     });
   },

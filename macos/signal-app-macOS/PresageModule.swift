@@ -1704,6 +1704,7 @@ class PresageModule: RCTEventEmitter {
             dict["quote"] = quoteToDict(quote)
         }
         dict["messageType"] = messageTypeToString(message.messageType)
+        dict["edited"] = message.edited
         return dict
     }
 
