@@ -293,7 +293,12 @@ fi
 # back to an absolute path baked in at compile time. That baked path points into
 # this machine's cargo target dir, so leaving the metallib out of the bundle
 # still works on the build machine and kills the app the instant MLX touches the
-# GPU anywhere else. Copy it next to the executable, where MLX looks first.
+# GPU anywhere else.
+#
+# The library itself goes in Resources/, per Apple's bundle layout guidance, with
+# a symlink next to the executable for MLX to resolve. Keeping the real file out
+# of Contents/MacOS is what lets us hand Sparkle a metallib free of code-signing
+# xattrs below.
 log_step "Copying mlx.metallib into app bundle..."
 MLX_METALLIB=$(find "$WHISPER_RUST_DIR/target/$RUST_TARGET/$RUST_PROFILE/build" \
     -name "mlx.metallib" -path "*/out/build/lib/*" 2>/dev/null | head -1)
@@ -303,11 +308,20 @@ if [ -z "$MLX_METALLIB" ]; then
     exit 1
 fi
 
-cp "$MLX_METALLIB" "$APP_PATH/Contents/MacOS/mlx.metallib"
-echo "  Copied: $APP_PATH/Contents/MacOS/mlx.metallib"
+cp "$MLX_METALLIB" "$APP_PATH/Contents/Resources/mlx.metallib"
+rm -f "$APP_PATH/Contents/MacOS/mlx.metallib"
+ln -s ../Resources/mlx.metallib "$APP_PATH/Contents/MacOS/mlx.metallib"
+echo "  Copied: $APP_PATH/Contents/Resources/mlx.metallib (+ Contents/MacOS symlink)"
 
 # Re-sign after modifying the bundle (ad-hoc)
 codesign --force --deep --sign - "$APP_PATH"
+
+# --deep signs the metallib as nested code and parks that signature in extended
+# attributes. Sparkle refuses to diff code-signed xattrs, so a bundle carrying
+# them gets no delta updates at all. Strip them and reseal the outer bundle,
+# which hashes the metallib as an ordinary resource instead.
+xattr -c "$APP_PATH/Contents/Resources/mlx.metallib"
+codesign --force --sign - "$APP_PATH"
 echo "  Re-signed app bundle"
 
 echo ""
