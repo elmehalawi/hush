@@ -3,12 +3,23 @@
     <channel>
         <title>Hush</title>
         <item>
+            <title>1.10.3</title>
+            <pubDate>Fri, 04 Sep 2026 17:14:57 -0500</pubDate>
+            <sparkle:version>52</sparkle:version>
+            <sparkle:shortVersionString>1.10.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/elmehalawi/hush/releases/download/v1.10.3/Hush-1.10.3.dmg" length="70230274" type="application/octet-stream" sparkle:edSignature="2a0MGfjX/BpDIn0QJMJ9lweKu/xRPV9IHLff2hYbPRISsLj0VdY2NI5Z45PrfmB6X9clgXS3O6owmOXqaankDg=="/>
+            <sparkle:deltas>
+                <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush52-50.delta" sparkle:deltaFrom="50" length="7695346" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="434352" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="P4b5RDSrKgjeZgBWPzbPXLrdL4nvmvX/YwJzzR7xrgd/I6+0elJeZmQ+MX5vEICVCAG1A6O7jOONikdlqIsMBw=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.10.2</title>
             <pubDate>Fri, 04 Sep 2026 17:10:14 -0500</pubDate>
             <sparkle:version>51</sparkle:version>
             <sparkle:shortVersionString>1.10.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/elmehalawi/hush/releases/download/v1.10.2/Hush-1.10.2.dmg" length="70405781" type="application/octet-stream" sparkle:edSignature="CukCQnUbMTcQR2TxR9ZgCkR+6JZUhCiiCcXw1pSz4t9ZNqis4QU9OGMOBha3QzOnCTS38OO1mQkQEI/dZ/xYCA=="/>
+            <enclosure url="https://raw.githubusercontent.com/elmehalawi/hush/main/Hush-1.10.2.dmg" length="70405781" type="application/octet-stream" sparkle:edSignature="CukCQnUbMTcQR2TxR9ZgCkR+6JZUhCiiCcXw1pSz4t9ZNqis4QU9OGMOBha3QzOnCTS38OO1mQkQEI/dZ/xYCA=="/>
         </item>
         <item>
             <title>1.10.1</title>
