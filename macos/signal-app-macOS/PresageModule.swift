@@ -1,6 +1,7 @@
 import Foundation
 import Contacts
 import AVFoundation
+import AudioToolbox
 import AppKit
 import AVKit
 import UserNotifications
@@ -1221,8 +1222,19 @@ class PresageModule: RCTEventEmitter {
         resolver(transcriptionEngine?.isModelLoaded() ?? false)
     }
 
-    /// Convert an audio file to 16kHz mono WAV using AVAssetReader.
-    /// Handles all container formats (M4A, AAC ADTS, MP3, OGG, etc.)
+    /// 16kHz mono Float32 — the format the transcriber expects.
+    private static let transcriptionFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: true)!
+
+    /// Convert an audio file to 16kHz mono WAV for transcription.
+    ///
+    /// Takes two decoders, because neither covers everything Signal delivers.
+    /// AVAssetReader reads the usual containers (M4A, AAC ADTS, MP3) but flatly
+    /// refuses AMR, which is what forwarded voicemails arrive as. ExtAudioFile
+    /// decodes AMR, but picks its parser from the file extension and so chokes on
+    /// attachments whose extension disagrees with their container — Signal hands
+    /// us M4A audio under a .aac name, and anything it has no mapping for lands
+    /// as .bin. Trying one then the other covers every case we see.
     private func convertToWav(filePath: String) throws -> String {
         let url = URL(fileURLWithPath: filePath)
         let ext = url.pathExtension.lowercased()
@@ -1236,6 +1248,20 @@ class PresageModule: RCTEventEmitter {
         let wavName = (filePath as NSString).lastPathComponent.replacingOccurrences(of: ".\(ext)", with: ".wav")
         let wavPath = "\(tmpDir)\(wavName)_\(Int(Date().timeIntervalSince1970 * 1000)).wav"
 
+        do {
+            try convertUsingAssetReader(url: url, wavPath: wavPath)
+            return wavPath
+        } catch {
+            NSLog("PresageModule: AVAssetReader could not decode %@ (%@), retrying with ExtAudioFile",
+                  filePath, "\(error)")
+            try? FileManager.default.removeItem(atPath: wavPath)
+        }
+
+        try convertUsingExtAudioFile(url: url, wavPath: wavPath)
+        return wavPath
+    }
+
+    private func convertUsingAssetReader(url: URL, wavPath: String) throws {
         let asset = AVAsset(url: url)
         let reader = try AVAssetReader(asset: asset)
 
@@ -1259,30 +1285,83 @@ class PresageModule: RCTEventEmitter {
         reader.startReading()
 
         // Write WAV output
-        let wavFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: true)!
+        let wavFormat = Self.transcriptionFormat
         let outputFile = try AVAudioFile(forWriting: URL(fileURLWithPath: wavPath), settings: wavFormat.settings)
+        var framesWritten: AVAudioFramePosition = 0
 
         while let sampleBuffer = trackOutput.copyNextSampleBuffer() {
-            let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer)!
+            guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { continue }
             var length = 0
             var dataPointer: UnsafeMutablePointer<Int8>?
-            CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &dataPointer)
+            guard CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil,
+                                              totalLengthOut: &length, dataPointerOut: &dataPointer) == noErr,
+                  let dataPointer = dataPointer,
+                  length >= MemoryLayout<Float>.size else { continue }
 
-            if let dataPointer = dataPointer, length > 0 {
-                let frameCount = AVAudioFrameCount(length / MemoryLayout<Float>.size)
-                if let pcmBuffer = AVAudioPCMBuffer(pcmFormat: wavFormat, frameCapacity: frameCount) {
-                    pcmBuffer.frameLength = frameCount
-                    memcpy(pcmBuffer.floatChannelData![0], dataPointer, length)
-                    try outputFile.write(from: pcmBuffer)
-                }
-            }
+            // Copy whole frames only — a partial trailing frame would send the
+            // memcpy past the end of the buffer we just sized.
+            let frameCount = AVAudioFrameCount(length / MemoryLayout<Float>.size)
+            guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: wavFormat, frameCapacity: frameCount) else { continue }
+            pcmBuffer.frameLength = frameCount
+            memcpy(pcmBuffer.floatChannelData![0], dataPointer, Int(frameCount) * MemoryLayout<Float>.size)
+            try outputFile.write(from: pcmBuffer)
+            framesWritten += AVAudioFramePosition(frameCount)
         }
 
         if reader.status == .failed {
             throw reader.error ?? NSError(domain: "PresageModule", code: -3, userInfo: [NSLocalizedDescriptionKey: "AVAssetReader failed"])
         }
 
-        return wavPath
+        // A reader that opens the file but yields nothing leaves us with a WAV
+        // the transcriber can only choke on. Treat it as a failure so the
+        // ExtAudioFile path gets a turn.
+        guard framesWritten > 0 else {
+            throw NSError(domain: "PresageModule", code: -5, userInfo: [NSLocalizedDescriptionKey: "No audio samples decoded"])
+        }
+    }
+
+    /// Decode via AudioToolbox, which opens formats AVFoundation won't touch
+    /// (notably AMR) and resamples to the client format on the way out.
+    private func convertUsingExtAudioFile(url: URL, wavPath: String) throws {
+        var handle: ExtAudioFileRef?
+        var status = ExtAudioFileOpenURL(url as CFURL, &handle)
+        guard status == noErr, let audioFile = handle else {
+            throw NSError(domain: "PresageModule", code: Int(status),
+                          userInfo: [NSLocalizedDescriptionKey: "Unsupported audio format"])
+        }
+        defer { ExtAudioFileDispose(audioFile) }
+
+        let wavFormat = Self.transcriptionFormat
+        var clientFormat = wavFormat.streamDescription.pointee
+        status = ExtAudioFileSetProperty(audioFile, kExtAudioFileProperty_ClientDataFormat,
+                                         UInt32(MemoryLayout<AudioStreamBasicDescription>.size), &clientFormat)
+        guard status == noErr else {
+            throw NSError(domain: "PresageModule", code: Int(status),
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot resample audio to 16kHz mono"])
+        }
+
+        let outputFile = try AVAudioFile(forWriting: URL(fileURLWithPath: wavPath), settings: wavFormat.settings)
+        let capacity: AVAudioFrameCount = 4096
+        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: wavFormat, frameCapacity: capacity) else {
+            throw NSError(domain: "PresageModule", code: -4,
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot allocate audio buffer"])
+        }
+
+        while true {
+            var frames = capacity
+            var bufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: AudioBuffer(
+                mNumberChannels: 1,
+                mDataByteSize: capacity * UInt32(MemoryLayout<Float>.size),
+                mData: pcmBuffer.floatChannelData![0]))
+            status = ExtAudioFileRead(audioFile, &frames, &bufferList)
+            guard status == noErr else {
+                throw NSError(domain: "PresageModule", code: Int(status),
+                              userInfo: [NSLocalizedDescriptionKey: "Failed to read audio data"])
+            }
+            if frames == 0 { break }
+            pcmBuffer.frameLength = frames
+            try outputFile.write(from: pcmBuffer)
+        }
     }
 
     // MARK: - Channel Context Menu
