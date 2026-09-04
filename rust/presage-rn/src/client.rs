@@ -2744,8 +2744,12 @@ fn check_attachment_cache(
         }
     };
 
-    let ext = extension_from_content_type(&content_type);
-    let file_path = attachments_dir.join(format!("{}.{}", cache_key, ext));
+    let file_path = cached_attachment_path(
+        attachments_dir,
+        &cache_key,
+        file_name.as_deref(),
+        &content_type,
+    );
 
     let attachment = Attachment {
         content_type,
@@ -2791,8 +2795,12 @@ fn spawn_background_download(
             .content_type
             .clone()
             .unwrap_or_else(|| "application/octet-stream".to_string());
-        let ext = extension_from_content_type(&content_type);
-        let file_path = attachments_dir.join(format!("{}.{}", cache_key, ext));
+        let file_path = cached_attachment_path(
+            &attachments_dir,
+            &cache_key,
+            pointer.file_name.as_deref(),
+            &content_type,
+        );
 
         let attachment = if file_path.exists() {
             Attachment {
@@ -2910,8 +2918,12 @@ fn spawn_preview_image_download(
             .content_type
             .clone()
             .unwrap_or_else(|| "application/octet-stream".to_string());
-        let ext = extension_from_content_type(&content_type);
-        let file_path = attachments_dir.join(format!("{}.{}", cache_key, ext));
+        let file_path = cached_attachment_path(
+            &attachments_dir,
+            &cache_key,
+            pointer.file_name.as_deref(),
+            &content_type,
+        );
 
         let attachment = if file_path.exists() {
             Attachment {
@@ -3628,9 +3640,18 @@ fn attachment_preview_text(attachments: &[AttachmentPointer]) -> Option<String> 
 }
 
 /// Determine file extension from a MIME content type
-fn extension_from_content_type(content_type: &str) -> &str {
-    match content_type {
-        "image/jpeg" => "jpg",
+fn extension_from_content_type(content_type: &str) -> String {
+    // Content types can carry parameters ("text/plain; charset=utf-8") and
+    // arbitrary casing, so normalize before matching.
+    let base = content_type
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+
+    let known = match base.as_str() {
+        "image/jpeg" | "image/jpg" => "jpg",
         "image/png" => "png",
         "image/gif" => "gif",
         "image/webp" => "webp",
@@ -3652,8 +3673,66 @@ fn extension_from_content_type(content_type: &str) -> &str {
         "application/vnd.openxmlformats-officedocument.presentationml.presentation" => "pptx",
         "text/plain" => "txt",
         "text/csv" => "csv",
-        _ => "bin",
+        _ => "",
+    };
+    if !known.is_empty() {
+        return known.to_string();
     }
+
+    // Fall back to the system MIME database before settling for ".bin".
+    mime_guess::get_mime_extensions_str(&base)
+        .and_then(|exts| exts.first())
+        .map(|ext| (*ext).to_string())
+        .unwrap_or_else(|| "bin".to_string())
+}
+
+/// Pick the on-disk extension for a cached attachment.
+///
+/// The sender-provided filename is the most reliable source: Signal often sends
+/// documents as `application/octet-stream`, which would otherwise land on
+/// ".bin" and leave QuickLook unable to preview the file. Fall back to the
+/// content type when there is no usable extension on the name.
+fn attachment_extension(file_name: Option<&str>, content_type: &str) -> String {
+    if let Some(name) = file_name {
+        if let Some(ext) = std::path::Path::new(name).extension() {
+            let ext = ext.to_string_lossy().to_ascii_lowercase();
+            if !ext.is_empty() && ext.len() <= 10 && ext.chars().all(|c| c.is_ascii_alphanumeric())
+            {
+                return ext;
+            }
+        }
+    }
+    extension_from_content_type(content_type)
+}
+
+/// Resolve where a cached attachment lives on disk.
+///
+/// Prefers the extension derived from the sender's filename, but reuses a file
+/// already cached under an older naming scheme so improving the extension logic
+/// does not force every previously downloaded attachment to be fetched again.
+fn cached_attachment_path(
+    attachments_dir: &std::path::Path,
+    cache_key: &str,
+    file_name: Option<&str>,
+    content_type: &str,
+) -> PathBuf {
+    let preferred = attachments_dir.join(format!(
+        "{}.{}",
+        cache_key,
+        attachment_extension(file_name, content_type)
+    ));
+    if preferred.exists() {
+        return preferred;
+    }
+
+    for legacy_ext in [extension_from_content_type(content_type), "bin".to_string()] {
+        let legacy = attachments_dir.join(format!("{}.{}", cache_key, legacy_ext));
+        if legacy.exists() {
+            return legacy;
+        }
+    }
+
+    preferred
 }
 
 /// Download an attachment from Signal CDN, cache it to disk, and return metadata.
@@ -3690,8 +3769,12 @@ async fn download_and_save_attachment(
         }
     };
 
-    let ext = extension_from_content_type(&content_type);
-    let file_path = attachments_dir.join(format!("{}.{}", cache_key, ext));
+    let file_path = cached_attachment_path(
+        attachments_dir,
+        &cache_key,
+        file_name.as_deref(),
+        &content_type,
+    );
 
     // Return cached file if it exists
     if file_path.exists() {

@@ -8,10 +8,10 @@ import Foundation
 // might be in a separate module, or it might be compiled inline into
 // this module. This is a bit of light hackery to work with both.
 #if canImport(whisper_transcribeFFI)
-    import whisper_transcribeFFI
+import whisper_transcribeFFI
 #endif
 
-private extension RustBuffer {
+fileprivate extension RustBuffer {
     // Allocate a new buffer, copying the contents of a `UInt8` array.
     init(bytes: [UInt8]) {
         let rbuf = bytes.withUnsafeBufferPointer { ptr in
@@ -21,7 +21,7 @@ private extension RustBuffer {
     }
 
     static func empty() -> RustBuffer {
-        RustBuffer(capacity: 0, len: 0, data: nil)
+        RustBuffer(capacity: 0, len:0, data: nil)
     }
 
     static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
@@ -35,7 +35,7 @@ private extension RustBuffer {
     }
 }
 
-private extension ForeignBytes {
+fileprivate extension ForeignBytes {
     init(bufferPointer: UnsafeBufferPointer<UInt8>) {
         self.init(len: Int32(bufferPointer.count), data: bufferPointer.baseAddress)
     }
@@ -48,7 +48,7 @@ private extension ForeignBytes {
 // Helper classes/extensions that don't change.
 // Someday, this will be in a library of its own.
 
-private extension Data {
+fileprivate extension Data {
     init(rustBuffer: RustBuffer) {
         self.init(
             bytesNoCopy: rustBuffer.data!,
@@ -72,15 +72,15 @@ private extension Data {
 //
 // Instead, the read() method and these helper functions input a tuple of data
 
-private func createReader(data: Data) -> (data: Data, offset: Data.Index) {
+fileprivate func createReader(data: Data) -> (data: Data, offset: Data.Index) {
     (data: data, offset: 0)
 }
 
 // Reads an integer at the current offset, in big-endian order, and advances
 // the offset on success. Throws if reading the integer would move the
 // offset past the end of the buffer.
-private func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: Data.Index)) throws -> T {
-    let range = reader.offset ..< reader.offset + MemoryLayout<T>.size
+fileprivate func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: Data.Index)) throws -> T {
+    let range = reader.offset..<reader.offset + MemoryLayout<T>.size
     guard reader.data.count >= range.upperBound else {
         throw UniffiInternalError.bufferOverflow
     }
@@ -90,38 +90,38 @@ private func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: 
         return value as! T
     }
     var value: T = 0
-    let _ = withUnsafeMutableBytes(of: &value) { reader.data.copyBytes(to: $0, from: range) }
+    let _ = withUnsafeMutableBytes(of: &value, { reader.data.copyBytes(to: $0, from: range)})
     reader.offset = range.upperBound
     return value.bigEndian
 }
 
 // Reads an arbitrary number of bytes, to be used to read
 // raw bytes, this is useful when lifting strings
-private func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: Int) throws -> [UInt8] {
-    let range = reader.offset ..< (reader.offset + count)
+fileprivate func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: Int) throws -> Array<UInt8> {
+    let range = reader.offset..<(reader.offset+count)
     guard reader.data.count >= range.upperBound else {
         throw UniffiInternalError.bufferOverflow
     }
     var value = [UInt8](repeating: 0, count: count)
-    value.withUnsafeMutableBufferPointer { buffer in
+    value.withUnsafeMutableBufferPointer({ buffer in
         reader.data.copyBytes(to: buffer, from: range)
-    }
+    })
     reader.offset = range.upperBound
     return value
 }
 
 // Reads a float at the current offset.
-private func readFloat(_ reader: inout (data: Data, offset: Data.Index)) throws -> Float {
-    return try Float(bitPattern: readInt(&reader))
+fileprivate func readFloat(_ reader: inout (data: Data, offset: Data.Index)) throws -> Float {
+    return Float(bitPattern: try readInt(&reader))
 }
 
 // Reads a float at the current offset.
-private func readDouble(_ reader: inout (data: Data, offset: Data.Index)) throws -> Double {
-    return try Double(bitPattern: readInt(&reader))
+fileprivate func readDouble(_ reader: inout (data: Data, offset: Data.Index)) throws -> Double {
+    return Double(bitPattern: try readInt(&reader))
 }
 
 // Indicates if the offset has reached the end of the buffer.
-private func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
+fileprivate func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
     return reader.offset < reader.data.count
 }
 
@@ -129,11 +129,11 @@ private func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
 // struct, but we use standalone functions instead in order to make external
 // types work.  See the above discussion on Readers for details.
 
-private func createWriter() -> [UInt8] {
+fileprivate func createWriter() -> [UInt8] {
     return []
 }
 
-private func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: Sequence, S.Element == UInt8 {
+fileprivate func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: Sequence, S.Element == UInt8 {
     writer.append(contentsOf: byteArr)
 }
 
@@ -141,22 +141,22 @@ private func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: Seque
 //
 // Warning: make sure what you are trying to write
 // is in the correct type!
-private func writeInt<T: FixedWidthInteger>(_ writer: inout [UInt8], _ value: T) {
+fileprivate func writeInt<T: FixedWidthInteger>(_ writer: inout [UInt8], _ value: T) {
     var value = value.bigEndian
     withUnsafeBytes(of: &value) { writer.append(contentsOf: $0) }
 }
 
-private func writeFloat(_ writer: inout [UInt8], _ value: Float) {
+fileprivate func writeFloat(_ writer: inout [UInt8], _ value: Float) {
     writeInt(&writer, value.bitPattern)
 }
 
-private func writeDouble(_ writer: inout [UInt8], _ value: Double) {
+fileprivate func writeDouble(_ writer: inout [UInt8], _ value: Double) {
     writeInt(&writer, value.bitPattern)
 }
 
 // Protocol for types that transfer other types across the FFI. This is
 // analogous to the Rust trait of the same name.
-private protocol FfiConverter {
+fileprivate protocol FfiConverter {
     associatedtype FfiType
     associatedtype SwiftType
 
@@ -167,19 +167,19 @@ private protocol FfiConverter {
 }
 
 // Types conforming to `Primitive` pass themselves directly over the FFI.
-private protocol FfiConverterPrimitive: FfiConverter where FfiType == SwiftType {}
+fileprivate protocol FfiConverterPrimitive: FfiConverter where FfiType == SwiftType { }
 
 extension FfiConverterPrimitive {
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lift(_ value: FfiType) throws -> SwiftType {
         return value
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lower(_ value: SwiftType) -> FfiType {
         return value
     }
@@ -187,12 +187,12 @@ extension FfiConverterPrimitive {
 
 // Types conforming to `FfiConverterRustBuffer` lift and lower into a `RustBuffer`.
 // Used for complex types where it's hard to write a custom lift/lower.
-private protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
+fileprivate protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
 
 extension FfiConverterRustBuffer {
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lift(_ buf: RustBuffer) throws -> SwiftType {
         var reader = createReader(data: Data(rustBuffer: buf))
         let value = try read(from: &reader)
@@ -203,19 +203,18 @@ extension FfiConverterRustBuffer {
         return value
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lower(_ value: SwiftType) -> RustBuffer {
-        var writer = createWriter()
-        write(value, into: &writer)
-        return RustBuffer(bytes: writer)
+          var writer = createWriter()
+          write(value, into: &writer)
+          return RustBuffer(bytes: writer)
     }
 }
-
 // An error type for FFI errors. These errors occur at the UniFFI level, not
 // the library level.
-private enum UniffiInternalError: LocalizedError {
+fileprivate enum UniffiInternalError: LocalizedError {
     case bufferOverflow
     case incompleteData
     case unexpectedOptionalTag
@@ -241,24 +240,24 @@ private enum UniffiInternalError: LocalizedError {
     }
 }
 
-private extension NSLock {
+fileprivate extension NSLock {
     func withLock<T>(f: () throws -> T) rethrows -> T {
-        lock()
+        self.lock()
         defer { self.unlock() }
         return try f()
     }
 }
 
-private let CALL_SUCCESS: Int8 = 0
-private let CALL_ERROR: Int8 = 1
-private let CALL_UNEXPECTED_ERROR: Int8 = 2
-private let CALL_CANCELLED: Int8 = 3
+fileprivate let CALL_SUCCESS: Int8 = 0
+fileprivate let CALL_ERROR: Int8 = 1
+fileprivate let CALL_UNEXPECTED_ERROR: Int8 = 2
+fileprivate let CALL_CANCELLED: Int8 = 3
 
-private extension RustCallStatus {
+fileprivate extension RustCallStatus {
     init() {
         self.init(
             code: CALL_SUCCESS,
-            errorBuf: RustBuffer(
+            errorBuf: RustBuffer.init(
                 capacity: 0,
                 len: 0,
                 data: nil
@@ -274,8 +273,7 @@ private func rustCall<T>(_ callback: (UnsafeMutablePointer<RustCallStatus>) -> T
 
 private func rustCallWithError<T, E: Swift.Error>(
     _ errorHandler: @escaping (RustBuffer) throws -> E,
-    _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T
-) throws -> T {
+    _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T) throws -> T {
     try makeRustCall(callback, errorHandler: errorHandler)
 }
 
@@ -284,7 +282,7 @@ private func makeRustCall<T, E: Swift.Error>(
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws -> T {
     uniffiEnsureInitialized()
-    var callStatus = RustCallStatus()
+    var callStatus = RustCallStatus.init()
     let returnedVal = callback(&callStatus)
     try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
     return returnedVal
@@ -295,44 +293,44 @@ private func uniffiCheckCallStatus<E: Swift.Error>(
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws {
     switch callStatus.code {
-    case CALL_SUCCESS:
-        return
+        case CALL_SUCCESS:
+            return
 
-    case CALL_ERROR:
-        if let errorHandler = errorHandler {
-            throw try errorHandler(callStatus.errorBuf)
-        } else {
-            callStatus.errorBuf.deallocate()
-            throw UniffiInternalError.unexpectedRustCallError
-        }
+        case CALL_ERROR:
+            if let errorHandler = errorHandler {
+                throw try errorHandler(callStatus.errorBuf)
+            } else {
+                callStatus.errorBuf.deallocate()
+                throw UniffiInternalError.unexpectedRustCallError
+            }
 
-    case CALL_UNEXPECTED_ERROR:
-        // When the rust code sees a panic, it tries to construct a RustBuffer
-        // with the message.  But if that code panics, then it just sends back
-        // an empty buffer.
-        if callStatus.errorBuf.len > 0 {
-            throw try UniffiInternalError.rustPanic(FfiConverterString.lift(callStatus.errorBuf))
-        } else {
-            callStatus.errorBuf.deallocate()
-            throw UniffiInternalError.rustPanic("Rust panic")
-        }
+        case CALL_UNEXPECTED_ERROR:
+            // When the rust code sees a panic, it tries to construct a RustBuffer
+            // with the message.  But if that code panics, then it just sends back
+            // an empty buffer.
+            if callStatus.errorBuf.len > 0 {
+                throw UniffiInternalError.rustPanic(try FfiConverterString.lift(callStatus.errorBuf))
+            } else {
+                callStatus.errorBuf.deallocate()
+                throw UniffiInternalError.rustPanic("Rust panic")
+            }
 
-    case CALL_CANCELLED:
-        fatalError("Cancellation not supported yet")
+        case CALL_CANCELLED:
+            fatalError("Cancellation not supported yet")
 
-    default:
-        throw UniffiInternalError.unexpectedRustCallStatusCode
+        default:
+            throw UniffiInternalError.unexpectedRustCallStatusCode
     }
 }
 
 private func uniffiTraitInterfaceCall<T>(
     callStatus: UnsafeMutablePointer<RustCallStatus>,
     makeCall: () throws -> T,
-    writeReturn: (T) -> Void
+    writeReturn: (T) -> ()
 ) {
     do {
         try writeReturn(makeCall())
-    } catch {
+    } catch let error {
         callStatus.pointee.code = CALL_UNEXPECTED_ERROR
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
@@ -341,7 +339,7 @@ private func uniffiTraitInterfaceCall<T>(
 private func uniffiTraitInterfaceCallWithError<T, E>(
     callStatus: UnsafeMutablePointer<RustCallStatus>,
     makeCall: () throws -> T,
-    writeReturn: (T) -> Void,
+    writeReturn: (T) -> (),
     lowerError: (E) -> RustBuffer
 ) {
     do {
@@ -354,8 +352,7 @@ private func uniffiTraitInterfaceCallWithError<T, E>(
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
 }
-
-private class UniffiHandleMap<T> {
+fileprivate class UniffiHandleMap<T> {
     private var map: [UInt64: T] = [:]
     private let lock = NSLock()
     private var currentHandle: UInt64 = 1
@@ -369,7 +366,7 @@ private class UniffiHandleMap<T> {
         }
     }
 
-    func get(handle: UInt64) throws -> T {
+     func get(handle: UInt64) throws -> T {
         try lock.withLock {
             guard let obj = map[handle] else {
                 throw UniffiInternalError.unexpectedStaleHandle
@@ -389,16 +386,20 @@ private class UniffiHandleMap<T> {
     }
 
     var count: Int {
-        map.count
+        get {
+            map.count
+        }
     }
 }
 
+
 // Public interface members begin here.
 
+
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private struct FfiConverterDouble: FfiConverterPrimitive {
+fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
     typealias FfiType = Double
     typealias SwiftType = Double
 
@@ -412,9 +413,9 @@ private struct FfiConverterDouble: FfiConverterPrimitive {
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private struct FfiConverterBool: FfiConverter {
+fileprivate struct FfiConverterBool : FfiConverter {
     typealias FfiType = Int8
     typealias SwiftType = Bool
 
@@ -436,9 +437,9 @@ private struct FfiConverterBool: FfiConverter {
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private struct FfiConverterString: FfiConverter {
+fileprivate struct FfiConverterString: FfiConverter {
     typealias SwiftType = String
     typealias FfiType = RustBuffer
 
@@ -466,7 +467,7 @@ private struct FfiConverterString: FfiConverter {
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> String {
         let len: Int32 = try readInt(&buf)
-        return try String(bytes: readBytes(&buf, count: Int(len)), encoding: String.Encoding.utf8)!
+        return String(bytes: try readBytes(&buf, count: Int(len)), encoding: String.Encoding.utf8)!
     }
 
     public static func write(_ value: String, into buf: inout [UInt8]) {
@@ -476,35 +477,40 @@ private struct FfiConverterString: FfiConverter {
     }
 }
 
+
+
+
 /**
  * The transcription engine wrapping mlx-whisper-rs.
  *
  * Manages model lifecycle and provides transcription capabilities.
  */
-public protocol TranscriptionEngineProtocol: AnyObject {
+public protocol TranscriptionEngineProtocol : AnyObject {
+    
     /**
      * Check if the model is currently loaded in memory.
      */
-    func isModelLoaded() -> Bool
-
+    func isModelLoaded()  -> Bool
+    
     /**
      * Download (if needed) and load the Whisper model into memory.
      * This is a blocking call that may take significant time on first use.
      */
-    func prepareModel() throws
-
+    func prepareModel() throws 
+    
     /**
      * Transcribe an audio file.
      *
      * - `audio_path`: Path to a 16kHz mono WAV file
      * - `language`: Optional language hint (e.g. "en", "ar"). If empty, auto-detects.
      */
-    func transcribeFile(audioPath: String, language: String?) throws -> TranscriptionResult
-
+    func transcribeFile(audioPath: String, language: String?) throws  -> TranscriptionResult
+    
     /**
      * Unload the model from memory to free resources.
      */
-    func unloadModel()
+    func unloadModel() 
+    
 }
 
 /**
@@ -513,14 +519,13 @@ public protocol TranscriptionEngineProtocol: AnyObject {
  * Manages model lifecycle and provides transcription capabilities.
  */
 open class TranscriptionEngine:
-    TranscriptionEngineProtocol
-{
+    TranscriptionEngineProtocol {
     fileprivate let pointer: UnsafeMutableRawPointer!
 
     /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public struct NoPointer {
         public init() {}
     }
@@ -528,7 +533,7 @@ open class TranscriptionEngine:
     // TODO: We'd like this to be `private` but for Swifty reasons,
     // we can't implement `FfiConverter` without making this `required` and we can't
     // make it `required` without making it `public`.
-    public required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
         self.pointer = pointer
     }
 
@@ -537,20 +542,19 @@ open class TranscriptionEngine:
     //
     // - Warning:
     //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
-    public init(noPointer _: NoPointer) {
-        pointer = nil
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public func uniffiClonePointer() -> UnsafeMutableRawPointer {
         return try! rustCall { uniffi_whisper_transcribe_fn_clone_transcriptionengine(self.pointer, $0) }
     }
-
     /**
      * Create a new TranscriptionEngine.
      *
@@ -558,16 +562,16 @@ open class TranscriptionEngine:
      * (multilingual.tiktoken, gpt2.tiktoken, mel_filters_*.npy)
      * - `model_repo`: HuggingFace model repo ID (e.g. "mlx-community/whisper-large-v3-turbo")
      */
-    public convenience init(assetsDir: String, modelRepo: String) {
-        let pointer =
-            try! rustCall {
-                uniffi_whisper_transcribe_fn_constructor_transcriptionengine_new(
-                    FfiConverterString.lower(assetsDir),
-                    FfiConverterString.lower(modelRepo), $0
-                )
-            }
-        self.init(unsafeFromRawPointer: pointer)
-    }
+public convenience init(assetsDir: String, modelRepo: String) {
+    let pointer =
+        try! rustCall() {
+    uniffi_whisper_transcribe_fn_constructor_transcriptionengine_new(
+        FfiConverterString.lower(assetsDir),
+        FfiConverterString.lower(modelRepo),$0
+    )
+}
+    self.init(unsafeFromRawPointer: pointer)
+}
 
     deinit {
         guard let pointer = pointer else {
@@ -577,51 +581,61 @@ open class TranscriptionEngine:
         try! rustCall { uniffi_whisper_transcribe_fn_free_transcriptionengine(pointer, $0) }
     }
 
+    
+
+    
     /**
      * Check if the model is currently loaded in memory.
      */
-    open func isModelLoaded() -> Bool {
-        return try! FfiConverterBool.lift(try! rustCall {
-            uniffi_whisper_transcribe_fn_method_transcriptionengine_is_model_loaded(self.uniffiClonePointer(), $0)
-        })
-    }
-
+open func isModelLoaded() -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_whisper_transcribe_fn_method_transcriptionengine_is_model_loaded(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
     /**
      * Download (if needed) and load the Whisper model into memory.
      * This is a blocking call that may take significant time on first use.
      */
-    open func prepareModel() throws { try rustCallWithError(FfiConverterTypeTranscribeError.lift) {
-        uniffi_whisper_transcribe_fn_method_transcriptionengine_prepare_model(self.uniffiClonePointer(), $0)
-    }
-    }
-
+open func prepareModel()throws  {try rustCallWithError(FfiConverterTypeTranscribeError.lift) {
+    uniffi_whisper_transcribe_fn_method_transcriptionengine_prepare_model(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
     /**
      * Transcribe an audio file.
      *
      * - `audio_path`: Path to a 16kHz mono WAV file
      * - `language`: Optional language hint (e.g. "en", "ar"). If empty, auto-detects.
      */
-    open func transcribeFile(audioPath: String, language: String?) throws -> TranscriptionResult {
-        return try FfiConverterTypeTranscriptionResult.lift(rustCallWithError(FfiConverterTypeTranscribeError.lift) {
-            uniffi_whisper_transcribe_fn_method_transcriptionengine_transcribe_file(self.uniffiClonePointer(),
-                                                                                    FfiConverterString.lower(audioPath),
-                                                                                    FfiConverterOptionString.lower(language), $0)
-        })
-    }
-
+open func transcribeFile(audioPath: String, language: String?)throws  -> TranscriptionResult {
+    return try  FfiConverterTypeTranscriptionResult.lift(try rustCallWithError(FfiConverterTypeTranscribeError.lift) {
+    uniffi_whisper_transcribe_fn_method_transcriptionengine_transcribe_file(self.uniffiClonePointer(),
+        FfiConverterString.lower(audioPath),
+        FfiConverterOptionString.lower(language),$0
+    )
+})
+}
+    
     /**
      * Unload the model from memory to free resources.
      */
-    open func unloadModel() { try! rustCall {
-        uniffi_whisper_transcribe_fn_method_transcriptionengine_unload_model(self.uniffiClonePointer(), $0)
-    }
-    }
+open func unloadModel() {try! rustCall() {
+    uniffi_whisper_transcribe_fn_method_transcriptionengine_unload_model(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeTranscriptionEngine: FfiConverter {
+
     typealias FfiType = UnsafeMutableRawPointer
     typealias SwiftType = TranscriptionEngine
 
@@ -638,7 +652,7 @@ public struct FfiConverterTypeTranscriptionEngine: FfiConverter {
         // The Rust code won't compile if a pointer won't fit in a UInt64.
         // We have to go via `UInt` because that's the thing that's the size of a pointer.
         let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
-        if ptr == nil {
+        if (ptr == nil) {
             throw UniffiInternalError.unexpectedNullPointer
         }
         return try lift(ptr!)
@@ -651,19 +665,23 @@ public struct FfiConverterTypeTranscriptionEngine: FfiConverter {
     }
 }
 
+
+
+
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public func FfiConverterTypeTranscriptionEngine_lift(_ pointer: UnsafeMutableRawPointer) throws -> TranscriptionEngine {
     return try FfiConverterTypeTranscriptionEngine.lift(pointer)
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public func FfiConverterTypeTranscriptionEngine_lower(_ value: TranscriptionEngine) -> UnsafeMutableRawPointer {
     return FfiConverterTypeTranscriptionEngine.lower(value)
 }
+
 
 /**
  * The result of a transcription.
@@ -682,8 +700,10 @@ public struct TranscriptionResult {
     }
 }
 
+
+
 extension TranscriptionResult: Equatable, Hashable {
-    public static func == (lhs: TranscriptionResult, rhs: TranscriptionResult) -> Bool {
+    public static func ==(lhs: TranscriptionResult, rhs: TranscriptionResult) -> Bool {
         if lhs.text != rhs.text {
             return false
         }
@@ -703,17 +723,18 @@ extension TranscriptionResult: Equatable, Hashable {
     }
 }
 
+
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeTranscriptionResult: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TranscriptionResult {
         return
             try TranscriptionResult(
-                text: FfiConverterString.read(from: &buf),
-                language: FfiConverterString.read(from: &buf),
+                text: FfiConverterString.read(from: &buf), 
+                language: FfiConverterString.read(from: &buf), 
                 segments: FfiConverterSequenceTypeTranscriptionSegment.read(from: &buf)
-            )
+        )
     }
 
     public static func write(_ value: TranscriptionResult, into buf: inout [UInt8]) {
@@ -723,19 +744,21 @@ public struct FfiConverterTypeTranscriptionResult: FfiConverterRustBuffer {
     }
 }
 
+
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public func FfiConverterTypeTranscriptionResult_lift(_ buf: RustBuffer) throws -> TranscriptionResult {
     return try FfiConverterTypeTranscriptionResult.lift(buf)
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public func FfiConverterTypeTranscriptionResult_lower(_ value: TranscriptionResult) -> RustBuffer {
     return FfiConverterTypeTranscriptionResult.lower(value)
 }
+
 
 /**
  * A single transcribed segment with timing information.
@@ -754,8 +777,10 @@ public struct TranscriptionSegment {
     }
 }
 
+
+
 extension TranscriptionSegment: Equatable, Hashable {
-    public static func == (lhs: TranscriptionSegment, rhs: TranscriptionSegment) -> Bool {
+    public static func ==(lhs: TranscriptionSegment, rhs: TranscriptionSegment) -> Bool {
         if lhs.start != rhs.start {
             return false
         }
@@ -775,17 +800,18 @@ extension TranscriptionSegment: Equatable, Hashable {
     }
 }
 
+
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeTranscriptionSegment: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TranscriptionSegment {
         return
             try TranscriptionSegment(
-                start: FfiConverterDouble.read(from: &buf),
-                end: FfiConverterDouble.read(from: &buf),
+                start: FfiConverterDouble.read(from: &buf), 
+                end: FfiConverterDouble.read(from: &buf), 
                 text: FfiConverterString.read(from: &buf)
-            )
+        )
     }
 
     public static func write(_ value: TranscriptionSegment, into buf: inout [UInt8]) {
@@ -795,24 +821,29 @@ public struct FfiConverterTypeTranscriptionSegment: FfiConverterRustBuffer {
     }
 }
 
+
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public func FfiConverterTypeTranscriptionSegment_lift(_ buf: RustBuffer) throws -> TranscriptionSegment {
     return try FfiConverterTypeTranscriptionSegment.lift(buf)
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public func FfiConverterTypeTranscriptionSegment_lower(_ value: TranscriptionSegment) -> RustBuffer {
     return FfiConverterTypeTranscriptionSegment.lower(value)
 }
 
+
 /**
  * Errors that can occur during transcription.
  */
 public enum TranscribeError {
+
+    
+    
     case ModelNotAvailable(reason: String
     )
     case AudioLoadFailed(reason: String
@@ -821,8 +852,9 @@ public enum TranscribeError {
     )
 }
 
+
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeTranscribeError: FfiConverterRustBuffer {
     typealias SwiftType = TranscribeError
@@ -830,36 +862,49 @@ public struct FfiConverterTypeTranscribeError: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TranscribeError {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-        case 1: return try .ModelNotAvailable(
-                reason: FfiConverterString.read(from: &buf)
+
+        
+
+        
+        case 1: return .ModelNotAvailable(
+            reason: try FfiConverterString.read(from: &buf)
             )
-        case 2: return try .AudioLoadFailed(
-                reason: FfiConverterString.read(from: &buf)
+        case 2: return .AudioLoadFailed(
+            reason: try FfiConverterString.read(from: &buf)
             )
-        case 3: return try .TranscriptionFailed(
-                reason: FfiConverterString.read(from: &buf)
+        case 3: return .TranscriptionFailed(
+            reason: try FfiConverterString.read(from: &buf)
             )
 
-        default: throw UniffiInternalError.unexpectedEnumCase
+         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: TranscribeError, into buf: inout [UInt8]) {
         switch value {
+
+        
+
+        
+        
         case let .ModelNotAvailable(reason):
             writeInt(&buf, Int32(1))
             FfiConverterString.write(reason, into: &buf)
-
+            
+        
         case let .AudioLoadFailed(reason):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(reason, into: &buf)
-
+            
+        
         case let .TranscriptionFailed(reason):
             writeInt(&buf, Int32(3))
             FfiConverterString.write(reason, into: &buf)
+            
         }
     }
 }
+
 
 extension TranscribeError: Equatable, Hashable {}
 
@@ -870,9 +915,9 @@ extension TranscribeError: Foundation.LocalizedError {
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private struct FfiConverterOptionString: FfiConverterRustBuffer {
+fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
     typealias SwiftType = String?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -894,9 +939,9 @@ private struct FfiConverterOptionString: FfiConverterRustBuffer {
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private struct FfiConverterSequenceTypeTranscriptionSegment: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeTranscriptionSegment: FfiConverterRustBuffer {
     typealias SwiftType = [TranscriptionSegment]
 
     public static func write(_ value: [TranscriptionSegment], into buf: inout [UInt8]) {
@@ -912,7 +957,7 @@ private struct FfiConverterSequenceTypeTranscriptionSegment: FfiConverterRustBuf
         var seq = [TranscriptionSegment]()
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
-            try seq.append(FfiConverterTypeTranscriptionSegment.read(from: &buf))
+            seq.append(try FfiConverterTypeTranscriptionSegment.read(from: &buf))
         }
         return seq
     }
@@ -923,7 +968,6 @@ private enum InitializationResult {
     case contractVersionMismatch
     case apiChecksumMismatch
 }
-
 // Use a global variable to perform the versioning checks. Swift ensures that
 // the code inside is only computed once.
 private var initializationResult: InitializationResult = {
@@ -934,19 +978,19 @@ private var initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if uniffi_whisper_transcribe_checksum_method_transcriptionengine_is_model_loaded() != 52129 {
+    if (uniffi_whisper_transcribe_checksum_method_transcriptionengine_is_model_loaded() != 52129) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_whisper_transcribe_checksum_method_transcriptionengine_prepare_model() != 10140 {
+    if (uniffi_whisper_transcribe_checksum_method_transcriptionengine_prepare_model() != 10140) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_whisper_transcribe_checksum_method_transcriptionengine_transcribe_file() != 32379 {
+    if (uniffi_whisper_transcribe_checksum_method_transcriptionengine_transcribe_file() != 32379) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_whisper_transcribe_checksum_method_transcriptionengine_unload_model() != 34212 {
+    if (uniffi_whisper_transcribe_checksum_method_transcriptionengine_unload_model() != 34212) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_whisper_transcribe_checksum_constructor_transcriptionengine_new() != 43015 {
+    if (uniffi_whisper_transcribe_checksum_constructor_transcriptionengine_new() != 43015) {
         return InitializationResult.apiChecksumMismatch
     }
 

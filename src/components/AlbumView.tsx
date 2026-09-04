@@ -38,7 +38,7 @@ interface AlbumViewProps {
   attachments: Attachment[];
   isOutgoing: boolean;
   onPreview?: (filePath: string) => void;
-  onRightClick?: (e: any) => void;
+  onRightClick?: (e: any, attachment: Attachment) => void;
 }
 
 export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
@@ -379,7 +379,7 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                   <Pressable
                     onPressIn={(e: any) => {
                       if (e.nativeEvent?.button === 2) {
-                        onRightClick?.(e);
+                        onRightClick?.(e, att);
                         return;
                       }
                       att.filePath && handlePress(att.filePath);

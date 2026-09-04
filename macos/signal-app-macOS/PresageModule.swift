@@ -1410,15 +1410,39 @@ class PresageModule: RCTEventEmitter {
         }
     }
 
+    /// Pick the name a saved attachment should get in ~/Downloads.
+    ///
+    /// The sender controls `originalName`, so strip any directory components
+    /// before it is joined onto the Downloads path.
+    static func downloadFileName(originalName: String, cachedPath: String) -> String {
+        let trimmed = originalName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sanitized = (trimmed as NSString).lastPathComponent
+        if !sanitized.isEmpty, sanitized != ".", sanitized != ".." {
+            return sanitized
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        let stamp = formatter.string(from: Date())
+        let ext = (cachedPath as NSString).pathExtension
+        return ext.isEmpty
+            ? "Hush Attachment \(stamp)"
+            : "Hush Attachment \(stamp).\(ext)"
+    }
+
     @objc private func handleSaveToDownloads(_ sender: NSMenuItem) {
         guard let info = sender.representedObject as? [String: String],
               let filePath = info["path"], !filePath.isEmpty else { return }
         let fileManager = FileManager.default
         guard let downloadsURL = fileManager.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return }
-        // Prefer the original sender-provided filename (includes correct extension);
-        // fall back to the cached disk name only if it's unavailable.
-        let originalName = info["name"] ?? ""
-        let fileName = originalName.isEmpty ? (filePath as NSString).lastPathComponent : originalName
+        // Prefer the original sender-provided filename (it carries the correct
+        // extension). The cached disk name is a content digest, so falling back
+        // to it would produce names like "a3f9e2...bin"; synthesize a readable
+        // name instead when the sender supplied none.
+        let fileName = Self.downloadFileName(
+            originalName: info["name"] ?? "",
+            cachedPath: filePath
+        )
         let nameWithoutExt = (fileName as NSString).deletingPathExtension
         let ext = (fileName as NSString).pathExtension
 

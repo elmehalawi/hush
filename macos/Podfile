@@ -26,5 +26,34 @@ target 'signal-app-macOS' do
 
   post_install do |installer|
     react_native_post_install(installer)
+    patch_fmt_consteval(installer)
   end
+end
+
+# fmt 11.0.2 is pinned by RCT-Folly and uses consteval format-string checks that
+# Apple clang from Xcode 26.6+ rejects ("call to consteval function ... is not a
+# constant expression"). Upstream fixed this in fmt 11.1, which we can't move to
+# while Folly pins the version, so force the non-consteval code path instead.
+def patch_fmt_consteval(installer)
+  base_h = File.join(installer.sandbox.root, 'fmt', 'include', 'fmt', 'base.h')
+  return unless File.exist?(base_h)
+
+  guard = "#undef FMT_USE_CONSTEVAL\n#define FMT_USE_CONSTEVAL 0\n"
+  source = File.read(base_h)
+  return if source.include?(guard)
+
+  anchor = "#if FMT_USE_CONSTEVAL\n#  define FMT_CONSTEVAL consteval"
+  unless source.include?(anchor)
+    Pod::UI.warn 'fmt/base.h layout changed; skipping consteval patch'
+    return
+  end
+
+  # Pod sources land read-only, and CocoaPods may hard-link them from its cache,
+  # so replace the file rather than writing through to a shared inode.
+  mode = File.stat(base_h).mode & 0o7777
+  patched = source.sub(anchor, guard + anchor)
+  File.delete(base_h)
+  File.write(base_h, patched)
+  File.chmod(mode, base_h)
+  Pod::UI.puts 'Patched fmt/base.h to disable consteval format-string checks'
 end

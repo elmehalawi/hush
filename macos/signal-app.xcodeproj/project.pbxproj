@@ -33,12 +33,12 @@
 		GLASS001A00000000000004 /* GlassContainerViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000004 /* GlassContainerViewManager.m */; };
 		GLASS001A00000000000005 /* GlassButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000005 /* GlassButton.swift */; };
 		GLASS001A00000000000006 /* GlassButtonManager.m in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000006 /* GlassButtonManager.m */; };
-		SCRL001A00000000000001 /* ScrollFix.m in Sources */ = {isa = PBXBuildFile; fileRef = SCRL001F00000000000001 /* ScrollFix.m */; };
 		ICON001A00000000000001 /* HushIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = ICON001F00000000000001 /* HushIcon.icon */; };
-		WHSP001A00000000000001 /* whisper_transcribe.swift in Sources */ = {isa = PBXBuildFile; fileRef = WHSP001F00000000000001 /* whisper_transcribe.swift */; };
-		WHSP001A00000000000002 /* libwhisper_transcribe.a in Frameworks */ = {isa = PBXBuildFile; fileRef = WHSP001F00000000000002 /* libwhisper_transcribe.a */; };
+		SCRL001A00000000000001 /* ScrollFix.m in Sources */ = {isa = PBXBuildFile; fileRef = SCRL001F00000000000001 /* ScrollFix.m */; };
 		SWIP001A00000000000001 /* SwipeGestureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SWIP001F00000000000001 /* SwipeGestureView.swift */; };
 		SWIP001A00000000000002 /* SwipeGestureViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = SWIP001F00000000000002 /* SwipeGestureViewManager.m */; };
+		WHSP001A00000000000001 /* whisper_transcribe.swift in Sources */ = {isa = PBXBuildFile; fileRef = WHSP001F00000000000001 /* whisper_transcribe.swift */; };
+		WHSP001A00000000000002 /* libwhisper_transcribe.a in Frameworks */ = {isa = PBXBuildFile; fileRef = WHSP001F00000000000002 /* libwhisper_transcribe.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -79,11 +79,11 @@
 		GLASS001F00000000000006 /* GlassButtonManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GlassButtonManager.m; sourceTree = "<group>"; };
 		ICON001F00000000000001 /* HushIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder; path = HushIcon.icon; sourceTree = "<group>"; };
 		SCRL001F00000000000001 /* ScrollFix.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ScrollFix.m; sourceTree = "<group>"; };
+		SWIP001F00000000000001 /* SwipeGestureView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SwipeGestureView.swift; sourceTree = "<group>"; };
+		SWIP001F00000000000002 /* SwipeGestureViewManager.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = SwipeGestureViewManager.m; sourceTree = "<group>"; };
 		WHSP001F00000000000001 /* whisper_transcribe.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = whisper_transcribe.swift; sourceTree = "<group>"; };
 		WHSP001F00000000000002 /* libwhisper_transcribe.a */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = archive.ar; path = libwhisper_transcribe.a; sourceTree = "<group>"; };
 		WHSP001F00000000000003 /* whisper_transcribeFFI.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = whisper_transcribeFFI.h; sourceTree = "<group>"; };
-		SWIP001F00000000000001 /* SwipeGestureView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SwipeGestureView.swift; sourceTree = "<group>"; };
-		SWIP001F00000000000002 /* SwipeGestureViewManager.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = SwipeGestureViewManager.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */

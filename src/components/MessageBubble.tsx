@@ -152,7 +152,7 @@ function AttachmentView({
   attachment: Attachment;
   isOutgoing: boolean;
   onRetry?: () => void;
-  onRightClick?: (e: any) => void;
+  onRightClick?: (e: any, attachment: Attachment) => void;
 }) {
   const c = useColors();
   const [showRetry, setShowRetry] = useState(false);
@@ -191,7 +191,7 @@ function AttachmentView({
 
   const handlePressIn = (e: any) => {
     if (e.nativeEvent?.button === 2) {
-      onRightClick?.(e);
+      onRightClick?.(e, attachment);
       return;
     }
     openMediaPreview(attachment.filePath!);
@@ -521,11 +521,14 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
     nonAudioAttachments.find(a => a.filePath) ||
     null;
 
-  const handleBubblePressIn = useCallback((e: any) => {
+  const handleBubblePressIn = useCallback((e: any, target?: Attachment) => {
     if (e.nativeEvent?.button === 2) {
       const authorName = message.isOutgoing
         ? 'You'
         : message.senderName || message.senderId;
+      // Save/Open should act on the attachment actually right-clicked; only
+      // fall back to the message's first file when the click was on the bubble.
+      const fileAttachment = target?.filePath ? target : firstFileAttachment;
       PresageModule?.showMessageContextMenu(
         message.body || '',
         message.timestamp,
@@ -533,8 +536,8 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
         authorName,
         message.channelId,
         myReaction?.emoji || '',
-        firstFileAttachment?.filePath || '',
-        firstFileAttachment?.fileName || '',
+        fileAttachment?.filePath || '',
+        fileAttachment?.fileName || '',
       );
     }
   }, [message.body, message.timestamp, message.senderId, message.senderName, message.isOutgoing, message.channelId, myReaction?.emoji, firstFileAttachment?.filePath, firstFileAttachment?.fileName]);

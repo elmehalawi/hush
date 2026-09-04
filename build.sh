@@ -215,6 +215,12 @@ fi
 log_step "Building Xcode project ($XCODE_CONFIG)..."
 cd "$MACOS_DIR"
 
+# Metro's default crawler is Watchman, which cannot watch paths under
+# ~/Documents without macOS Files-and-Folders access — and it blocks forever
+# instead of failing, silently wedging the "Bundle React Native code and
+# images" phase. Point Metro at a config that uses the Node crawler instead.
+export BUNDLE_CONFIG="$SCRIPT_DIR/metro.config.release.js"
+
 # Use xcworkspace if it exists (CocoaPods), otherwise xcodeproj
 if [ -d "signal-app.xcworkspace" ]; then
     XCODE_PROJECT="-workspace signal-app.xcworkspace"
