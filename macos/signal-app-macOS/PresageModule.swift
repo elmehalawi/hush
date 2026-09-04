@@ -1080,9 +1080,29 @@ class PresageModule: RCTEventEmitter {
 
     // MARK: - Transcription
 
+    /// MLX loads its Metal kernels from `mlx.metallib` next to the executable.
+    /// When it can't find one it tears down the whole process rather than
+    /// returning an error, so check first and fail as a normal promise
+    /// rejection instead of taking the app down with us.
+    private func metallibMissingMessage() -> String? {
+        guard let exeDir = Bundle.main.executableURL?.deletingLastPathComponent() else {
+            return "Cannot locate the app bundle to load transcription kernels."
+        }
+        let metallib = exeDir.appendingPathComponent("mlx.metallib")
+        if FileManager.default.fileExists(atPath: metallib.path) {
+            return nil
+        }
+        return "Transcription is unavailable: mlx.metallib is missing from this build of Hush."
+    }
+
     @objc(prepareTranscriptionModel:rejecter:)
     func prepareTranscriptionModel(_ resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {
+            if let reason = self.metallibMissingMessage() {
+                NSLog("PresageModule: %@", reason)
+                rejecter("TRANSCRIBE_MODEL_ERROR", reason, nil)
+                return
+            }
             do {
                 if self.transcriptionEngine == nil {
                     let assetsDir = (Bundle.main.resourcePath ?? "") + "/whisper-assets"
@@ -1108,6 +1128,12 @@ class PresageModule: RCTEventEmitter {
                let cached = try? JSONSerialization.jsonObject(with: cachedData) as? [String: Any] {
                 NSLog("PresageModule: Returning cached transcription for %@", filePath)
                 resolver(cached)
+                return
+            }
+
+            if let reason = self.metallibMissingMessage() {
+                NSLog("PresageModule: %@", reason)
+                rejecter("TRANSCRIBE_MODEL_ERROR", reason, nil)
                 return
             }
 
