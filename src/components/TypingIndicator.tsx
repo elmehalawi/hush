@@ -1,64 +1,93 @@
-import React, {useEffect, useMemo, useRef} from 'react';
-import {View, Animated, Easing, StyleSheet, Image, Text} from 'react-native';
+import React, {useEffect, useState} from 'react';
+import {View, StyleSheet, Image, Text} from 'react-native';
+import type {StyleProp, ViewStyle} from 'react-native';
 import {useSignalStore} from '../store/signalStore';
 import {useColors} from '../theme/colors';
 
 /**
- * One clock drives all three dots.
+ * A typing indicator does not need 60fps.
  *
- * This deliberately stays on the JS driver. useNativeDriver: true is a dead end
- * in this app: react-native-macos accepts startAnimatingNode under bridgeless
- * Fabric and then never advances the animation, with no error. A native-driven
- * timing simply never completes (measured: a 600ms timing still unfinished at
- * 3000ms, while the identical JS-driven timing finished in 601ms). That is what
- * froze the dots in v1.10.5 -- not the loop shape.
+ * Animating these with Animated meant every dot's opacity and scale were
+ * recomputed and pushed to the view on every frame -- three view updates per
+ * indicator per frame, ~180/sec each, on the JS thread. With a chat pill and a
+ * sidebar row both live that was the thing making the UI crawl while somebody
+ * typed. (The native driver would have moved it off-thread, but it does not
+ * work in this app at all -- see the v1.10.5/v1.10.6 history.)
  *
- * What this does save is JS work: one clock per indicator instead of three
- * independent values, with each dot deriving its own phase by interpolation.
- * Offsets of 0 / 0.25 / 0.5 of the period reproduce the old 200ms stagger, and
- * every row's endpoints match so the loop is seamless.
+ * So the dots step instead of sliding: six discrete frames on a 150ms tick,
+ * ~20 view updates/sec per indicator rather than ~180. One interval serves
+ * every indicator in the app, it only runs while at least one is mounted, and
+ * because they share it the dots stay in phase with each other.
  */
-export const DOT_WAVE = [
-  // Peaks at clock 0 / 0.25 / 0.5 so the wave runs left-to-right, matching the
-  // old 0 / 200ms / 400ms stagger over an 800ms period.
-  {input: [0, 0.5, 1], opacity: [1, 0.3, 1], scale: [1, 0.7, 1]},
-  {input: [0, 0.25, 0.75, 1], opacity: [0.65, 1, 0.3, 0.65], scale: [0.85, 1, 0.7, 0.85]},
-  {input: [0, 0.5, 1], opacity: [0.3, 1, 0.3], scale: [0.7, 1, 0.7]},
-];
+const STEP_MS = 150;
+const STEPS = 6;
 
-export const DOT_PERIOD_MS = 800;
+/** Opacity/scale by how many steps a dot is behind the leading edge. */
+const DOT_OPACITY = [1, 0.7, 0.45, 0.3, 0.3, 0.3];
+const DOT_SCALE = [1, 0.9, 0.8, 0.7, 0.7, 0.7];
 
-/** Starts the shared native dot clock for the lifetime of the component. */
-export function useDotClock(): Animated.Value {
-  const clock = useRef(new Animated.Value(0)).current;
+const stepSubscribers = new Set<(step: number) => void>();
+let stepTimer: ReturnType<typeof setInterval> | null = null;
+let currentStep = 0;
 
-  useEffect(() => {
-    const anim = Animated.loop(
-      Animated.timing(clock, {
-        toValue: 1,
-        duration: DOT_PERIOD_MS,
-        easing: Easing.linear,
-        useNativeDriver: false,
-      }),
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [clock]);
-
-  return clock;
+function subscribeToStep(fn: (step: number) => void): () => void {
+  stepSubscribers.add(fn);
+  if (stepTimer == null) {
+    stepTimer = setInterval(() => {
+      currentStep = (currentStep + 1) % STEPS;
+      stepSubscribers.forEach(f => f(currentStep));
+    }, STEP_MS);
+  }
+  return () => {
+    stepSubscribers.delete(fn);
+    if (stepSubscribers.size === 0 && stepTimer != null) {
+      clearInterval(stepTimer);
+      stepTimer = null;
+      currentStep = 0;
+    }
+  };
 }
 
-/** Interpolations are built once; rebuilding them re-registers native nodes. */
-export function useDotStyles(clock: Animated.Value) {
-  return useMemo(
-    () =>
-      DOT_WAVE.map(w => ({
-        opacity: clock.interpolate({inputRange: w.input, outputRange: w.opacity}),
-        transform: [
-          {scale: clock.interpolate({inputRange: w.input, outputRange: w.scale})},
-        ],
-      })),
-    [clock],
+export function useDotStep(): number {
+  const [step, setStep] = useState(currentStep);
+  useEffect(() => subscribeToStep(setStep), []);
+  return step;
+}
+
+/**
+ * The animating part, kept in its own component so the 150ms tick re-renders
+ * only three tiny views -- not the avatar image or the surrounding row.
+ */
+export function DotRow({
+  color,
+  dotStyle,
+  rowStyle,
+}: {
+  color: string;
+  dotStyle: StyleProp<ViewStyle>;
+  rowStyle?: StyleProp<ViewStyle>;
+}) {
+  const step = useDotStep();
+
+  return (
+    <View style={rowStyle}>
+      {[0, 1, 2].map(i => {
+        const phase = (((step - i) % STEPS) + STEPS) % STEPS;
+        return (
+          <View
+            key={i}
+            style={[
+              dotStyle,
+              {
+                backgroundColor: color,
+                opacity: DOT_OPACITY[phase],
+                transform: [{scale: DOT_SCALE[phase]}],
+              },
+            ]}
+          />
+        );
+      })}
+    </View>
   );
 }
 
@@ -77,17 +106,12 @@ export function TypingIndicator({senderId, isGroup}: TypingIndicatorProps) {
   const senderAvatar = senderChannel?.avatarPath;
   const senderInitial = senderChannel?.name?.charAt(0).toUpperCase() || '?';
 
-  const clock = useDotClock();
-  const dotStyles = useDotStyles(clock);
-
-  const dotColor = {backgroundColor: c.secondaryLabel};
-
   const pill = (
-    <View style={[styles.pill, {backgroundColor: c.incomingBubble}]}>
-      <Animated.View style={[styles.dot, dotColor, dotStyles[0]]} />
-      <Animated.View style={[styles.dot, dotColor, dotStyles[1]]} />
-      <Animated.View style={[styles.dot, dotColor, dotStyles[2]]} />
-    </View>
+    <DotRow
+      color={c.secondaryLabel}
+      dotStyle={styles.dot}
+      rowStyle={[styles.pill, {backgroundColor: c.incomingBubble}]}
+    />
   );
 
   if (isGroup) {

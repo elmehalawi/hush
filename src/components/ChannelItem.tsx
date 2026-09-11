@@ -1,10 +1,10 @@
 import React, {useMemo, useCallback} from 'react';
-import {View, Text, Pressable, StyleSheet, Image, NativeModules, Animated} from 'react-native';
+import {View, Text, Pressable, StyleSheet, Image, NativeModules} from 'react-native';
 import {Channel, useSignalStore, channelDisplayName} from '../store/signalStore';
 import {GlassView} from './GlassView';
 import {useColors} from '../theme/colors';
 import {useWindowFocused} from '../hooks/useWindowFocused';
-import {useDotClock, useDotStyles} from './TypingIndicator';
+import {DotRow} from './TypingIndicator';
 
 const {PresageModule} = NativeModules;
 
@@ -149,16 +149,12 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
 }
 
 function ChannelTypingDots({color}: {color: string}) {
-  const clock = useDotClock();
-  const dotStyles = useDotStyles(clock);
-  const dotColor = {backgroundColor: color};
-
   return (
-    <View style={channelTypingStyles.row}>
-      <Animated.View style={[channelTypingStyles.dot, dotColor, dotStyles[0]]} />
-      <Animated.View style={[channelTypingStyles.dot, dotColor, dotStyles[1]]} />
-      <Animated.View style={[channelTypingStyles.dot, dotColor, dotStyles[2]]} />
-    </View>
+    <DotRow
+      color={color}
+      dotStyle={channelTypingStyles.dot}
+      rowStyle={channelTypingStyles.row}
+    />
   );
 }
 
