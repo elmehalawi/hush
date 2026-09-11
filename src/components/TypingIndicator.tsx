@@ -1,4 +1,4 @@
-import React, {useEffect, useRef} from 'react';
+import React, {useEffect, useMemo, useRef} from 'react';
 import {View, Animated, StyleSheet, Image, Text} from 'react-native';
 import {useSignalStore} from '../store/signalStore';
 import {useColors} from '../theme/colors';
@@ -32,12 +32,12 @@ export function TypingIndicator({senderId, isGroup}: TypingIndicatorProps) {
             Animated.timing(dot, {
               toValue: 1,
               duration: 400,
-              useNativeDriver: false,
+              useNativeDriver: true,
             }),
             Animated.timing(dot, {
               toValue: 0,
               duration: 400,
-              useNativeDriver: false,
+              useNativeDriver: true,
             }),
           ]),
         ),
@@ -56,31 +56,33 @@ export function TypingIndicator({senderId, isGroup}: TypingIndicatorProps) {
     };
   }, [dot1, dot2, dot3]);
 
-  const dotStyle = (anim: Animated.Value) => ({
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: c.secondaryLabel,
-    marginHorizontal: 2,
-    opacity: anim.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.3, 1],
-    }),
-    transform: [
-      {
-        scale: anim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0.7, 1],
-        }),
-      },
-    ],
-  });
+  // Interpolations must be built once: re-creating them on every render
+  // rebuilds the underlying animated nodes and re-registers them natively.
+  const dotStyles = useMemo(() => {
+    const build = (anim: Animated.Value) => ({
+      opacity: anim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.3, 1],
+      }),
+      transform: [
+        {
+          scale: anim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.7, 1],
+          }),
+        },
+      ],
+    });
+    return [build(dot1), build(dot2), build(dot3)];
+  }, [dot1, dot2, dot3]);
+
+  const dotColor = {backgroundColor: c.secondaryLabel};
 
   const pill = (
     <View style={[styles.pill, {backgroundColor: c.incomingBubble}]}>
-      <Animated.View style={dotStyle(dot1)} />
-      <Animated.View style={dotStyle(dot2)} />
-      <Animated.View style={dotStyle(dot3)} />
+      <Animated.View style={[styles.dot, dotColor, dotStyles[0]]} />
+      <Animated.View style={[styles.dot, dotColor, dotStyles[1]]} />
+      <Animated.View style={[styles.dot, dotColor, dotStyles[2]]} />
     </View>
   );
 
@@ -112,6 +114,12 @@ export function TypingIndicator({senderId, isGroup}: TypingIndicatorProps) {
 }
 
 const styles = StyleSheet.create({
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginHorizontal: 2,
+  },
   dmRow: {
     alignItems: 'flex-start',
     paddingHorizontal: 16,

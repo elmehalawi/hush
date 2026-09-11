@@ -158,8 +158,8 @@ function ChannelTypingDots({color}: {color: string}) {
         Animated.delay(delay),
         Animated.loop(
           Animated.sequence([
-            Animated.timing(dot, {toValue: 1, duration: 400, useNativeDriver: false}),
-            Animated.timing(dot, {toValue: 0, duration: 400, useNativeDriver: false}),
+            Animated.timing(dot, {toValue: 1, duration: 400, useNativeDriver: true}),
+            Animated.timing(dot, {toValue: 0, duration: 400, useNativeDriver: true}),
           ]),
         ),
       ]);
@@ -168,21 +168,22 @@ function ChannelTypingDots({color}: {color: string}) {
     return () => anim.stop();
   }, [dot1, dot2, dot3]);
 
-  const dot = (v: Animated.Value) => ({
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: color,
-    marginHorizontal: 1.5,
-    opacity: v.interpolate({inputRange: [0, 1], outputRange: [0.3, 1]}),
-    transform: [{scale: v.interpolate({inputRange: [0, 1], outputRange: [0.7, 1]})}],
-  });
+  // Built once: re-interpolating on every render rebuilds the animated nodes.
+  const dotStyles = useMemo(() => {
+    const build = (v: Animated.Value) => ({
+      opacity: v.interpolate({inputRange: [0, 1], outputRange: [0.3, 1]}),
+      transform: [{scale: v.interpolate({inputRange: [0, 1], outputRange: [0.7, 1]})}],
+    });
+    return [build(dot1), build(dot2), build(dot3)];
+  }, [dot1, dot2, dot3]);
+
+  const dotColor = {backgroundColor: color};
 
   return (
     <View style={channelTypingStyles.row}>
-      <Animated.View style={dot(dot1)} />
-      <Animated.View style={dot(dot2)} />
-      <Animated.View style={dot(dot3)} />
+      <Animated.View style={[channelTypingStyles.dot, dotColor, dotStyles[0]]} />
+      <Animated.View style={[channelTypingStyles.dot, dotColor, dotStyles[1]]} />
+      <Animated.View style={[channelTypingStyles.dot, dotColor, dotStyles[2]]} />
     </View>
   );
 }
@@ -193,6 +194,12 @@ const channelTypingStyles = StyleSheet.create({
     alignItems: 'center',
     height: 18,
     flex: 1,
+  },
+  dot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginHorizontal: 1.5,
   },
 });
 

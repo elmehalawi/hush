@@ -469,10 +469,14 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
     if (senderId === userId) return;
 
     const current = typingUsers[channelId] || [];
+    const isPresent = current.some(t => t.senderId === senderId);
+    // Senders re-send "started" periodically while they keep typing. Bailing
+    // out when nothing changes keeps those refreshes from re-rendering the
+    // indicator (and rebuilding its animated nodes) every few seconds.
+    if (started === isPresent) return;
+
     if (started) {
-      const filtered = current.filter(t => t.senderId !== senderId);
-      filtered.push({senderId, timestamp: Date.now()});
-      set({typingUsers: {...typingUsers, [channelId]: filtered}});
+      set({typingUsers: {...typingUsers, [channelId]: [...current, {senderId, timestamp: Date.now()}]}});
     } else {
       const filtered = current.filter(t => t.senderId !== senderId);
       if (filtered.length === 0) {
