@@ -1,9 +1,10 @@
-import React, {useMemo, useCallback, useEffect, useRef} from 'react';
+import React, {useMemo, useCallback} from 'react';
 import {View, Text, Pressable, StyleSheet, Image, NativeModules, Animated} from 'react-native';
 import {Channel, useSignalStore, channelDisplayName} from '../store/signalStore';
 import {GlassView} from './GlassView';
 import {useColors} from '../theme/colors';
 import {useWindowFocused} from '../hooks/useWindowFocused';
+import {useDotClock, useDotStyles} from './TypingIndicator';
 
 const {PresageModule} = NativeModules;
 
@@ -148,35 +149,8 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
 }
 
 function ChannelTypingDots({color}: {color: string}) {
-  const dot1 = useRef(new Animated.Value(0)).current;
-  const dot2 = useRef(new Animated.Value(0)).current;
-  const dot3 = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const makeDot = (dot: Animated.Value, delay: number) =>
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(dot, {toValue: 1, duration: 400, useNativeDriver: true}),
-            Animated.timing(dot, {toValue: 0, duration: 400, useNativeDriver: true}),
-          ]),
-        ),
-      ]);
-    const anim = Animated.parallel([makeDot(dot1, 0), makeDot(dot2, 200), makeDot(dot3, 400)]);
-    anim.start();
-    return () => anim.stop();
-  }, [dot1, dot2, dot3]);
-
-  // Built once: re-interpolating on every render rebuilds the animated nodes.
-  const dotStyles = useMemo(() => {
-    const build = (v: Animated.Value) => ({
-      opacity: v.interpolate({inputRange: [0, 1], outputRange: [0.3, 1]}),
-      transform: [{scale: v.interpolate({inputRange: [0, 1], outputRange: [0.7, 1]})}],
-    });
-    return [build(dot1), build(dot2), build(dot3)];
-  }, [dot1, dot2, dot3]);
-
+  const clock = useDotClock();
+  const dotStyles = useDotStyles(clock);
   const dotColor = {backgroundColor: color};
 
   return (

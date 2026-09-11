@@ -1,7 +1,66 @@
 import React, {useEffect, useMemo, useRef} from 'react';
-import {View, Animated, StyleSheet, Image, Text} from 'react-native';
+import {View, Animated, Easing, StyleSheet, Image, Text} from 'react-native';
 import {useSignalStore} from '../store/signalStore';
 import {useColors} from '../theme/colors';
+
+/**
+ * One clock drives all three dots.
+ *
+ * This deliberately stays on the JS driver. useNativeDriver: true is a dead end
+ * in this app: react-native-macos accepts startAnimatingNode under bridgeless
+ * Fabric and then never advances the animation, with no error. A native-driven
+ * timing simply never completes (measured: a 600ms timing still unfinished at
+ * 3000ms, while the identical JS-driven timing finished in 601ms). That is what
+ * froze the dots in v1.10.5 -- not the loop shape.
+ *
+ * What this does save is JS work: one clock per indicator instead of three
+ * independent values, with each dot deriving its own phase by interpolation.
+ * Offsets of 0 / 0.25 / 0.5 of the period reproduce the old 200ms stagger, and
+ * every row's endpoints match so the loop is seamless.
+ */
+export const DOT_WAVE = [
+  // Peaks at clock 0 / 0.25 / 0.5 so the wave runs left-to-right, matching the
+  // old 0 / 200ms / 400ms stagger over an 800ms period.
+  {input: [0, 0.5, 1], opacity: [1, 0.3, 1], scale: [1, 0.7, 1]},
+  {input: [0, 0.25, 0.75, 1], opacity: [0.65, 1, 0.3, 0.65], scale: [0.85, 1, 0.7, 0.85]},
+  {input: [0, 0.5, 1], opacity: [0.3, 1, 0.3], scale: [0.7, 1, 0.7]},
+];
+
+export const DOT_PERIOD_MS = 800;
+
+/** Starts the shared native dot clock for the lifetime of the component. */
+export function useDotClock(): Animated.Value {
+  const clock = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.timing(clock, {
+        toValue: 1,
+        duration: DOT_PERIOD_MS,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      }),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [clock]);
+
+  return clock;
+}
+
+/** Interpolations are built once; rebuilding them re-registers native nodes. */
+export function useDotStyles(clock: Animated.Value) {
+  return useMemo(
+    () =>
+      DOT_WAVE.map(w => ({
+        opacity: clock.interpolate({inputRange: w.input, outputRange: w.opacity}),
+        transform: [
+          {scale: clock.interpolate({inputRange: w.input, outputRange: w.scale})},
+        ],
+      })),
+    [clock],
+  );
+}
 
 interface TypingIndicatorProps {
   senderId: string;
@@ -18,63 +77,8 @@ export function TypingIndicator({senderId, isGroup}: TypingIndicatorProps) {
   const senderAvatar = senderChannel?.avatarPath;
   const senderInitial = senderChannel?.name?.charAt(0).toUpperCase() || '?';
 
-  // Three animated dots
-  const dot1 = useRef(new Animated.Value(0)).current;
-  const dot2 = useRef(new Animated.Value(0)).current;
-  const dot3 = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const createDotAnimation = (dot: Animated.Value, delay: number) =>
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(dot, {
-              toValue: 1,
-              duration: 400,
-              useNativeDriver: true,
-            }),
-            Animated.timing(dot, {
-              toValue: 0,
-              duration: 400,
-              useNativeDriver: true,
-            }),
-          ]),
-        ),
-      ]);
-
-    const animation = Animated.parallel([
-      createDotAnimation(dot1, 0),
-      createDotAnimation(dot2, 200),
-      createDotAnimation(dot3, 400),
-    ]);
-
-    animation.start();
-
-    return () => {
-      animation.stop();
-    };
-  }, [dot1, dot2, dot3]);
-
-  // Interpolations must be built once: re-creating them on every render
-  // rebuilds the underlying animated nodes and re-registers them natively.
-  const dotStyles = useMemo(() => {
-    const build = (anim: Animated.Value) => ({
-      opacity: anim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0.3, 1],
-      }),
-      transform: [
-        {
-          scale: anim.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0.7, 1],
-          }),
-        },
-      ],
-    });
-    return [build(dot1), build(dot2), build(dot3)];
-  }, [dot1, dot2, dot3]);
+  const clock = useDotClock();
+  const dotStyles = useDotStyles(clock);
 
   const dotColor = {backgroundColor: c.secondaryLabel};
 
