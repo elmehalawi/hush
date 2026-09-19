@@ -124,6 +124,7 @@ interface SignalStore {
   setMessages: (channelId: string, messages: Message[]) => void;
   updateChannel: (channel: Channel) => void;
   markChannelAsRead: (channelId: string) => void;
+  setChannelUnreadCount: (channelId: string, count: number) => void;
   incrementUnread: (channelId: string) => void;
   updateAttachment: (
     channelId: string,
@@ -354,6 +355,18 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
     if (index >= 0 && channels[index].unreadCount > 0) {
       const newChannels = [...channels];
       newChannels[index] = {...newChannels[index], unreadCount: 0};
+      set({channels: newChannels});
+    }
+  },
+
+  // Set a channel's unread count outright. Used by read syncs from our other
+  // devices, where the native side has already recomputed the exact count.
+  setChannelUnreadCount: (channelId: string, count: number) => {
+    const {channels} = get();
+    const index = channels.findIndex(c => c.id === channelId);
+    if (index >= 0 && channels[index].unreadCount !== count) {
+      const newChannels = [...channels];
+      newChannels[index] = {...newChannels[index], unreadCount: count};
       set({channels: newChannels});
     }
   },

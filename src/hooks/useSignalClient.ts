@@ -601,6 +601,12 @@ export function useSignalClient() {
       presageEventEmitter.addListener('onReadReceipt', (event: {senderId: string; timestamps: number[]}) => {
         markMessagesAsRead(event.senderId, event.timestamps);
       }),
+      // A read sync from one of our other devices (phone, iPad, Desktop).
+      // Native has already advanced the persisted read state and recomputed the
+      // count, so just apply it.
+      presageEventEmitter.addListener('onReadSync', (event: {channelId: string; unreadCount: number}) => {
+        useSignalStore.getState().setChannelUnreadCount(event.channelId, event.unreadCount);
+      }),
       presageEventEmitter.addListener('onChannelUpdated', (channel: NativeChannel) => {
         updateChannel(convertChannel(channel));
       }),

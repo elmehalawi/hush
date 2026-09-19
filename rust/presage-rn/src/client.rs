@@ -20,7 +20,7 @@ use presage::proto::attachment_pointer::AttachmentIdentifier;
 use presage::proto::{call_message, receipt_message, sync_message, typing_message, AttachmentPointer, DataMessage, EditMessage, GroupContextV2, Preview, ReceiptMessage, SyncMessage};
 use presage::store::{ContentsStore, Thread};
 use presage_store_sqlite::SqliteStore;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::call_manager::{HushCallManager, OutgoingSignaling};
@@ -637,6 +637,7 @@ impl SignalClient {
                                 answered_call_ids.insert(call_id);
                             }
                             Some(ProcessedContent::ReadReceipt { .. }) => {}
+                            Some(ProcessedContent::ReadSync { .. }) => {}
                             Some(ProcessedContent::Typing { .. }) => {}
                             None => {}
                         }
@@ -1842,6 +1843,12 @@ impl SignalClient {
                         }
                         info!("Built group typing lookup with {} entries", group_id_to_channel.len());
 
+                        // Channel ids of our groups, used to locate the thread a
+                        // synced read refers to (read syncs name the message's
+                        // sender, not its thread).
+                        let group_channel_ids: Vec<String> =
+                            group_id_to_channel.values().cloned().collect();
+
                         let mut manager_for_stream = manager_for_stream;
                         loop {
                             if stop_flag.load(Ordering::SeqCst) {
@@ -1936,6 +1943,68 @@ impl SignalClient {
                                                 save_read_receipts(&data_dir_for_receipts, &receipts);
                                             }
                                             listener.on_read_receipt(sender_id.clone(), timestamps.clone());
+                                            continue;
+                                        }
+
+                                        // Handle read syncs from our own linked devices.
+                                        // Reading a thread on the phone sends one of these; without
+                                        // it the desktop badge stays lit until we open the thread.
+                                        if let Some(ProcessedContent::ReadSync { entries }) = &result {
+                                            // Collapse to the newest read timestamp per channel
+                                            let mut per_channel: HashMap<String, u64> = HashMap::new();
+                                            for (sender_aci, ts) in entries {
+                                                let channel_id = match channel_for_synced_read(
+                                                    &manager_for_attachments,
+                                                    sender_aci,
+                                                    *ts,
+                                                    &group_channel_ids,
+                                                )
+                                                .await
+                                                {
+                                                    Some(c) => c,
+                                                    None => {
+                                                        debug!(
+                                                            "Read sync for unknown message {} from {}, skipping",
+                                                            ts, sender_aci
+                                                        );
+                                                        continue;
+                                                    }
+                                                };
+                                                let entry = per_channel.entry(channel_id).or_insert(0);
+                                                if *ts > *entry {
+                                                    *entry = *ts;
+                                                }
+                                            }
+
+                                            for (channel_id, up_to) in per_channel {
+                                                let advanced = {
+                                                    let mut state = read_state.write();
+                                                    let current =
+                                                        state.get(&channel_id).copied().unwrap_or(0);
+                                                    if up_to > current {
+                                                        state.insert(channel_id.clone(), up_to);
+                                                        save_read_state(&data_dir_for_receipts, &state);
+                                                        true
+                                                    } else {
+                                                        false
+                                                    }
+                                                };
+                                                if !advanced {
+                                                    continue;
+                                                }
+                                                let unread = count_unread_since(
+                                                    &manager_for_attachments,
+                                                    &channel_id,
+                                                    up_to,
+                                                    my_aci_uuid,
+                                                )
+                                                .await;
+                                                info!(
+                                                    "Read sync marked channel {} read up to {} ({} still unread)",
+                                                    channel_id, up_to, unread
+                                                );
+                                                listener.on_read_sync(channel_id, unread);
+                                            }
                                             continue;
                                         }
 
@@ -2860,6 +2929,10 @@ enum ProcessedContent {
     Reaction(ReactionEvent),
     /// A read receipt from a contact (timestamps of our messages they read)
     ReadReceipt { sender_id: String, timestamps: Vec<u64> },
+    /// A read sync from one of our own linked devices (e.g. we read the thread
+    /// on our phone). Each entry is (sender_aci, timestamp) identifying an
+    /// incoming message that has now been read elsewhere.
+    ReadSync { entries: Vec<(String, u64)> },
     /// A typing indicator (started or stopped).
     /// `group_id` is the raw bytes from the typing message (group identifier, not master key).
     /// For DMs it is None.
@@ -2878,6 +2951,100 @@ fn thread_from_channel_id(channel_id: &str) -> Option<Thread> {
     } else {
         let uuid: Uuid = channel_id.parse().ok()?;
         Some(Thread::Contact(ServiceId::from(Aci::from(uuid))))
+    }
+}
+
+/// Resolve which channel a synced read refers to. A `SyncMessage.Read` entry
+/// identifies a message by its sender ACI and timestamp, never by thread, so we
+/// have to find the message: it is either in the DM thread with that sender, or
+/// in one of our groups (where the ACI is the individual sender, not the group).
+async fn channel_for_synced_read(
+    manager: &PresageManager,
+    sender_aci: &str,
+    timestamp: u64,
+    group_channel_ids: &[String],
+) -> Option<String> {
+    let store = manager.store();
+
+    if let Ok(uuid) = sender_aci.parse::<Uuid>() {
+        let dm_thread = Thread::Contact(ServiceId::from(Aci::from(uuid)));
+        if matches!(store.message(&dm_thread, timestamp).await, Ok(Some(_))) {
+            return Some(uuid.to_string());
+        }
+    }
+
+    for channel_id in group_channel_ids {
+        if let Some(thread) = thread_from_channel_id(channel_id) {
+            if matches!(store.message(&thread, timestamp).await, Ok(Some(_))) {
+                return Some(channel_id.clone());
+            }
+        }
+    }
+
+    None
+}
+
+/// Count incoming messages in `channel_id` newer than `last_read_ts`. Mirrors
+/// the unread accounting `get_channels` does on startup so a read sync and a
+/// cold start agree on the badge.
+async fn count_unread_since(
+    manager: &PresageManager,
+    channel_id: &str,
+    last_read_ts: u64,
+    my_user_id: Uuid,
+) -> u32 {
+    let thread = match thread_from_channel_id(channel_id) {
+        Some(t) => t,
+        None => return 0,
+    };
+    let messages = match manager.store().messages(&thread, ..).await {
+        Ok(m) => m,
+        Err(_) => return 0,
+    };
+
+    // messages() is ordered newest-first, so we can stop at the read boundary.
+    const MAX_SCAN: u32 = 500;
+    let mut unread = 0u32;
+    let mut scanned = 0u32;
+    for result in messages {
+        let content = match result {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let ts = content.metadata.timestamp;
+        if ts <= last_read_ts {
+            break;
+        }
+        if is_protocol_noise(&content.body) {
+            continue;
+        }
+        scanned += 1;
+        if content.metadata.sender.raw_uuid() != my_user_id {
+            unread += 1;
+        }
+        if scanned >= MAX_SCAN {
+            break;
+        }
+    }
+    unread
+}
+
+/// True for content that never shows up as a standalone row in the message list
+/// (reactions, profile-key/expiration-timer updates and friends).
+fn is_protocol_noise(body: &ContentBody) -> bool {
+    let dm = match body {
+        ContentBody::DataMessage(dm) => Some(dm),
+        ContentBody::SynchronizeMessage(sync) => {
+            sync.sent.as_ref().and_then(|sent| sent.message.as_ref())
+        }
+        _ => None,
+    };
+    match dm {
+        Some(dm) => {
+            dm.reaction.is_some()
+                || (dm.flags.unwrap_or(0) != 0 && dm.body.is_none() && dm.attachments.is_empty())
+        }
+        None => false,
     }
 }
 
@@ -3194,6 +3361,26 @@ fn process_content(
             ))
         }
         ContentBody::SynchronizeMessage(sync) => {
+            // A read sync from one of our own devices: we read these messages
+            // somewhere else (phone, iPad, Desktop) and should clear the unread
+            // badge here too. Newer clients send the ACI as 16 raw bytes in
+            // `sender_aci_binary`; older ones send the hyphenated string.
+            if !sync.read.is_empty() {
+                let entries: Vec<(String, u64)> = sync
+                    .read
+                    .iter()
+                    .filter_map(|r| {
+                        let ts = r.timestamp?;
+                        let aci = read_sync_sender_aci(&r.sender_aci, &r.sender_aci_binary)?;
+                        Some((aci, ts))
+                    })
+                    .collect();
+                if !entries.is_empty() {
+                    info!("Received read sync from own device for {} messages", entries.len());
+                    return Some(ProcessedContent::ReadSync { entries });
+                }
+            }
+
             if let Some(sent) = &sync.sent {
                 // An edit we made from another device (sync'd to us)
                 if let Some(EditMessage {
@@ -3540,6 +3727,24 @@ async fn resolve_contact_name_readonly(
 
     // Final fallback: empty string (never return the UUID as a name)
     (String::new(), phone_number)
+}
+
+/// Extract the sender ACI from a `SyncMessage.Read` entry as a hyphenated UUID
+/// string. Signal clients populate either the legacy string field or the newer
+/// 16-byte binary field, so accept whichever is present.
+fn read_sync_sender_aci(
+    sender_aci: &Option<String>,
+    sender_aci_binary: &Option<Vec<u8>>,
+) -> Option<String> {
+    if let Some(bytes) = sender_aci_binary {
+        if let Ok(uuid) = Uuid::from_slice(bytes) {
+            return Some(uuid.to_string());
+        }
+    }
+    sender_aci
+        .as_ref()
+        .and_then(|s| s.parse::<Uuid>().ok())
+        .map(|u| u.to_string())
 }
 
 /// Load read state from disk, returning empty map on any error.

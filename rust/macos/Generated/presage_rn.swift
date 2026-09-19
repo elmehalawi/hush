@@ -3375,6 +3375,13 @@ public protocol MessageListener : AnyObject {
     func onReadReceipt(senderId: String, timestamps: [UInt64]) 
     
     /**
+     * Called when one of our own linked devices reports reading a channel
+     * (e.g. the thread was opened on the phone). `unread_count` is the number
+     * of messages still unread here after applying the sync.
+     */
+    func onReadSync(channelId: String, unreadCount: UInt32) 
+    
+    /**
      * Called when an error occurs during message receiving
      */
     func onError(error: String) 
@@ -3491,6 +3498,32 @@ fileprivate struct UniffiCallbackInterfaceMessageListener {
                 return uniffiObj.onReadReceipt(
                      senderId: try FfiConverterString.lift(senderId),
                      timestamps: try FfiConverterSequenceUInt64.lift(timestamps)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onReadSync: { (
+            uniffiHandle: UInt64,
+            channelId: RustBuffer,
+            unreadCount: UInt32,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMessageListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onReadSync(
+                     channelId: try FfiConverterString.lift(channelId),
+                     unreadCount: try FfiConverterUInt32.lift(unreadCount)
                 )
             }
 
@@ -4162,16 +4195,19 @@ private var initializationResult: InitializationResult = {
     if (uniffi_presage_rn_checksum_method_messagelistener_on_read_receipt() != 27021) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_presage_rn_checksum_method_messagelistener_on_error() != 50510) {
+    if (uniffi_presage_rn_checksum_method_messagelistener_on_read_sync() != 8595) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_presage_rn_checksum_method_messagelistener_on_attachment_downloaded() != 54381) {
+    if (uniffi_presage_rn_checksum_method_messagelistener_on_error() != 54230) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_presage_rn_checksum_method_messagelistener_on_link_preview_image_downloaded() != 21627) {
+    if (uniffi_presage_rn_checksum_method_messagelistener_on_attachment_downloaded() != 6036) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_presage_rn_checksum_method_messagelistener_on_typing() != 49537) {
+    if (uniffi_presage_rn_checksum_method_messagelistener_on_link_preview_image_downloaded() != 8505) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_presage_rn_checksum_method_messagelistener_on_typing() != 21255) {
         return InitializationResult.apiChecksumMismatch
     }
 

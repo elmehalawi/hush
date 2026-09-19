@@ -17,6 +17,11 @@ pub trait MessageListener: Send + Sync {
     /// Called when a read receipt is received (the contact read our messages)
     fn on_read_receipt(&self, sender_id: String, timestamps: Vec<u64>);
 
+    /// Called when one of our own linked devices reports reading a channel
+    /// (e.g. the thread was opened on the phone). `unread_count` is the number
+    /// of messages still unread here after applying the sync.
+    fn on_read_sync(&self, channel_id: String, unread_count: u32);
+
     /// Called when an error occurs during message receiving
     fn on_error(&self, error: String);
 

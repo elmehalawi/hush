@@ -323,14 +323,14 @@ typedef void (*UniffiCallbackInterfaceMessageListenerMethod3)(uint64_t, RustBuff
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD4
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD4
-typedef void (*UniffiCallbackInterfaceMessageListenerMethod4)(uint64_t, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceMessageListenerMethod4)(uint64_t, RustBuffer, uint32_t, void* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD5
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD5
-typedef void (*UniffiCallbackInterfaceMessageListenerMethod5)(uint64_t, RustBuffer, RustBuffer, uint32_t, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceMessageListenerMethod5)(uint64_t, RustBuffer, void* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
@@ -344,7 +344,14 @@ typedef void (*UniffiCallbackInterfaceMessageListenerMethod6)(uint64_t, RustBuff
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD7
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD7
-typedef void (*UniffiCallbackInterfaceMessageListenerMethod7)(uint64_t, RustBuffer, RustBuffer, int8_t, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceMessageListenerMethod7)(uint64_t, RustBuffer, RustBuffer, uint32_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD8
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD8
+typedef void (*UniffiCallbackInterfaceMessageListenerMethod8)(uint64_t, RustBuffer, RustBuffer, int8_t, void* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
@@ -376,10 +383,11 @@ typedef struct UniffiVTableCallbackInterfaceMessageListener {
     UniffiCallbackInterfaceMessageListenerMethod1 _Nonnull onReaction;
     UniffiCallbackInterfaceMessageListenerMethod2 _Nonnull onChannelUpdated;
     UniffiCallbackInterfaceMessageListenerMethod3 _Nonnull onReadReceipt;
-    UniffiCallbackInterfaceMessageListenerMethod4 _Nonnull onError;
-    UniffiCallbackInterfaceMessageListenerMethod5 _Nonnull onAttachmentDownloaded;
-    UniffiCallbackInterfaceMessageListenerMethod6 _Nonnull onLinkPreviewImageDownloaded;
-    UniffiCallbackInterfaceMessageListenerMethod7 _Nonnull onTyping;
+    UniffiCallbackInterfaceMessageListenerMethod4 _Nonnull onReadSync;
+    UniffiCallbackInterfaceMessageListenerMethod5 _Nonnull onError;
+    UniffiCallbackInterfaceMessageListenerMethod6 _Nonnull onAttachmentDownloaded;
+    UniffiCallbackInterfaceMessageListenerMethod7 _Nonnull onLinkPreviewImageDownloaded;
+    UniffiCallbackInterfaceMessageListenerMethod8 _Nonnull onTyping;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceMessageListener;
 
@@ -1021,6 +1029,12 @@ uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_channel_updated(vo
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_READ_RECEIPT
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_READ_RECEIPT
 uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_read_receipt(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_READ_SYNC
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_READ_SYNC
+uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_read_sync(void
     
 );
 #endif
