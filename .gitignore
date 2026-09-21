@@ -54,6 +54,13 @@ sparkle-tools/
 # Release artifacts
 releases/
 
+# Signing secrets -- never commit these to a public repo
+.signing.env
+*.p12
+*.cer
+*.certSigningRequest
+*.provisionprofile
+
 # IDE
 .idea/
 .vscode/

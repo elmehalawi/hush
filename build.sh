@@ -10,6 +10,32 @@ WHISPER_RUST_DIR="$SCRIPT_DIR/rust/whisper-transcribe"
 MACOS_DIR="$SCRIPT_DIR/macos"
 GENERATED_DIR="$MACOS_DIR/Generated"
 
+# Code signing identity. Sparkle checks that an update's code signature matches
+# the installed app's, and an ad-hoc signature pins that check to the exact
+# binary hash, so a new build can never satisfy the old one and every
+# auto-update fails to install. Releases need a stable Developer ID; plain dev
+# builds stay ad-hoc. Set SIGN_IDENTITY in .signing.env (untracked).
+if [ -f "$SCRIPT_DIR/.signing.env" ]; then
+    source "$SCRIPT_DIR/.signing.env"
+fi
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+
+# The identity lives in a dedicated keychain whose password we own, so codesign
+# can be authorized non-interactively. Keeping it out of the login keychain is
+# also what stops codesign resolving to an unauthorized duplicate and blocking
+# on a GUI prompt that a headless build can never answer.
+if [ -n "$SIGN_KEYCHAIN" ]; then
+    security unlock-keychain -p "$SIGN_KEYCHAIN_PASSWORD" "$SIGN_KEYCHAIN"
+fi
+
+# Hardened runtime and a secure timestamp are both required for notarization,
+# and both are rejected when signing ad-hoc.
+CODESIGN_OPTS=()
+if [ "$SIGN_IDENTITY" != "-" ]; then
+    CODESIGN_OPTS=(--options runtime --timestamp)
+fi
+ENTITLEMENTS="$MACOS_DIR/signal-app-macOS/signal-app.entitlements"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -313,16 +339,18 @@ rm -f "$APP_PATH/Contents/MacOS/mlx.metallib"
 ln -s ../Resources/mlx.metallib "$APP_PATH/Contents/MacOS/mlx.metallib"
 echo "  Copied: $APP_PATH/Contents/Resources/mlx.metallib (+ Contents/MacOS symlink)"
 
-# Re-sign after modifying the bundle (ad-hoc)
-codesign --force --deep --sign - "$APP_PATH"
+# Re-sign after modifying the bundle
+codesign --force --deep --sign "$SIGN_IDENTITY" "${CODESIGN_OPTS[@]}" \
+    --entitlements "$ENTITLEMENTS" "$APP_PATH"
 
 # --deep signs the metallib as nested code and parks that signature in extended
 # attributes. Sparkle refuses to diff code-signed xattrs, so a bundle carrying
 # them gets no delta updates at all. Strip them and reseal the outer bundle,
 # which hashes the metallib as an ordinary resource instead.
 xattr -c "$APP_PATH/Contents/Resources/mlx.metallib"
-codesign --force --sign - "$APP_PATH"
-echo "  Re-signed app bundle"
+codesign --force --sign "$SIGN_IDENTITY" "${CODESIGN_OPTS[@]}" \
+    --entitlements "$ENTITLEMENTS" "$APP_PATH"
+echo "  Re-signed app bundle ($SIGN_IDENTITY)"
 
 echo ""
 echo -e "${GREEN}=========================================="

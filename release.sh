@@ -52,6 +52,63 @@ if ! command -v gh &> /dev/null; then
     exit 1
 fi
 
+# Signing config lives outside the repo so the certificate and notarization
+# credentials never land in a public tree; see .signing.env.example.
+if [ -f "$SCRIPT_DIR/.signing.env" ]; then
+    source "$SCRIPT_DIR/.signing.env"
+fi
+
+if [ -z "$SIGN_IDENTITY" ] || [ "$SIGN_IDENTITY" = "-" ]; then
+    log_error "SIGN_IDENTITY is not set, or is ad-hoc."
+    echo "  Sparkle requires an update to carry the same code signature as the"
+    echo "  installed app. Ad-hoc signatures pin that check to a per-build hash,"
+    echo "  so every auto-update fails to install."
+    echo "  Copy .signing.env.example to .signing.env and fill it in."
+    exit 1
+fi
+
+if ! security find-identity -v -p codesigning | grep -qF "$SIGN_IDENTITY"; then
+    log_error "Signing identity not in keychain: $SIGN_IDENTITY"
+    echo "  Available identities:"
+    security find-identity -v -p codesigning | sed 's/^/    /'
+    exit 1
+fi
+
+# Notarization takes either a keychain profile or an App Store Connect API key.
+# The API key avoids a keychain round-trip entirely, which matters on machines
+# where the keychain can't be written non-interactively.
+NOTARY_ARGS=()
+if [ -n "$NOTARY_KEY" ]; then
+    if [ ! -f "$NOTARY_KEY" ]; then
+        log_error "NOTARY_KEY does not exist: $NOTARY_KEY"
+        exit 1
+    fi
+    if [ -z "$NOTARY_KEY_ID" ] || [ -z "$NOTARY_ISSUER" ]; then
+        log_error "NOTARY_KEY needs NOTARY_KEY_ID and NOTARY_ISSUER alongside it."
+        exit 1
+    fi
+    NOTARY_ARGS=(--key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER")
+elif [ -n "$NOTARY_PROFILE" ]; then
+    NOTARY_ARGS=(--keychain-profile "$NOTARY_PROFILE")
+else
+    log_error "No notarization credentials configured."
+    echo "  Set NOTARY_KEY / NOTARY_KEY_ID / NOTARY_ISSUER (App Store Connect API key),"
+    echo "  or NOTARY_PROFILE for a stored keychain profile. See .signing.env.example."
+    exit 1
+fi
+
+# notarytool only accepts archives, so the app is zipped for submission and the
+# ticket is stapled back onto the original bundle.
+notarize_app() {
+    local app="$1"
+    local zip
+    zip=$(mktemp -d)/notarize.zip
+    ditto -c -k --keepParent "$app" "$zip"
+    xcrun notarytool submit "$zip" "${NOTARY_ARGS[@]}" --wait
+    xcrun stapler staple "$app"
+    rm -f "$zip"
+}
+
 # Step 1: Update version in Info.plist
 log_step "Setting version to ${VERSION} (${BUILD})..."
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "$INFO_PLIST"
@@ -78,6 +135,12 @@ fi
 
 echo "  App: $APP_PATH"
 
+# Step 3.5: Notarize the app itself. Sparkle installs the app extracted from the
+# DMG, so a ticket stapled only to the DMG would leave the installed copy having
+# to phone home to Apple on first launch.
+log_step "Notarizing app..."
+notarize_app "$APP_PATH"
+
 # Step 4: Create DMG
 log_step "Creating DMG..."
 mkdir -p "$RELEASES_DIR"
@@ -99,16 +162,19 @@ hdiutil create \
 rm -rf "$DMG_STAGING"
 echo "  DMG: $DMG_PATH"
 
-# Step 5: Sign the DMG with Sparkle's EdDSA key
-log_step "Signing DMG with Sparkle EdDSA key..."
-SIGNATURE=$("$SPARKLE_TOOLS/bin/sign_update" "$DMG_PATH")
-echo "  Signature: $SIGNATURE"
+# Step 5: Notarize the DMG. This rewrites the file, so it has to finish before
+# anything hashes or signs the DMG.
+log_step "Notarizing DMG..."
+xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --wait
+xcrun stapler staple "$DMG_PATH"
+
+log_step "Verifying Gatekeeper acceptance..."
+spctl -a -vvv -t install "$DMG_PATH"
 
 # Step 6: Create GitHub release (so we know the download URL for appcast)
 log_step "Creating GitHub release..."
 TAG="v${VERSION}"
 GITHUB_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
-DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/${TAG}/${DMG_NAME}"
 
 RELEASE_NOTES="${RELEASE_NOTES:-"## ${APP_NAME} v${VERSION}
 
@@ -125,18 +191,32 @@ gh release create "$TAG" \
 
 echo "  Release: https://github.com/${GITHUB_REPO}/releases/tag/${TAG}"
 
-# Step 7: Generate appcast and fix download URL
+# Step 7: Generate appcast. generate_appcast also writes this build's delta
+# patches into releases/, so the prefix has to cover them too -- rewriting only
+# the DMG URL is what left every delta pointing at a path that was never
+# published, 404ing on each update.
 log_step "Generating appcast..."
-"$SPARKLE_TOOLS/bin/generate_appcast" "$RELEASES_DIR"
+DOWNLOAD_PREFIX="https://github.com/${GITHUB_REPO}/releases/download/${TAG}/"
+"$SPARKLE_TOOLS/bin/generate_appcast" --download-url-prefix "$DOWNLOAD_PREFIX" "$RELEASES_DIR"
 
-if [ -f "$RELEASES_DIR/appcast.xml" ]; then
-    cp "$RELEASES_DIR/appcast.xml" "$SCRIPT_DIR/appcast.xml"
-    # Replace local file URLs with GitHub release download URLs
-    sed -i '' "s|url=\"[^\"]*${DMG_NAME}\"|url=\"${DOWNLOAD_URL}\"|g" "$SCRIPT_DIR/appcast.xml"
-    echo "  Updated appcast.xml with download URL: $DOWNLOAD_URL"
-else
-    log_warn "generate_appcast did not produce appcast.xml"
+if [ ! -f "$RELEASES_DIR/appcast.xml" ]; then
+    log_error "generate_appcast did not produce appcast.xml"
+    exit 1
 fi
+
+# Upload this build's deltas under the same tag the prefix points at. Only the
+# newest item is ever downloaded, so older items' URLs are cosmetic.
+log_step "Uploading delta patches..."
+DELTAS=("$RELEASES_DIR"/${APP_NAME}${BUILD}-*.delta)
+if [ -e "${DELTAS[0]}" ]; then
+    gh release upload "$TAG" "${DELTAS[@]}"
+    echo "  Uploaded ${#DELTAS[@]} delta(s)"
+else
+    log_warn "No deltas generated for build ${BUILD}"
+fi
+
+cp "$RELEASES_DIR/appcast.xml" "$SCRIPT_DIR/appcast.xml"
+echo "  Appcast enclosures point at: $DOWNLOAD_PREFIX"
 
 # Step 8: Commit and push appcast
 log_step "Pushing appcast.xml..."
