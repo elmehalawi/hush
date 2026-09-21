@@ -162,14 +162,22 @@ hdiutil create \
 rm -rf "$DMG_STAGING"
 echo "  DMG: $DMG_PATH"
 
-# Step 5: Notarize the DMG. This rewrites the file, so it has to finish before
-# anything hashes or signs the DMG.
+# Step 5: Sign, notarize and staple the DMG, in that order. Signing has to come
+# first or spctl has nothing to evaluate and reports "no usable signature" even
+# on a correctly notarized image; stapling comes last because it rewrites the
+# file. (The app inside is already signed, notarized and stapled by now -- this
+# covers the container, which is what a user downloads.)
+log_step "Signing DMG..."
+codesign --force --sign "$SIGN_IDENTITY" --timestamp "$DMG_PATH"
+
 log_step "Notarizing DMG..."
 xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --wait
 xcrun stapler staple "$DMG_PATH"
 
+# A disk image is evaluated with -t open; -t install is for .pkg installers and
+# rejects any DMG regardless of how it was signed.
 log_step "Verifying Gatekeeper acceptance..."
-spctl -a -vvv -t install "$DMG_PATH"
+spctl -a -vvv -t open --context context:primary-signature "$DMG_PATH"
 
 # Step 6: Create GitHub release (so we know the download URL for appcast)
 log_step "Creating GitHub release..."
