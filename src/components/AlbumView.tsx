@@ -1,6 +1,7 @@
 import React, {useState, useCallback, useMemo, useRef, useImperativeHandle, forwardRef, useLayoutEffect} from 'react';
 import {View, Text, Image, StyleSheet, Pressable, Animated} from 'react-native';
 import {Attachment} from '../store/signalStore';
+import {CornerStyle} from './bubbleCorners';
 
 const MAX_IMAGE_WIDTH = 280;
 const MAX_IMAGE_HEIGHT = 360;
@@ -39,10 +40,11 @@ interface AlbumViewProps {
   isOutgoing: boolean;
   onPreview?: (filePath: string) => void;
   onRightClick?: (e: any, attachment: Attachment) => void;
+  corners?: CornerStyle;
 }
 
 export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
-  function AlbumView({attachments, isOutgoing, onPreview, onRightClick}, ref) {
+  function AlbumView({attachments, isOutgoing, onPreview, onRightClick, corners}, ref) {
     // order[0] = top of stack (current), order[1] = one below, etc.
     const [order, setOrder] = useState(() => attachments.map((_, i) => i));
 
@@ -238,11 +240,11 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                 {thumbUri ? (
                   <Image
                     source={{uri: thumbUri}}
-                    style={[styles.image, {width: dims.width, height: dims.height}]}
+                    style={[styles.image, corners, {width: dims.width, height: dims.height}]}
                     resizeMode="cover"
                   />
                 ) : (
-                  <View style={[styles.placeholder, {width: dims.width, height: dims.height}]} />
+                  <View style={[styles.placeholder, corners, {width: dims.width, height: dims.height}]} />
                 )}
                 {isVideoType(att.contentType) && isTop && (
                   <View style={styles.playOverlay}>
@@ -289,6 +291,7 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                   key={attIdx}
                   style={[
                     styles.item,
+                    corners,
                     {
                       width: dims.width,
                       height: dims.height,
@@ -339,6 +342,7 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                   key={attIdx}
                   style={[
                     styles.item,
+                    corners,
                     {
                       width: dims.width,
                       height: dims.height,
@@ -366,6 +370,7 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                   key={attIdx}
                   style={[
                     styles.item,
+                    corners,
                     {
                       width: dims.width,
                       height: dims.height,
@@ -403,6 +408,7 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                 key={attIdx}
                 style={[
                   styles.item,
+                  corners,
                   {
                     width: dims.width,
                     height: dims.height,
@@ -449,6 +455,7 @@ const styles = StyleSheet.create({
   },
   image: {
     borderRadius: 17,
+    overflow: 'hidden',
   },
   placeholder: {
     borderRadius: 17,

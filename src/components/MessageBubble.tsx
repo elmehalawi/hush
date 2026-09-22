@@ -4,6 +4,7 @@ import {Message, Attachment, Mention, Reaction, useSignalStore, resolveContactNa
 import {AudioAttachmentView} from './AudioAttachmentView';
 import {AlbumView, AlbumViewHandle} from './AlbumView';
 import {AttachmentThumbnail} from './AttachmentThumbnail';
+import {CornerStyle, mediaCorners} from './bubbleCorners';
 import {LinkPreviewCard} from './LinkPreviewCard';
 import {AnimatedSwipeGestureView} from './NativeSwipeGestureView';
 import {isImageType, isVideoType, isAudioType} from '../utils/attachmentIcon';
@@ -160,12 +161,14 @@ function AttachmentView({
   onRetry,
   onRightClick,
   fillWidth,
+  corners,
 }: {
   attachment: Attachment;
   isOutgoing: boolean;
   onRetry?: () => void;
   onRightClick?: (e: any, attachment: Attachment) => void;
   fillWidth?: number;
+  corners?: CornerStyle;
 }) {
   const c = useColors();
   const [showRetry, setShowRetry] = useState(false);
@@ -182,7 +185,7 @@ function AttachmentView({
 
   if (!attachment.filePath) {
     return (
-      <View style={styles.failedAttachment}>
+      <View style={[styles.failedAttachment, corners]}>
         {showRetry ? (
           <>
             <Text style={styles.failedAttachmentText}>Download failed</Text>
@@ -216,7 +219,7 @@ function AttachmentView({
       <Pressable onPressIn={handlePressIn}>
         <Image
           source={{uri: `file://${attachment.filePath}`}}
-          style={[styles.attachmentImage, {width: dims.width, height: dims.height}]}
+          style={[styles.attachmentImage, corners, {width: dims.width, height: dims.height}]}
           resizeMode="cover"
         />
       </Pressable>
@@ -230,15 +233,15 @@ function AttachmentView({
       : undefined;
     return (
       <Pressable onPressIn={handlePressIn}>
-        <View style={[styles.videoContainer, {width: dims.width, height: dims.height}]}>
+        <View style={[styles.videoContainer, corners, {width: dims.width, height: dims.height}]}>
           {thumbUri ? (
             <Image
               source={{uri: thumbUri}}
-              style={[styles.attachmentImage, {width: dims.width, height: dims.height}]}
+              style={[styles.attachmentImage, corners, {width: dims.width, height: dims.height}]}
               resizeMode="cover"
             />
           ) : (
-            <View style={[styles.videoPlaceholder, {width: dims.width, height: dims.height}]} />
+            <View style={[styles.videoPlaceholder, corners, {width: dims.width, height: dims.height}]} />
           )}
           <View style={styles.playButtonOverlay}>
             <View style={styles.playButton}>
@@ -489,12 +492,21 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
       captionedMediaWidth = Math.min(MAX_IMAGE_WIDTH, Math.max(naturalWidth, MIN_CAPTIONED_MEDIA_WIDTH));
     }
   }
+  // Media sits in the sender's run of bubbles, so its spine-side corners
+  // (right for outgoing, left for incoming) stay tight like a text bubble's.
+  // Inside a quote bubble the bubble itself carries the spine, so the media
+  // only needs to follow its 3pt inset.
+  const corners = !hasMedia
+    ? undefined
+    : useBubbleMediaOnly
+      ? mediaCorners(isOutgoing, isFirstInGroup ? 17 : 4, 4, 17)
+      : mediaCorners(isOutgoing, 2, 2, 15);
+  const captionCorners = isOutgoing ? {borderTopRightRadius: 4} : {borderTopLeftRadius: 4};
+
   const bubbleStyle = useBubbleMediaOnly
     ? [
         styles.bubbleMediaOnly,
-        isOutgoing ? {borderBottomRightRadius: 4} : {borderBottomLeftRadius: 4},
         showSenderInfo && styles.bubbleInGroup,
-        groupRadiusStyle,
         captionedMediaWidth !== undefined && {width: captionedMediaWidth},
       ]
     : [
@@ -580,6 +592,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
           key={`audio-${index}`}
           filePath={attachment.filePath!}
           isOutgoing={isOutgoing}
+          isFirstInGroup={isFirstInGroup}
         />
       ))}
     </View>
@@ -589,7 +602,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
     <>
       {message.quote && <QuoteBanner quote={message.quote} isOutgoing={isOutgoing} channelId={message.channelId} />}
       {hasAttachments && !isAlbum && (
-        <View style={styles.attachmentsContainer}>
+        <View style={[styles.attachmentsContainer, corners]}>
           {nonAudioAttachments.map((attachment, index) => (
             <AttachmentView
               key={index}
@@ -602,6 +615,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
               }
               onRightClick={handleBubblePressIn}
               fillWidth={captionedMediaWidth}
+              corners={corners}
             />
           ))}
         </View>
@@ -611,6 +625,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
           ref={albumRef}
           attachments={mediaAttachments}
           isOutgoing={isOutgoing}
+          corners={corners}
           onPreview={(filePath) => openMediaPreview(filePath)}
           onRightClick={handleBubblePressIn}
         />
@@ -621,6 +636,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
           isOutgoing
             ? [styles.bubbleOutgoing, {backgroundColor: outgoingBubbleBg}]
             : [styles.bubbleIncoming, {backgroundColor: incomingBubbleBg}],
+          captionCorners,
         ]}>
           <LinkifiedText text={message.body!} isOutgoing={isOutgoing} mentions={message.mentions} channelId={message.channelId} />
         </View>
@@ -801,6 +817,7 @@ const styles = StyleSheet.create({
   },
   attachmentImage: {
     borderRadius: 17,
+    overflow: 'hidden',
   },
   videoContainer: {
     borderRadius: 17,

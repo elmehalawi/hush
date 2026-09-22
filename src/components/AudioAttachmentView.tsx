@@ -50,9 +50,10 @@ function generateWaveform(filePath: string): number[] {
 interface AudioAttachmentViewProps {
   filePath: string;
   isOutgoing: boolean;
+  isFirstInGroup?: boolean;
 }
 
-export function AudioAttachmentView({filePath, isOutgoing}: AudioAttachmentViewProps) {
+export function AudioAttachmentView({filePath, isOutgoing, isFirstInGroup = true}: AudioAttachmentViewProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const [playing, setPlaying] = useState(false);
@@ -185,7 +186,7 @@ export function AudioAttachmentView({filePath, isOutgoing}: AudioAttachmentViewP
     : (isDark ? '#EBEBF0' : '#1C1C1E');
 
   return (
-    <View style={[styles.bubble, {backgroundColor: bubbleBg}, isOutgoing ? styles.bubbleOutgoing : styles.bubbleIncoming]}>
+    <View style={[styles.bubble, {backgroundColor: bubbleBg}, isOutgoing ? styles.bubbleOutgoing : styles.bubbleIncoming, !isFirstInGroup && (isOutgoing ? {borderTopRightRadius: 4} : {borderTopLeftRadius: 4})]}>
       <View style={styles.topRow}>
         <Pressable onPress={handlePlayPause} style={[styles.playButton, {backgroundColor: playBtnBg}]}>
           <Text style={[styles.playIcon, {color: playIconColor}]}>
