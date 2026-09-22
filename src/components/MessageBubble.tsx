@@ -30,6 +30,9 @@ interface MessageBubbleProps {
 const MAX_BUBBLE_WIDTH = Dimensions.get('window').width * 0.75;
 const MAX_IMAGE_WIDTH = 280;
 const MAX_IMAGE_HEIGHT = 360;
+// A captioned image is widened to at least this so a tall, narrow photo
+// doesn't squeeze its caption into a sliver.
+const MIN_CAPTIONED_MEDIA_WIDTH = 220;
 
 function getImageDimensions(attachment: Attachment) {
   const w = attachment.width || MAX_IMAGE_WIDTH;
@@ -45,6 +48,14 @@ function getImageDimensions(attachment: Attachment) {
   }
 
   return {width: displayWidth, height: displayHeight};
+}
+
+// Dimensions when the media must span a fixed width (so it lines up with its
+// caption). Keeps the aspect ratio up to MAX_IMAGE_HEIGHT, then crops.
+function getFilledDimensions(attachment: Attachment, width: number) {
+  const natural = getImageDimensions(attachment);
+  const height = Math.min(natural.height * (width / natural.width), MAX_IMAGE_HEIGHT);
+  return {width, height};
 }
 
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
@@ -148,11 +159,13 @@ function AttachmentView({
   isOutgoing,
   onRetry,
   onRightClick,
+  fillWidth,
 }: {
   attachment: Attachment;
   isOutgoing: boolean;
   onRetry?: () => void;
   onRightClick?: (e: any, attachment: Attachment) => void;
+  fillWidth?: number;
 }) {
   const c = useColors();
   const [showRetry, setShowRetry] = useState(false);
@@ -198,7 +211,7 @@ function AttachmentView({
   };
 
   if (isImageType(attachment.contentType)) {
-    const dims = getImageDimensions(attachment);
+    const dims = fillWidth ? getFilledDimensions(attachment, fillWidth) : getImageDimensions(attachment);
     return (
       <Pressable onPressIn={handlePressIn}>
         <Image
@@ -211,7 +224,7 @@ function AttachmentView({
   }
 
   if (isVideoType(attachment.contentType)) {
-    const dims = getImageDimensions(attachment);
+    const dims = fillWidth ? getFilledDimensions(attachment, fillWidth) : getImageDimensions(attachment);
     const thumbUri = attachment.thumbnailPath
       ? `file://${attachment.thumbnailPath}`
       : undefined;
@@ -459,14 +472,30 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
       ? {borderTopRightRadius: 4}
       : {borderTopLeftRadius: 4};
 
+  const allMedia = crossAlbumAttachments ? true : hasMedia && nonAudioAttachments.length === mediaAttachments.length;
   // Any message with media attachments renders bubble-free; text gets its own caption bubble
-  const useBubbleMediaOnly = crossAlbumAttachments ? true : hasMedia && nonAudioAttachments.length === mediaAttachments.length && !message.quote;
+  const useBubbleMediaOnly = allMedia && !message.quote;
+
+  // With a caption, the media and caption share one width: without this the
+  // caption grows the column past the fixed-width image, which is left
+  // stranded at one edge.
+  let captionedMediaWidth: number | undefined;
+  if (hasBody && allMedia) {
+    if (isAlbum) {
+      captionedMediaWidth = Math.max(...mediaAttachments.map(a => getImageDimensions(a).width));
+    } else {
+      const single = mediaAttachments[0];
+      const naturalWidth = single.filePath ? getImageDimensions(single).width : MAX_IMAGE_WIDTH;
+      captionedMediaWidth = Math.min(MAX_IMAGE_WIDTH, Math.max(naturalWidth, MIN_CAPTIONED_MEDIA_WIDTH));
+    }
+  }
   const bubbleStyle = useBubbleMediaOnly
     ? [
         styles.bubbleMediaOnly,
         isOutgoing ? {borderBottomRightRadius: 4} : {borderBottomLeftRadius: 4},
         showSenderInfo && styles.bubbleInGroup,
         groupRadiusStyle,
+        captionedMediaWidth !== undefined && {width: captionedMediaWidth},
       ]
     : [
         styles.bubble,
@@ -474,6 +503,8 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
         hasMedia && styles.bubbleWithMedia,
         showSenderInfo && styles.bubbleInGroup,
         groupRadiusStyle,
+        // + bubbleWithMedia's padding on both sides
+        captionedMediaWidth !== undefined && {width: captionedMediaWidth + 6},
       ];
 
   const readReceiptColor = colorScheme === 'dark' ? 'rgba(255,255,255,0.4)' : '#8E8E93';
@@ -570,6 +601,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
                   : undefined
               }
               onRightClick={handleBubblePressIn}
+              fillWidth={captionedMediaWidth}
             />
           ))}
         </View>

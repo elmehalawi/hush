@@ -198,15 +198,19 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
     }
     const visibleCount = visibleCards.length;
 
+    // Hangs outside the stack so the stack's edges line up with the caption
+    // bubble below it.
     const pageLabel = (
-      <Text style={styles.pageIndicator}>
-        {order[0] + 1} of {attachments.length}
-      </Text>
+      <View style={[styles.pageIndicatorContainer, isOutgoing ? {right: '100%'} : {left: '100%'}]}>
+        <Text style={styles.pageIndicator} numberOfLines={1}>
+          {order[0] + 1} of {attachments.length}
+        </Text>
+      </View>
     );
 
     return (
       <View style={styles.container}>
-        {isOutgoing && pageLabel}
+        {pageLabel}
         <View style={[styles.stack, {width: stackDims.width, height: stackDims.height}]}>
           {/* Render bottom-to-top so the top card paints last */}
           {visibleCards.slice().reverse().map((attIdx, renderIdx) => {
@@ -419,7 +423,6 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
             );
           })}
         </View>
-        {!isOutgoing && pageLabel}
       </View>
     );
   },
@@ -468,6 +471,12 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 18,
     marginLeft: 3,
+  },
+  pageIndicatorContainer: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
   },
   pageIndicator: {
     fontSize: 11,
