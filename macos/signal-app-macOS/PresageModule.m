@@ -111,6 +111,10 @@ RCT_EXTERN_METHOD(generateVideoThumbnailAtPath:(NSString *)videoPath
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(downloadSocialVideo:(NSString *)urlString
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(generateImageThumbnail:(NSString *)imagePath
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)

@@ -934,6 +934,37 @@ class PresageModule: RCTEventEmitter {
         }
     }
 
+    /// Downloads the video behind an Instagram/TikTok link and resolves with it
+    /// shaped like a received video attachment, so it renders the same way.
+    @objc(downloadSocialVideo:resolver:rejecter:)
+    func downloadSocialVideo(_ urlString: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        SocialVideoDownloader.shared.download(url: urlString) { result in
+            switch result {
+            case .failure(let error):
+                NSLog("PresageModule: social video download failed for %@: %@", urlString, error.localizedDescription)
+                rejecter("SOCIAL_VIDEO_FAILED", error.localizedDescription, error)
+            case .success(let path):
+                let asset = AVAsset(url: URL(fileURLWithPath: path))
+                guard let track = asset.tracks(withMediaType: .video).first else {
+                    rejecter("SOCIAL_VIDEO_FAILED", "Downloaded file has no video track", nil)
+                    return
+                }
+                // Portrait phone video is often stored landscape with a rotation.
+                let size = track.naturalSize.applying(track.preferredTransform)
+                let fileSize = (try? FileManager.default.attributesOfItem(atPath: path)[.size]) as? NSNumber
+                resolver([
+                    "contentType": "video/mp4",
+                    "filePath": path,
+                    "fileName": "video.mp4",
+                    "width": NSNumber(value: Int(abs(size.width))),
+                    "height": NSNumber(value: Int(abs(size.height))),
+                    "size": fileSize ?? NSNull(),
+                    "thumbnailPath": self.generateVideoThumbnail(videoPath: path) ?? NSNull(),
+                ])
+            }
+        }
+    }
+
     @objc(generateImageThumbnail:resolver:rejecter:)
     func generateImageThumbnail(_ imagePath: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {

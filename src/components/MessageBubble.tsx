@@ -8,6 +8,7 @@ import {CornerStyle, mediaCorners} from './bubbleCorners';
 import {LinkPreviewCard} from './LinkPreviewCard';
 import {AnimatedSwipeGestureView} from './NativeSwipeGestureView';
 import {isImageType, isVideoType, isAudioType} from '../utils/attachmentIcon';
+import {findSocialVideoUrl, useSocialVideo} from '../utils/socialVideo';
 import {useColors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
@@ -58,6 +59,11 @@ function getFilledDimensions(attachment: Attachment, width: number) {
   const height = Math.min(natural.height * (width / natural.width), MAX_IMAGE_HEIGHT);
   return {width, height};
 }
+
+// Stands in for an Instagram/TikTok video while it downloads. Sized like the
+// portrait video it almost always turns out to be, so the message doesn't jump
+// when the real thumbnail replaces it.
+const SOCIAL_VIDEO_PLACEHOLDER: Attachment = {contentType: 'video/mp4', width: 1080, height: 1920};
 
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
 
@@ -162,6 +168,7 @@ function AttachmentView({
   onRightClick,
   fillWidth,
   corners,
+  pending,
 }: {
   attachment: Attachment;
   isOutgoing: boolean;
@@ -169,6 +176,9 @@ function AttachmentView({
   onRightClick?: (e: any, attachment: Attachment) => void;
   fillWidth?: number;
   corners?: CornerStyle;
+  // Still being fetched by us rather than by Signal, so keep the spinner up
+  // (no retry timeout) in a box the size of the media to come.
+  pending?: boolean;
 }) {
   const c = useColors();
   const [showRetry, setShowRetry] = useState(false);
@@ -184,9 +194,12 @@ function AttachmentView({
   }, [attachment.filePath]);
 
   if (!attachment.filePath) {
+    const pendingDims = pending
+      ? fillWidth ? getFilledDimensions(attachment, fillWidth) : getImageDimensions(attachment)
+      : undefined;
     return (
-      <View style={[styles.failedAttachment, corners]}>
-        {showRetry ? (
+      <View style={[styles.failedAttachment, pendingDims, corners]}>
+        {showRetry && !pending ? (
           <>
             <Text style={styles.failedAttachmentText}>Download failed</Text>
             {onRetry && (
@@ -452,11 +465,25 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   );
   const senderAvatar = senderChannel?.avatarPath;
   const senderInitial = message.senderName?.charAt(0).toUpperCase() || '?';
-  const audioAttachments = message.attachments.filter(a => isAudioType(a.contentType));
-  const nonAudioAttachments = message.attachments.filter(a => !isAudioType(a.contentType));
+
+  // An Instagram/TikTok link is shown as the video it points to, as though it
+  // had been sent as an attachment. The link itself goes when it was the whole
+  // message, and the link preview goes either way. If the video can't be
+  // fetched the message falls back to rendering as plain text.
+  const socialUrl = message.attachments.length === 0 ? findSocialVideoUrl(message.body) : null;
+  const socialVideo = useSocialVideo(socialUrl);
+  const showSocialVideo = !!socialVideo && socialVideo.status !== 'failed';
+  const attachments = showSocialVideo
+    ? [socialVideo.status === 'ready' ? socialVideo.attachment : SOCIAL_VIDEO_PLACEHOLDER]
+    : message.attachments;
+  const body = showSocialVideo && message.body?.trim() === socialUrl ? undefined : message.body;
+  const linkPreviews = showSocialVideo ? [] : message.linkPreviews;
+
+  const audioAttachments = attachments.filter(a => isAudioType(a.contentType));
+  const nonAudioAttachments = attachments.filter(a => !isAudioType(a.contentType));
   const hasAttachments = nonAudioAttachments.length > 0;
   const hasAudio = audioAttachments.length > 0;
-  const hasBody = !!message.body;
+  const hasBody = !!body;
   const mediaAttachments = crossAlbumAttachments || nonAudioAttachments.filter(
     a => isImageType(a.contentType) || isVideoType(a.contentType),
   );
@@ -609,13 +636,14 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
               attachment={attachment}
               isOutgoing={isOutgoing}
               onRetry={
-                onRetryDownload && !attachment.filePath
+                onRetryDownload && !attachment.filePath && !showSocialVideo
                   ? () => onRetryDownload(message.channelId, message.id, message.attachments.indexOf(attachment))
                   : undefined
               }
               onRightClick={handleBubblePressIn}
               fillWidth={captionedMediaWidth}
               corners={corners}
+              pending={showSocialVideo}
             />
           ))}
         </View>
@@ -638,25 +666,25 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
             : [styles.bubbleIncoming, {backgroundColor: incomingBubbleBg}],
           captionCorners,
         ]}>
-          <LinkifiedText text={message.body!} isOutgoing={isOutgoing} mentions={message.mentions} channelId={message.channelId} />
+          <LinkifiedText text={body!} isOutgoing={isOutgoing} mentions={message.mentions} channelId={message.channelId} />
         </View>
       )}
       {hasBody && !hasMedia && (
-        <LinkifiedText text={message.body!} isOutgoing={isOutgoing} mentions={message.mentions} channelId={message.channelId} />
+        <LinkifiedText text={body!} isOutgoing={isOutgoing} mentions={message.mentions} channelId={message.channelId} />
       )}
-      {message.linkPreviews.length > 0 && (
+      {linkPreviews.length > 0 && (
         <View style={styles.linkPreviewContainer}>
           <LinkPreviewCard
-            url={message.linkPreviews[0].url}
-            title={message.linkPreviews[0].title}
-            description={message.linkPreviews[0].description}
-            image={message.linkPreviews[0].image}
-            onPress={() => Linking.openURL(message.linkPreviews[0].url)}
+            url={linkPreviews[0].url}
+            title={linkPreviews[0].title}
+            description={linkPreviews[0].description}
+            image={linkPreviews[0].image}
+            onPress={() => Linking.openURL(linkPreviews[0].url)}
             isOutgoing={isOutgoing}
           />
         </View>
       )}
-      {!hasBody && !hasAttachments && !hasAudio && message.linkPreviews.length === 0 && (
+      {!hasBody && !hasAttachments && !hasAudio && linkPreviews.length === 0 && (
         <Text style={[styles.body, {color: c.incomingBody}, isOutgoing && styles.bodyOutgoing]}>
           [No content]
         </Text>
