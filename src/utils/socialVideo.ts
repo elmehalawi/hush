@@ -19,6 +19,11 @@ export function findSocialVideoUrl(text?: string): string | null {
   return match ? match[0].replace(/[.,!?;:)\]'"]+$/, '') : null;
 }
 
+/** The service a social video link points at, for labelling the video. */
+export function socialVideoSource(url: string): string {
+  return /instagram\.com/i.test(url) ? 'Instagram' : 'TikTok';
+}
+
 export type SocialVideoState =
   | {status: 'loading'}
   | {status: 'ready'; attachment: Attachment}

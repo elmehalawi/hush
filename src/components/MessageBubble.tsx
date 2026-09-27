@@ -8,7 +8,7 @@ import {CornerStyle, mediaCorners} from './bubbleCorners';
 import {LinkPreviewCard} from './LinkPreviewCard';
 import {AnimatedSwipeGestureView} from './NativeSwipeGestureView';
 import {isImageType, isVideoType, isAudioType} from '../utils/attachmentIcon';
-import {findSocialVideoUrl, useSocialVideo} from '../utils/socialVideo';
+import {findSocialVideoUrl, socialVideoSource, useSocialVideo} from '../utils/socialVideo';
 import {useColors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
@@ -169,6 +169,7 @@ function AttachmentView({
   fillWidth,
   corners,
   pending,
+  source,
 }: {
   attachment: Attachment;
   isOutgoing: boolean;
@@ -179,6 +180,8 @@ function AttachmentView({
   // Still being fetched by us rather than by Signal, so keep the spinner up
   // (no retry timeout) in a box the size of the media to come.
   pending?: boolean;
+  // Where a video fetched from a link came from, shown as a small label.
+  source?: string;
 }) {
   const c = useColors();
   const [showRetry, setShowRetry] = useState(false);
@@ -261,6 +264,11 @@ function AttachmentView({
               <Text style={styles.playIcon}>{'\u25B6'}</Text>
             </View>
           </View>
+          {source && (
+            <View style={styles.sourceBadge}>
+              <Text style={styles.sourceBadgeText}>{source}</Text>
+            </View>
+          )}
         </View>
       </Pressable>
     );
@@ -644,6 +652,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
               fillWidth={captionedMediaWidth}
               corners={corners}
               pending={showSocialVideo}
+              source={showSocialVideo && socialUrl ? socialVideoSource(socialUrl) : undefined}
             />
           ))}
         </View>
@@ -868,6 +877,20 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 18,
     marginLeft: 3,
+  },
+  sourceBadge: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  sourceBadgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '600',
   },
   videoPlaceholder: {
     borderRadius: 17,
