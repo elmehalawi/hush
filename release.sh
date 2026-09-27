@@ -170,9 +170,18 @@ echo "  DMG: $DMG_PATH"
 log_step "Signing DMG..."
 codesign --force --sign "$SIGN_IDENTITY" --timestamp "$DMG_PATH"
 
+# notarytool is handed a copy outside ~/Documents: opening the DMG in place can
+# block forever in open() on a privacy check with no prompt to answer, before
+# anything is uploaded. The app is submitted from a temp dir for the same
+# reason.
 log_step "Notarizing DMG..."
-xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --wait
-xcrun stapler staple "$DMG_PATH"
+NOTARIZE_DIR=$(mktemp -d)
+cp "$DMG_PATH" "$NOTARIZE_DIR/"
+NOTARIZE_DMG="$NOTARIZE_DIR/$(basename "$DMG_PATH")"
+xcrun notarytool submit "$NOTARIZE_DMG" "${NOTARY_ARGS[@]}" --wait
+xcrun stapler staple "$NOTARIZE_DMG"
+cp "$NOTARIZE_DMG" "$DMG_PATH"
+rm -rf "$NOTARIZE_DIR"
 
 # A disk image is evaluated with -t open; -t install is for .pkg installers and
 # rejects any DMG regardless of how it was signed.
