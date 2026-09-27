@@ -8,9 +8,12 @@ import CryptoKit
 /// run and takes ~10s just to print its version; only the unpacked "onedir"
 /// build starts fast, and that is ~120MB — most of the app again. Its site
 /// extractors also break often enough that a copy frozen at release time would
-/// stop working between releases. So a yt-dlp already on the machine is used as
-/// is, and otherwise the official build is fetched on first use and kept
-/// current.
+/// stop working between releases. So the official build is fetched on first use
+/// and kept current.
+///
+/// A yt-dlp already on the machine (e.g. from Homebrew) is deliberately not
+/// used: we can't update it, and a three-month-old copy was enough for
+/// Instagram to reject every download as "login required".
 final class SocialVideoDownloader {
     static let shared = SocialVideoDownloader()
 
@@ -90,14 +93,14 @@ final class SocialVideoDownloader {
     // MARK: - Downloading
 
     private func fetch(url: String, to dest: URL) throws -> String {
-        let (tool, managed) = try resolveTool()
+        let tool = try resolveTool()
         do {
             try runDownload(tool: tool, url: url, to: dest)
         } catch {
-            guard managed, secondsSinceUpdateCheck() > Self.failureUpdateInterval else { throw error }
+            guard secondsSinceUpdateCheck() > Self.failureUpdateInterval else { throw error }
             NSLog("SocialVideoDownloader: %@ failed (%@), checking for a newer yt-dlp", url, error.localizedDescription)
             guard try update() else { throw error }
-            try runDownload(tool: try resolveTool().0, url: url, to: dest)
+            try runDownload(tool: try resolveTool(), url: url, to: dest)
         }
         return dest.path
     }
@@ -150,13 +153,8 @@ final class SocialVideoDownloader {
     private var checkStamp: URL { installDir.appendingPathComponent("last-update-check") }
     private var installedHashFile: URL { installDir.appendingPathComponent("current/.zip-sha256") }
 
-    /// The yt-dlp to run, and whether it's our managed copy (and so ours to
-    /// update).
-    private func resolveTool() throws -> (String, Bool) {
-        for path in ["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"]
-        where fm.isExecutableFile(atPath: path) {
-            return (path, false)
-        }
+    /// The path of our yt-dlp, installing it first if needed.
+    private func resolveTool() throws -> String {
         if !fm.isExecutableFile(atPath: managedBinary.path) {
             try update()
         } else if secondsSinceUpdateCheck() > Self.updateInterval {
@@ -164,7 +162,7 @@ final class SocialVideoDownloader {
                 do { try self.update() } catch { NSLog("SocialVideoDownloader: update failed: %@", error.localizedDescription) }
             }
         }
-        return (managedBinary.path, true)
+        return managedBinary.path
     }
 
     private func secondsSinceUpdateCheck() -> TimeInterval {
