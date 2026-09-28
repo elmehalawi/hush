@@ -38,6 +38,12 @@ anyhow = "1"
 [build-dependencies]
 uniffi = { version = "0.28", features = ["build"] }
 
+# Vendored copy of libsignal-service at the rev presage pins, with the link
+# capabilities backported from upstream so Signal accepts new linked devices
+# (the server returns HTTP 409 otherwise). See vendor/libsignal-service.
+[patch."https://github.com/whisperfish/libsignal-service-rs"]
+libsignal-service = { path = "vendor/libsignal-service" }
+
 [patch.crates-io]
 # signal-protocol uses a fork of this library via the patch mechanism of cargo.
 # Since it is not transitive, we have to add the patch here explicitly.
