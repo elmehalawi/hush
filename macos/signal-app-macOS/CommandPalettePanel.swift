@@ -42,7 +42,10 @@ class ChannelRowView: NSView {
         nameLabel.textColor = .labelColor
         nameLabel.lineBreakMode = .byTruncatingTail
 
-        previewLabel = NSTextField(labelWithString: channel.lastMessage ?? "")
+        let preview = (channel.lastMessage ?? "")
+            .components(separatedBy: .newlines)
+            .joined(separator: " ")
+        previewLabel = NSTextField(labelWithString: preview)
         previewLabel.font = NSFont.systemFont(ofSize: 11)
         previewLabel.textColor = .secondaryLabelColor
         previewLabel.lineBreakMode = .byTruncatingTail
@@ -125,6 +128,12 @@ class ChannelRowView: NSView {
 
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         previewLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        // Labels default to 750 horizontal compression resistance, which beats the
+        // window's stay-put priority (500) — a long message preview would otherwise
+        // grow the whole panel to fit the full text instead of truncating.
+        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        previewLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let trailingConstant: CGFloat = channel.unreadCount > 0 ? -36 : -12
         NSLayoutConstraint.activate([
