@@ -73,6 +73,9 @@ RCT_EXTERN_METHOD(fetchAllAvatars:(RCTPromiseResolveBlock)resolve
 
 RCT_EXTERN_METHOD(previewFile:(NSString *)filePath)
 
+RCT_EXTERN_METHOD(previewFiles:(NSArray<NSString *> *)filePaths
+                  index:(double)index)
+
 RCT_EXTERN_METHOD(showChannelContextMenu:(NSString *)channelId
                   isGroup:(BOOL)isGroup)
 

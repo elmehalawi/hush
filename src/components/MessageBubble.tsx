@@ -13,8 +13,14 @@ import {useColors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
 
-function openMediaPreview(filePath: string) {
-  PresageModule?.previewFile(filePath);
+function openMediaPreview(filePath: string, group?: Attachment[]) {
+  const paths = (group ?? []).map(a => a.filePath).filter((p): p is string => !!p);
+  const index = paths.indexOf(filePath);
+  if (paths.length > 1 && index >= 0) {
+    PresageModule?.previewFiles(paths, index);
+  } else {
+    PresageModule?.previewFile(filePath);
+  }
 }
 
 interface MessageBubbleProps {
@@ -663,7 +669,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
           attachments={mediaAttachments}
           isOutgoing={isOutgoing}
           corners={corners}
-          onPreview={(filePath) => openMediaPreview(filePath)}
+          onPreview={(filePath) => openMediaPreview(filePath, mediaAttachments)}
           onRightClick={handleBubblePressIn}
         />
       )}

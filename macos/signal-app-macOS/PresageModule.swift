@@ -1620,6 +1620,13 @@ class PresageModule: RCTEventEmitter {
         }
     }
 
+    @objc(previewFiles:index:)
+    func previewFiles(_ filePaths: [String], index: Double) {
+        DispatchQueue.main.async {
+            self.mediaPreviewPanel.previewFiles(paths: filePaths, index: Int(index))
+        }
+    }
+
     // MARK: - macOS Contacts Integration
 
     private lazy var contactStore = CNContactStore()
@@ -2131,37 +2138,55 @@ class MessageListenerImpl: MessageListener {
 // MARK: - Media Preview Panel
 
 class MediaPreviewPanel: NSObject, NSWindowDelegate {
+    /// Identifies the preview window so other app-wide key monitors
+    /// (e.g. CommandPaletteModule) can leave its key events alone.
+    static let windowIdentifier = NSUserInterfaceItemIdentifier("HushMediaPreview")
+
     private var panel: NSPanel?
     private var player: AVPlayer?
     private var playerView: AVPlayerView?
     private var imageView: NSImageView?
+    private var keyMonitor: Any?
 
-    private static let imageTypes: Set<String> = [
-        "image/jpeg", "image/png", "image/gif", "image/webp",
-        "image/heic", "image/heif", "image/bmp", "image/tiff"
-    ]
-    private static let videoTypes: Set<String> = [
-        "video/mp4", "video/quicktime", "video/x-m4v", "video/mpeg",
-        "video/webm", "video/3gpp", "video/mov"
-    ]
+    private var items: [URL] = []
+    private var currentIndex = 0
+
+    override init() {
+        super.init()
+        setupKeyMonitor()
+    }
 
     func previewFile(path: String) {
-        guard FileManager.default.fileExists(atPath: path) else { return }
-        let url = URL(fileURLWithPath: path)
-        let ext = url.pathExtension.lowercased()
+        previewFiles(paths: [path], index: 0)
+    }
 
-        if isImage(ext: ext) {
-            showImage(url: url)
-        } else if isVideo(ext: ext) {
-            showVideo(url: url)
-        } else {
-            // Fallback: try as image, then open externally
-            if NSImage(contentsOf: url) != nil {
-                showImage(url: url)
-            } else {
-                NSWorkspace.shared.open(url)
-            }
+    func previewFiles(paths: [String], index: Int) {
+        let urls = paths
+            .filter { FileManager.default.fileExists(atPath: $0) }
+            .map { URL(fileURLWithPath: $0) }
+        guard !urls.isEmpty else { return }
+
+        // Map the requested index onto the filtered list.
+        var start = 0
+        if index >= 0 && index < paths.count {
+            let requested = URL(fileURLWithPath: paths[index])
+            start = urls.firstIndex(of: requested) ?? 0
         }
+
+        // Not an image/video → hand off to the default app.
+        guard canPreview(url: urls[start]) else {
+            NSWorkspace.shared.open(urls[start])
+            return
+        }
+
+        items = urls.filter { canPreview(url: $0) }
+        currentIndex = items.firstIndex(of: urls[start]) ?? 0
+        showCurrent(recenter: true)
+    }
+
+    private func canPreview(url: URL) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        return isImage(ext: ext) || isVideo(ext: ext) || NSImage(contentsOf: url) != nil
     }
 
     private func isImage(ext: String) -> Bool {
@@ -2172,18 +2197,38 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
         return ["mp4", "mov", "m4v", "mpeg", "mpg", "webm", "3gp", "avi", "mkv"].contains(ext)
     }
 
-    // MARK: - Image
+    // MARK: - Navigation
 
-    private func showImage(url: URL) {
-        guard let image = NSImage(contentsOf: url) else { return }
+    private func showCurrent(recenter: Bool) {
+        guard currentIndex >= 0 && currentIndex < items.count else { return }
+        let url = items[currentIndex]
+        if isVideo(ext: url.pathExtension.lowercased()) {
+            showVideo(url: url, recenter: recenter)
+        } else {
+            showImage(url: url, recenter: recenter)
+        }
+    }
 
-        let imageSize = image.size
-        let screen = NSScreen.main ?? NSScreen.screens.first!
+    private func step(_ delta: Int) {
+        guard items.count > 1 else { return }
+        currentIndex = (currentIndex + delta + items.count) % items.count
+        showCurrent(recenter: false)
+    }
+
+    private func titleFor(url: URL) -> String {
+        if items.count > 1 {
+            return "\(url.lastPathComponent)  (\(currentIndex + 1)/\(items.count))"
+        }
+        return url.lastPathComponent
+    }
+
+    private func fittedSize(_ size: NSSize, minSize: NSSize) -> NSSize {
+        let screen = panel?.screen ?? NSScreen.main ?? NSScreen.screens.first!
         let maxW = screen.visibleFrame.width * 0.8
         let maxH = screen.visibleFrame.height * 0.8
 
-        var w = imageSize.width
-        var h = imageSize.height
+        var w = size.width
+        var h = size.height
 
         // Scale down if larger than screen bounds
         if w > maxW || h > maxH {
@@ -2192,11 +2237,16 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
             h = floor(h * scale)
         }
 
-        // Minimum size
-        w = max(w, 200)
-        h = max(h, 150)
+        return NSSize(width: max(w, minSize.width), height: max(h, minSize.height))
+    }
 
-        let p = getOrCreatePanel(size: NSSize(width: w, height: h))
+    // MARK: - Image
+
+    private func showImage(url: URL, recenter: Bool) {
+        guard let image = NSImage(contentsOf: url) else { return }
+
+        let size = fittedSize(image.size, minSize: NSSize(width: 200, height: 150))
+        let p = getOrCreatePanel(size: size, recenter: recenter)
 
         // Clean up previous content
         cleanUpContent()
@@ -2208,33 +2258,18 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
         p.contentView?.addSubview(iv)
         self.imageView = iv
 
-        p.title = url.lastPathComponent
-        showPanel(p)
+        p.title = titleFor(url: url)
+        showPanel(p, recenter: recenter)
     }
 
     // MARK: - Video
 
-    private func showVideo(url: URL) {
+    private func showVideo(url: URL, recenter: Bool) {
         let asset = AVAsset(url: url)
         let videoSize = asset.tracks(withMediaType: .video).first?.naturalSize ?? NSSize(width: 640, height: 480)
 
-        let screen = NSScreen.main ?? NSScreen.screens.first!
-        let maxW = screen.visibleFrame.width * 0.8
-        let maxH = screen.visibleFrame.height * 0.8
-
-        var w = videoSize.width
-        var h = videoSize.height
-
-        if w > maxW || h > maxH {
-            let scale = min(maxW / w, maxH / h)
-            w = floor(w * scale)
-            h = floor(h * scale)
-        }
-
-        w = max(w, 320)
-        h = max(h, 240)
-
-        let p = getOrCreatePanel(size: NSSize(width: w, height: h))
+        let size = fittedSize(videoSize, minSize: NSSize(width: 320, height: 240))
+        let p = getOrCreatePanel(size: size, recenter: recenter)
 
         // Clean up previous content
         cleanUpContent()
@@ -2247,17 +2282,28 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
         self.player = avPlayer
         self.playerView = pv
 
-        p.title = url.lastPathComponent
-        showPanel(p)
+        p.title = titleFor(url: url)
+        showPanel(p, recenter: recenter)
 
         avPlayer.play()
     }
 
     // MARK: - Panel Management
 
-    private func getOrCreatePanel(size: NSSize) -> NSPanel {
+    private func getOrCreatePanel(size: NSSize, recenter: Bool) -> NSPanel {
         if let existing = panel {
-            existing.setContentSize(size)
+            if !recenter && existing.isVisible {
+                // Resize around the current center so cycling doesn't make
+                // the window jump back to the middle of the screen.
+                let old = existing.frame
+                existing.setContentSize(size)
+                var frame = existing.frame
+                frame.origin.x = old.midX - frame.width / 2
+                frame.origin.y = old.midY - frame.height / 2
+                existing.setFrame(frame, display: true)
+            } else {
+                existing.setContentSize(size)
+            }
             return existing
         }
 
@@ -2271,6 +2317,7 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
+        p.identifier = MediaPreviewPanel.windowIdentifier
         p.isReleasedWhenClosed = false
         p.isFloatingPanel = true
         p.hidesOnDeactivate = false
@@ -2280,31 +2327,61 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
         p.backgroundColor = .black
         p.minSize = NSSize(width: 200, height: 150)
 
-        // Monitor Escape and Space keys
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak p] event in
-            guard let self = self, let panel = p, panel.isVisible else { return event }
-            if event.keyCode == 53 { // Escape
-                self.closePanel()
-                return nil
-            }
-            if event.keyCode == 49, self.player != nil { // Space
-                self.togglePlayPause()
-                return nil
-            }
-            return event
-        }
-
         p.delegate = self
         self.panel = p
         return p
+    }
+
+    /// Only handles keys while the preview window itself is key, so the main
+    /// window keeps its shortcuts when the preview is open in the background.
+    private func setupKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self, let panel = self.panel, panel.isVisible,
+                  event.window === panel else { return event }
+
+            let mods = event.modifierFlags.intersection([.command, .control, .option])
+            guard mods.isEmpty else { return event }
+
+            switch event.keyCode {
+            case 53: // Escape
+                self.closePanel()
+                return nil
+            case 49: // Space
+                if self.player != nil { self.togglePlayPause() }
+                return nil
+            case 123: // Left arrow
+                self.step(-1)
+                return nil
+            case 124: // Right arrow
+                self.step(1)
+                return nil
+            default:
+                break
+            }
+
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "h":
+                self.step(-1)
+                return nil
+            case "l":
+                self.step(1)
+                return nil
+            case "o":
+                self.closePanel()
+                self.focusMainWindow()
+                return nil
+            default:
+                return event
+            }
+        }
     }
 
     func windowWillClose(_ notification: Notification) {
         cleanUpContent()
     }
 
-    private func showPanel(_ p: NSPanel) {
-        p.center()
+    private func showPanel(_ p: NSPanel, recenter: Bool) {
+        if recenter { p.center() }
         p.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -2312,6 +2389,11 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
     private func closePanel() {
         cleanUpContent()
         panel?.orderOut(nil)
+    }
+
+    private func focusMainWindow() {
+        let main = NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) })
+        main?.makeKeyAndOrderFront(nil)
     }
 
     private func cleanUpContent() {

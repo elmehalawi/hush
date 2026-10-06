@@ -34,6 +34,12 @@ class CommandPaletteModule: RCTEventEmitter {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self = self else { return event }
 
+            // The media preview window handles its own keys (h/l/o/arrows);
+            // don't route them to the main window.
+            if event.window?.identifier == MediaPreviewPanel.windowIdentifier {
+                return event
+            }
+
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             let char = event.charactersIgnoringModifiers
 
