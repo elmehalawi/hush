@@ -10,6 +10,8 @@ export interface Channel {
   lastMessageTimestamp?: number;
   avatarPath?: string;
   phoneNumber?: string;
+  /** Disappearing-messages timer in seconds (0 = off) */
+  expireTimer: number;
 }
 
 export interface Attachment {
@@ -65,8 +67,10 @@ export interface Message {
   readBy: string[];
   linkPreviews: LinkPreview[];
   quote?: Quote;
-  messageType?: 'regular' | 'missedAudioCall' | 'missedVideoCall' | 'audioCall' | 'videoCall';
+  messageType?: 'regular' | 'missedAudioCall' | 'missedVideoCall' | 'audioCall' | 'videoCall' | 'timerUpdate';
   edited?: boolean;
+  /** Disappearing timer in seconds; for a timerUpdate notice, the new timer */
+  expireTimer: number;
 }
 
 export type LinkingState =
@@ -139,6 +143,8 @@ interface SignalStore {
     image: Attachment,
   ) => void;
   markMessagesAsRead: (senderId: string, timestamps: number[]) => void;
+  removeMessages: (channelId: string, messageIds: string[]) => void;
+  setChannelExpireTimer: (channelId: string, seconds: number) => void;
   setTyping: (channelId: string, senderId: string, started: boolean) => void;
   resetStore: () => void;
 }
@@ -256,7 +262,7 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
     // Update the channel's last message info for sorting
     const channelIndex = channels.findIndex(c => c.id === message.channelId);
     let updatedChannels = channels;
-    if (channelIndex >= 0) {
+    if (channelIndex >= 0 && message.messageType !== 'timerUpdate') {
       const channel = channels[channelIndex];
       if (!channel.lastMessageTimestamp || message.timestamp >= channel.lastMessageTimestamp) {
         updatedChannels = [...channels];
@@ -341,6 +347,7 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
         lastMessageTimestamp: channel.lastMessageTimestamp || existing.lastMessageTimestamp,
         avatarPath: channel.avatarPath || existing.avatarPath,
         phoneNumber: channel.phoneNumber || existing.phoneNumber,
+        expireTimer: channel.expireTimer,
         name: newName,
       };
       set({channels: newChannels});
@@ -476,6 +483,46 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
     }
   },
 
+  // Disappearing messages that native has deleted
+  removeMessages: (channelId: string, messageIds: string[]) => {
+    const {messages, channels} = get();
+    const ids = new Set(messageIds);
+    const channelMessages = messages[channelId];
+    const remaining = channelMessages?.filter(m => !ids.has(m.id));
+
+    // Don't leave the deleted text showing as the chat's preview
+    let updatedChannels = channels;
+    const index = channels.findIndex(c => c.id === channelId);
+    const channel = index >= 0 ? channels[index] : undefined;
+    if (channel?.lastMessageTimestamp && ids.has(String(channel.lastMessageTimestamp))) {
+      const visible = (remaining ?? []).filter(m => m.messageType !== 'timerUpdate');
+      const latest = visible.length > 0 ? visible[visible.length - 1] : undefined;
+      updatedChannels = [...channels];
+      updatedChannels[index] = {
+        ...channel,
+        lastMessage: latest?.body,
+        lastMessageTimestamp: latest?.timestamp ?? channel.lastMessageTimestamp,
+      };
+    }
+
+    set({
+      channels: updatedChannels,
+      ...(remaining && remaining.length !== channelMessages.length
+        ? {messages: {...messages, [channelId]: remaining}}
+        : {}),
+    });
+  },
+
+  setChannelExpireTimer: (channelId: string, seconds: number) => {
+    const {channels} = get();
+    const index = channels.findIndex(c => c.id === channelId);
+    if (index >= 0 && channels[index].expireTimer !== seconds) {
+      const newChannels = [...channels];
+      newChannels[index] = {...newChannels[index], expireTimer: seconds};
+      set({channels: newChannels});
+    }
+  },
+
   setTyping: (channelId: string, senderId: string, started: boolean) => {
     const {typingUsers, userId} = get();
     // Don't show our own typing indicator
@@ -552,4 +599,41 @@ export function channelDisplayName(channel: Channel): string {
   if (channel.name && !UUID_RE.test(channel.name)) return channel.name;
   if (channel.phoneNumber) return channel.phoneNumber;
   return 'Unknown';
+}
+
+/**
+ * Label for a disappearing-messages timer, e.g. "4 weeks" or "Off".
+ */
+export function expireTimerLabel(seconds: number): string {
+  if (seconds <= 0) return 'Off';
+  const units: [number, string][] = [
+    [7 * 24 * 60 * 60, 'week'],
+    [24 * 60 * 60, 'day'],
+    [60 * 60, 'hour'],
+    [60, 'minute'],
+    [1, 'second'],
+  ];
+  for (const [size, name] of units) {
+    if (seconds % size === 0) {
+      const count = seconds / size;
+      return `${count} ${name}${count === 1 ? '' : 's'}`;
+    }
+  }
+  return `${seconds} seconds`;
+}
+
+/**
+ * Compact form for tight spaces, e.g. "4w", "8h", "30s".
+ */
+export function expireTimerShortLabel(seconds: number): string {
+  const units: [number, string][] = [
+    [7 * 24 * 60 * 60, 'w'],
+    [24 * 60 * 60, 'd'],
+    [60 * 60, 'h'],
+    [60, 'm'],
+  ];
+  for (const [size, suffix] of units) {
+    if (seconds >= size) return `${Math.floor(seconds / size)}${suffix}`;
+  }
+  return `${Math.max(0, Math.floor(seconds))}s`;
 }

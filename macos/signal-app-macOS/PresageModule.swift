@@ -51,7 +51,7 @@ class PresageModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onMessage", "onReaction", "onReadReceipt", "onReadSync", "onChannelUpdated", "onAttachmentDownloaded", "onLinkPreviewImageDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions", "onReplyToMessage", "onContextMenuReaction", "onTyping", "onIncomingCall", "onCallStateChanged", "onCallEnded"]
+        return ["onMessage", "onReaction", "onReadReceipt", "onReadSync", "onChannelUpdated", "onAttachmentDownloaded", "onLinkPreviewImageDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions", "onReplyToMessage", "onContextMenuReaction", "onTyping", "onIncomingCall", "onCallStateChanged", "onCallEnded", "onMessagesExpired", "onExpireTimerChanged"]
     }
 
     override func startObserving() {
@@ -392,6 +392,26 @@ class PresageModule: RCTEventEmitter {
                     "channelId": channelId,
                     "senderId": senderId,
                     "started": started,
+                ])
+            },
+            onMessagesExpired: { [weak self] channelId, messageIds, filePaths in
+                // Disappearing messages are gone from the store; take their
+                // notifications and image thumbnails with them
+                UNUserNotificationCenter.current().removeDeliveredNotifications(
+                    withIdentifiers: messageIds.map { "msg-\($0)" })
+                for path in filePaths {
+                    let stem = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+                    try? FileManager.default.removeItem(atPath: NSTemporaryDirectory() + "thumb_" + stem + ".jpg")
+                }
+                self?.sendEventIfListening("onMessagesExpired", body: [
+                    "channelId": channelId,
+                    "messageIds": messageIds,
+                ])
+            },
+            onExpireTimerChanged: { [weak self] channelId, seconds in
+                self?.sendEventIfListening("onExpireTimerChanged", body: [
+                    "channelId": channelId,
+                    "seconds": NSNumber(value: seconds),
                 ])
             }
         )
@@ -1403,23 +1423,105 @@ class PresageModule: RCTEventEmitter {
 
     // MARK: - Channel Context Menu
 
-    @objc(showChannelContextMenu:isGroup:)
-    func showChannelContextMenu(_ channelId: String, isGroup: Bool) {
+    @objc(showChannelContextMenu:isGroup:expireTimer:)
+    func showChannelContextMenu(_ channelId: String, isGroup: Bool, expireTimer: Double) {
         DispatchQueue.main.async {
             let menu = NSMenu()
 
+            let timerItem = NSMenuItem(title: "Disappearing Messages", action: nil, keyEquivalent: "")
+            timerItem.submenu = self.expireTimerMenu(channelId: channelId, isGroup: isGroup, current: UInt32(expireTimer))
+            menu.addItem(timerItem)
+
             if !isGroup {
+                menu.addItem(NSMenuItem.separator())
                 let resetItem = NSMenuItem(title: "Reset Session", action: #selector(self.handleResetSession(_:)), keyEquivalent: "")
                 resetItem.representedObject = channelId
                 resetItem.target = self
                 menu.addItem(resetItem)
             }
 
-            guard !menu.items.isEmpty else { return }
-            guard let window = NSApp.keyWindow, let contentView = window.contentView else { return }
-            let mouseInWindow = window.mouseLocationOutsideOfEventStream
-            let mouseInView = contentView.convert(mouseInWindow, from: nil)
-            menu.popUp(positioning: nil, at: mouseInView, in: contentView)
+            self.popUpAtMouse(menu)
+        }
+    }
+
+    // MARK: - Disappearing Messages
+
+    /// The timers the official clients offer, in seconds (0 = off)
+    private static let expireTimerChoices: [UInt32] = [0, 30, 5 * 60, 60 * 60, 8 * 60 * 60, 24 * 60 * 60, 7 * 24 * 60 * 60, 4 * 7 * 24 * 60 * 60]
+
+    @objc(showExpireTimerMenu:isGroup:expireTimer:)
+    func showExpireTimerMenu(_ channelId: String, isGroup: Bool, expireTimer: Double) {
+        DispatchQueue.main.async {
+            self.popUpAtMouse(self.expireTimerMenu(channelId: channelId, isGroup: isGroup, current: UInt32(expireTimer)))
+        }
+    }
+
+    private func popUpAtMouse(_ menu: NSMenu) {
+        guard let window = NSApp.keyWindow, let contentView = window.contentView else { return }
+        let mouseInWindow = window.mouseLocationOutsideOfEventStream
+        let mouseInView = contentView.convert(mouseInWindow, from: nil)
+        menu.popUp(positioning: nil, at: mouseInView, in: contentView)
+    }
+
+    private func expireTimerMenu(channelId: String, isGroup: Bool, current: UInt32) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        var choices = Self.expireTimerChoices
+        // Someone may have picked a custom timer on their phone
+        if !choices.contains(current) {
+            choices.append(current)
+            choices.sort()
+        }
+        for seconds in choices {
+            let item = NSMenuItem(title: Self.expireTimerLabel(seconds), action: #selector(handleSetExpireTimer(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = ["channelId": channelId, "seconds": NSNumber(value: seconds)]
+            item.state = seconds == current ? .on : .off
+            // A group's timer lives in the group's server-side state, which
+            // Hush can't change yet
+            item.isEnabled = !isGroup
+            menu.addItem(item)
+        }
+        if isGroup {
+            menu.addItem(NSMenuItem.separator())
+            let note = NSMenuItem(title: "Change a group's timer from your phone", action: nil, keyEquivalent: "")
+            note.isEnabled = false
+            menu.addItem(note)
+        }
+        return menu
+    }
+
+    private static func expireTimerLabel(_ seconds: UInt32) -> String {
+        if seconds == 0 { return "Off" }
+        let units: [(UInt32, String)] = [(7 * 24 * 60 * 60, "week"), (24 * 60 * 60, "day"), (60 * 60, "hour"), (60, "minute"), (1, "second")]
+        for (size, name) in units where seconds % size == 0 {
+            let count = seconds / size
+            return "\(count) \(name)\(count == 1 ? "" : "s")"
+        }
+        return "\(seconds) seconds"
+    }
+
+    @objc private func handleSetExpireTimer(_ sender: NSMenuItem) {
+        guard let info = sender.representedObject as? [String: Any],
+              let channelId = info["channelId"] as? String,
+              let seconds = (info["seconds"] as? NSNumber)?.uint32Value,
+              let client = client else { return }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let notice = try client.setExpireTimer(channelId: channelId, seconds: seconds)
+                self.sendEventIfListening("onMessage", body: self.messageToDict(notice))
+            } catch {
+                NSLog("PresageModule: Failed to set disappearing timer: %@", error.localizedDescription)
+                DispatchQueue.main.async {
+                    let alert = NSAlert()
+                    alert.messageText = "Couldn't Change Disappearing Messages"
+                    alert.informativeText = error.localizedDescription
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                }
+            }
         }
     }
 
@@ -1771,7 +1873,8 @@ class PresageModule: RCTEventEmitter {
             "lastMessage": channel.lastMessage,
             "lastMessageTimestamp": channel.lastMessageTimestamp.map { NSNumber(value: $0) },
             "avatarPath": channel.avatarPath,
-            "phoneNumber": channel.phoneNumber
+            "phoneNumber": channel.phoneNumber,
+            "expireTimer": NSNumber(value: channel.expireTimer)
         ]
     }
 
@@ -1878,6 +1981,7 @@ class PresageModule: RCTEventEmitter {
         }
         dict["messageType"] = messageTypeToString(message.messageType)
         dict["edited"] = message.edited
+        dict["expireTimer"] = NSNumber(value: message.expireTimer)
         return dict
     }
 
@@ -1897,6 +2001,7 @@ class PresageModule: RCTEventEmitter {
         case .missedVideoCall: return "missedVideoCall"
         case .audioCall: return "audioCall"
         case .videoCall: return "videoCall"
+        case .timerUpdate: return "timerUpdate"
         }
     }
 
@@ -1913,7 +2018,7 @@ class PresageModule: RCTEventEmitter {
     // MARK: - Notifications
 
     private func postNotification(for message: Message) {
-        guard !message.isOutgoing, notificationsAuthorized else { return }
+        guard !message.isOutgoing, message.messageType != .timerUpdate, notificationsAuthorized else { return }
 
         let content = UNMutableNotificationContent()
         avatarCacheLock.lock()
@@ -2067,8 +2172,10 @@ class MessageListenerImpl: MessageListener {
     private let onAttachmentDownloadedHandler: (String, String, UInt32, Attachment) -> Void
     private let onLinkPreviewImageDownloadedHandler: (String, String, UInt32, Attachment) -> Void
     private let onTypingHandler: (String, String, Bool) -> Void
+    private let onMessagesExpiredHandler: (String, [String], [String]) -> Void
+    private let onExpireTimerChangedHandler: (String, UInt32) -> Void
 
-    init(onMessage: @escaping (Message) -> Void, onReaction: @escaping (ReactionEvent) -> Void, onReadReceipt: @escaping (String, [UInt64]) -> Void, onReadSync: @escaping (String, UInt32) -> Void, onChannelUpdated: @escaping (Channel) -> Void, onError: @escaping (String) -> Void, onAttachmentDownloaded: @escaping (String, String, UInt32, Attachment) -> Void, onLinkPreviewImageDownloaded: @escaping (String, String, UInt32, Attachment) -> Void, onTyping: @escaping (String, String, Bool) -> Void) {
+    init(onMessage: @escaping (Message) -> Void, onReaction: @escaping (ReactionEvent) -> Void, onReadReceipt: @escaping (String, [UInt64]) -> Void, onReadSync: @escaping (String, UInt32) -> Void, onChannelUpdated: @escaping (Channel) -> Void, onError: @escaping (String) -> Void, onAttachmentDownloaded: @escaping (String, String, UInt32, Attachment) -> Void, onLinkPreviewImageDownloaded: @escaping (String, String, UInt32, Attachment) -> Void, onTyping: @escaping (String, String, Bool) -> Void, onMessagesExpired: @escaping (String, [String], [String]) -> Void, onExpireTimerChanged: @escaping (String, UInt32) -> Void) {
         self.onMessageHandler = onMessage
         self.onReactionHandler = onReaction
         self.onReadReceiptHandler = onReadReceipt
@@ -2078,6 +2185,8 @@ class MessageListenerImpl: MessageListener {
         self.onAttachmentDownloadedHandler = onAttachmentDownloaded
         self.onLinkPreviewImageDownloadedHandler = onLinkPreviewImageDownloaded
         self.onTypingHandler = onTyping
+        self.onMessagesExpiredHandler = onMessagesExpired
+        self.onExpireTimerChangedHandler = onExpireTimerChanged
     }
 
     func onMessage(message: Message) {
@@ -2131,6 +2240,18 @@ class MessageListenerImpl: MessageListener {
     func onTyping(channelId: String, senderId: String, started: Bool) {
         DispatchQueue.main.async {
             self.onTypingHandler(channelId, senderId, started)
+        }
+    }
+
+    func onMessagesExpired(channelId: String, messageIds: [String], filePaths: [String]) {
+        DispatchQueue.main.async {
+            self.onMessagesExpiredHandler(channelId, messageIds, filePaths)
+        }
+    }
+
+    func onExpireTimerChanged(channelId: String, seconds: UInt32) {
+        DispatchQueue.main.async {
+            self.onExpireTimerChangedHandler(channelId, seconds)
         }
     }
 }

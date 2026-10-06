@@ -26,6 +26,7 @@ use uuid::Uuid;
 use crate::call_manager::{HushCallManager, OutgoingSignaling};
 use crate::callbacks::{CallEventListener, LinkingCallback, MessageListener};
 use crate::error::SignalError;
+use crate::expiry::{self, Expiry};
 use crate::signaling::{call_message_to_ringrtc, is_hangup_for_self, ringrtc_to_call_message};
 use crate::types::{Attachment, CallDirection, CallInfo, Channel, LinkPreview, LinkPreviewData, Mention, Message, MessageStatus, MessageType, Quote, Reaction, ReactionEvent, SessionInfo};
 use ringrtc::common::CallId;
@@ -65,6 +66,8 @@ pub struct SignalClient {
     call_manager: std::sync::OnceLock<Arc<tokio::sync::Mutex<HushCallManager>>>,
     /// Call event listener for forwarding ringrtc events to Swift
     call_listener: Arc<RwLock<Option<Arc<dyn CallEventListener>>>>,
+    /// Disappearing-messages timers and pending deletions
+    expiry: Arc<Expiry>,
 }
 
 #[uniffi::export]
@@ -126,6 +129,7 @@ impl SignalClient {
         let read_state = load_read_state(&data_dir);
         let read_receipts = load_read_receipts(&data_dir);
         let edited_messages = load_edited_messages(&data_dir);
+        let expiry = Arc::new(Expiry::load(&data_dir));
 
         Ok(Arc::new(Self {
             manager: RwLock::new(manager),
@@ -142,6 +146,7 @@ impl SignalClient {
             edited_messages: Arc::new(RwLock::new(edited_messages)),
             call_manager: std::sync::OnceLock::new(),
             call_listener: Arc::new(RwLock::new(None)),
+            expiry,
         }))
     }
 
@@ -354,6 +359,7 @@ impl SignalClient {
                         last_message_timestamp: None,
                         avatar_path,
                         phone_number: None,
+                        expire_timer: 0,
                     });
                 } else if let Some(recipient_id_bytes) = &thread_row.recipient_id {
                     // Contact thread — recipient_id is stored as a 16-byte UUID blob
@@ -406,6 +412,7 @@ impl SignalClient {
                         last_message_timestamp: None,
                         avatar_path,
                         phone_number,
+                        expire_timer: 0,
                     });
                 }
             }
@@ -413,6 +420,7 @@ impl SignalClient {
             // Read the persisted read-state so we can compute unread counts
             let read_state = self.read_state.read().clone();
             let my_user_id = self.user_id.read();
+            let now = expiry::now_ms();
 
             // Populate last message timestamps and unread counts from stored messages
             for channel in &mut channels {
@@ -431,6 +439,7 @@ impl SignalClient {
                 };
 
                 let last_read_ts = read_state.get(&channel.id).copied().unwrap_or(0);
+                channel.expire_timer = channel_timer(manager, &self.expiry, &channel.id).await;
 
                 // messages() returns results ordered by ts DESC, so first = most recent
                 if let Ok(messages_iter) = manager.store().messages(&thread, ..).await {
@@ -476,6 +485,15 @@ impl SignalClient {
                                 _ => false,
                             };
                             if should_skip {
+                                continue;
+                            }
+
+                            // Already past its disappearing timer; the expiry
+                            // task just hasn't deleted it yet
+                            let timer = expiry::disappearing_timer_of(&content.body);
+                            if expiry::expires_at(&self.expiry, &channel.id, ts, timer, is_outgoing, last_read_ts)
+                                .is_some_and(|due| due <= now)
+                            {
                                 continue;
                             }
 
@@ -599,11 +617,26 @@ impl SignalClient {
             let mut call_offer_indices: HashMap<u64, usize> = HashMap::new();
             let mut answered_call_ids: HashSet<u64> = HashSet::new();
 
+            let last_read_ts = self.read_state.read().get(&channel_id).copied().unwrap_or(0);
+            let now = expiry::now_ms();
+
             if let Ok(iter) = manager.store().messages(&thread, ..).await {
                 // Messages come DESC (newest first); take `limit` newest
                 let limit = limit as usize;
                 for result in iter {
                     if let Ok(content) = result {
+                        // Leave out messages whose disappearing timer has run out
+                        let expires_at = expiry::expires_at(
+                            &self.expiry,
+                            &channel_id,
+                            content.metadata.timestamp,
+                            expiry::disappearing_timer_of(&content.body),
+                            content.metadata.sender.raw_uuid() == my_user_id,
+                            last_read_ts,
+                        );
+                        if expires_at.is_some_and(|due| due <= now) {
+                            continue;
+                        }
                         // Extract call offer id before process_content consumes it
                         let call_offer_id = match &content.body {
                             ContentBody::CallMessage(call) => call.offer.as_ref().and_then(|o| o.id),
@@ -843,11 +876,13 @@ impl SignalClient {
                 .unwrap()
                 .as_millis() as u64;
 
-            let data_message = DataMessage {
+            let mut data_message = DataMessage {
                 body: Some(text.clone()),
                 timestamp: Some(timestamp),
                 ..Default::default()
             };
+            let expire_timer =
+                apply_outgoing_timer(manager, &self.expiry, &channel_id, &mut data_message).await;
 
             // Check if this is a group or direct message
             if channel_id.len() == 64 {
@@ -901,6 +936,7 @@ impl SignalClient {
                 tracing::info!("HUSH_SYNC: direct message sent successfully (sync should have been sent by presage)");
             }
 
+            self.track_sent(&channel_id, timestamp, expire_timer);
             Ok(Message {
                 id: timestamp.to_string(),
                 channel_id,
@@ -918,6 +954,7 @@ impl SignalClient {
                 quote: None,
                 message_type: MessageType::Regular,
                 edited: false,
+                expire_timer,
             })
         })
         })
@@ -1007,6 +1044,8 @@ impl SignalClient {
                     attachments: pointers,
                     ..Default::default()
                 };
+                let expire_timer =
+                    apply_outgoing_timer(manager, &self.expiry, &channel_id, &mut data_message).await;
 
                 // Send to group or direct
                 if channel_id.len() == 64 {
@@ -1062,6 +1101,7 @@ impl SignalClient {
                     })
                     .collect();
 
+                self.track_sent(&channel_id, timestamp, expire_timer);
                 Ok(Message {
                     id: timestamp.to_string(),
                     channel_id,
@@ -1079,6 +1119,7 @@ impl SignalClient {
                     quote: None,
                     message_type: MessageType::Regular,
                     edited: false,
+                    expire_timer,
                 })
             })
         })
@@ -1221,6 +1262,8 @@ impl SignalClient {
                     preview: proto_previews,
                     ..Default::default()
                 };
+                let expire_timer =
+                    apply_outgoing_timer(manager, &self.expiry, &channel_id, &mut data_message).await;
 
                 // Send to group or direct
                 if channel_id.len() == 64 {
@@ -1298,6 +1341,7 @@ impl SignalClient {
                     })
                     .collect();
 
+                self.track_sent(&channel_id, timestamp, expire_timer);
                 Ok(Message {
                     id: timestamp.to_string(),
                     channel_id,
@@ -1315,6 +1359,7 @@ impl SignalClient {
                     quote: None,
                     message_type: MessageType::Regular,
                     edited: false,
+                    expire_timer,
                 })
             })
         })
@@ -1459,6 +1504,8 @@ impl SignalClient {
                     }),
                     ..Default::default()
                 };
+                let expire_timer =
+                    apply_outgoing_timer(manager, &self.expiry, &channel_id, &mut data_message).await;
 
                 // Send to group or direct
                 if channel_id.len() == 64 {
@@ -1536,6 +1583,7 @@ impl SignalClient {
                     })
                     .collect();
 
+                self.track_sent(&channel_id, timestamp, expire_timer);
                 Ok(Message {
                     id: timestamp.to_string(),
                     channel_id,
@@ -1553,6 +1601,7 @@ impl SignalClient {
                     quote: Some(quote_for_return),
                     message_type: MessageType::Regular,
                     edited: false,
+                    expire_timer,
                 })
             })
         })
@@ -1717,6 +1766,9 @@ impl SignalClient {
         let runtime_handle = self.runtime.handle().clone();
         let read_state = self.read_state.clone();
         let inflight = self.inflight_downloads.clone();
+        let expiry_state = self.expiry.clone();
+
+        self.start_expiry_task(manager, my_user_id);
 
         // Initialize call manager (ringrtc) — lazy, on first start_receiving
         let device_id = manager.device_id();
@@ -1864,8 +1916,9 @@ impl SignalClient {
                                             break;
                                         }
 
-                                        // Parse message inside stacker (crypto may need stack space)
-                                        let result = stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
+                                        // Parse message inside stacker (crypto may need stack space).
+                                        // Also pull out the disappearing timer the message carries.
+                                        let (result, timer_seen) = stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
                                             match received {
                                                 presage::model::messages::Received::Content(content) => {
                                                     // Route CallMessage to ringrtc before process_content
@@ -1911,15 +1964,18 @@ impl SignalClient {
                                                         }
                                                     }
                                                     // Fall through to process_content for call history (missed call pills)
-                                                    process_content(&content, my_user_id, None)
+                                                    (
+                                                        process_content(&content, my_user_id, None),
+                                                        expiry::expire_timer_of(&content.body),
+                                                    )
                                                 }
                                                 presage::model::messages::Received::QueueEmpty => {
                                                     info!("Message queue is empty");
-                                                    None
+                                                    (None, None)
                                                 }
                                                 presage::model::messages::Received::Contacts => {
                                                     info!("Received contacts sync");
-                                                    None
+                                                    (None, None)
                                                 }
                                             }
                                         });
@@ -1977,21 +2033,32 @@ impl SignalClient {
                                             }
 
                                             for (channel_id, up_to) in per_channel {
-                                                let advanced = {
+                                                let previous = {
                                                     let mut state = read_state.write();
                                                     let current =
                                                         state.get(&channel_id).copied().unwrap_or(0);
                                                     if up_to > current {
                                                         state.insert(channel_id.clone(), up_to);
                                                         save_read_state(&data_dir_for_receipts, &state);
-                                                        true
+                                                        Some(current)
                                                     } else {
-                                                        false
+                                                        None
                                                     }
                                                 };
-                                                if !advanced {
+                                                let Some(previous) = previous else {
                                                     continue;
-                                                }
+                                                };
+                                                // Read elsewhere counts as read: start the
+                                                // disappearing countdown here too
+                                                start_read_countdowns(
+                                                    manager_for_attachments.store(),
+                                                    &expiry_state,
+                                                    &channel_id,
+                                                    previous,
+                                                    up_to,
+                                                    my_aci_uuid,
+                                                )
+                                                .await;
                                                 let unread = count_unread_since(
                                                     &manager_for_attachments,
                                                     &channel_id,
@@ -2163,6 +2230,7 @@ impl SignalClient {
                                                     message.sender_name = Some(name.clone());
                                                 }
 
+                                                let expire_timer = channel_timer(&manager_for_attachments, &expiry_state, &channel_id).await;
                                                 let state = read_state.read();
                                                 let last_read = state.get(&channel_id).copied().unwrap_or(0);
                                                 if message.timestamp > last_read {
@@ -2176,6 +2244,7 @@ impl SignalClient {
                                                         last_message_timestamp: Some(message.timestamp),
                                                         avatar_path,
                                                         phone_number,
+                                                        expire_timer,
                                                     });
                                                 }
                                             }
@@ -2203,6 +2272,22 @@ impl SignalClient {
                                                 let mut edited = edited_messages.write();
                                                 edited.insert(target_ts);
                                                 save_edited_messages(&data_dir_for_receipts, &edited);
+                                            }
+
+                                            // Follow the chat's disappearing timer, and start the
+                                            // countdown for messages we sent from another device.
+                                            // Incoming ones start when they're read.
+                                            if let Some(seconds) = timer_seen {
+                                                if expiry_state.observe_timer(&message.channel_id, message.timestamp, seconds) {
+                                                    listener.on_expire_timer_changed(message.channel_id.clone(), seconds);
+                                                }
+                                            }
+                                            if message.is_outgoing
+                                                && message.message_type != MessageType::TimerUpdate
+                                                && message.expire_timer > 0
+                                            {
+                                                let due = message.timestamp + message.expire_timer as u64 * 1000;
+                                                expiry_state.schedule(&message.channel_id, message.timestamp, due);
                                             }
 
                                             listener.on_message(message);
@@ -2265,6 +2350,8 @@ impl SignalClient {
         *self.read_receipts.write() = HashMap::new();
         *self.edited_messages.write() = HashSet::new();
         *self.inflight_downloads.write() = HashSet::new();
+        self.expiry.stop();
+        self.expiry.clear();
         // 5. Delete database file
         let _ = std::fs::remove_file(&self.store_path);
         // 6. Delete data subdirectories (attachments, avatars)
@@ -2364,16 +2451,95 @@ impl SignalClient {
     /// Mark a channel as read up to the given timestamp.
     /// Updates the persisted read state and returns the updated unread count (always 0).
     pub fn mark_as_read(&self, channel_id: String, up_to_timestamp: u64) -> Result<(), SignalError> {
-        {
+        let previous = {
             let mut state = self.read_state.write();
             let current = state.get(&channel_id).copied().unwrap_or(0);
             if up_to_timestamp > current {
                 state.insert(channel_id.clone(), up_to_timestamp);
                 save_read_state(&self.data_dir, &state);
             }
-        }
+            current
+        };
         info!("Marked channel {} as read up to {}", channel_id, up_to_timestamp);
+
+        // Reading starts the countdown on incoming disappearing messages
+        if up_to_timestamp > previous {
+            let store = self.manager.read().as_ref().map(|m| m.store().clone());
+            let my_user_id = *self.user_id.read();
+            if let (Some(store), Some(my_user_id)) = (store, my_user_id) {
+                let local = tokio::task::LocalSet::new();
+                local.block_on(&self.runtime, start_read_countdowns(
+                    &store,
+                    &self.expiry,
+                    &channel_id,
+                    previous,
+                    up_to_timestamp,
+                    my_user_id,
+                ));
+            }
+        }
         Ok(())
+    }
+
+    /// Change a 1:1 chat's disappearing-messages timer (0 turns it off).
+    /// Returns the "you set the timer" notice to show in the chat. A group's
+    /// timer lives in the group's server-side state, which Hush can't modify yet.
+    pub fn set_expire_timer(&self, channel_id: String, seconds: u32) -> Result<Message, SignalError> {
+        if channel_id.len() == 64 {
+            return Err(SignalError::InternalError {
+                message: "Changing a group's disappearing messages timer isn't supported yet".to_string(),
+            });
+        }
+        let recipient_uuid: Uuid = channel_id.parse().map_err(|_| SignalError::ParseError {
+            message: "Invalid UUID".to_string(),
+        })?;
+
+        let mut manager_guard = self.manager.write();
+        let manager = manager_guard.as_mut().ok_or(SignalError::NotLinked)?;
+        let my_user_id = self.user_id.read().ok_or(SignalError::NotLinked)?;
+
+        const RED_ZONE: usize = 512 * 1024;
+        const STACK_SIZE: usize = 8 * 1024 * 1024;
+
+        let timestamp = expiry::now_ms();
+        stacker::maybe_grow(RED_ZONE, STACK_SIZE, || {
+            let local = tokio::task::LocalSet::new();
+            local.block_on(&self.runtime, async {
+                // An explicit timer makes presage bump the timer version, which
+                // is what tells the other devices this is a deliberate change
+                let data_message = DataMessage {
+                    flags: Some(expiry::EXPIRATION_TIMER_UPDATE),
+                    expire_timer: Some(seconds),
+                    timestamp: Some(timestamp),
+                    ..Default::default()
+                };
+                manager
+                    .send_message(
+                        Aci::from(recipient_uuid),
+                        ContentBody::DataMessage(data_message),
+                        timestamp,
+                    )
+                    .await
+                    .map_err(|e| SignalError::SendFailed {
+                        message: e.to_string(),
+                    })
+            })
+        })?;
+        drop(manager_guard);
+
+        info!("Set disappearing timer for {} to {}s", channel_id, seconds);
+        if self.expiry.observe_timer(&channel_id, timestamp, seconds) {
+            if let Some(listener) = self.listener.read().clone() {
+                listener.on_expire_timer_changed(channel_id.clone(), seconds);
+            }
+        }
+        Ok(timer_update_message(
+            timestamp,
+            channel_id,
+            my_user_id.to_string(),
+            true,
+            seconds,
+        ))
     }
 
     /// Get all sessions in the database, grouped by address, with contact names where known.
@@ -2778,6 +2944,332 @@ impl SignalClient {
         });
         Ok(())
     }
+}
+
+impl SignalClient {
+    /// Start the disappearing countdown on a message we just sent.
+    fn track_sent(&self, channel_id: &str, timestamp: u64, expire_timer: u32) {
+        if expire_timer > 0 {
+            let due = timestamp + expire_timer as u64 * 1000;
+            self.expiry.schedule(channel_id, timestamp, due);
+        }
+    }
+
+    /// Spawn the task that deletes disappearing messages (once per link).
+    fn start_expiry_task(&self, manager: &PresageManager, my_user_id: Uuid) {
+        if self.expiry.running.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let task = ExpiryTask {
+            store: manager.store().clone(),
+            store_path: self.store_path.clone(),
+            data_dir: self.data_dir.clone(),
+            attachments_dir: self.data_dir.join("attachments"),
+            expiry: self.expiry.clone(),
+            generation: self.expiry.generation.load(Ordering::SeqCst),
+            my_user_id,
+            read_state: self.read_state.clone(),
+            read_receipts: self.read_receipts.clone(),
+            edited_messages: self.edited_messages.clone(),
+            listener: self.listener.clone(),
+        };
+        let runtime_handle = self.runtime.handle().clone();
+        let spawned = std::thread::Builder::new()
+            .name("hush-expiry".to_string())
+            .stack_size(4 * 1024 * 1024)
+            .spawn(move || {
+                let local = tokio::task::LocalSet::new();
+                runtime_handle.block_on(local.run_until(task.run()));
+            });
+        if let Err(e) = spawned {
+            warn!("Failed to spawn expiry thread: {}", e);
+            self.expiry.running.store(false, Ordering::SeqCst);
+        }
+    }
+}
+
+/// Deletes disappearing messages once their timers run out.
+struct ExpiryTask {
+    store: SqliteStore,
+    store_path: PathBuf,
+    data_dir: PathBuf,
+    attachments_dir: PathBuf,
+    expiry: Arc<Expiry>,
+    /// The `Expiry::generation` this task was started under
+    generation: u64,
+    my_user_id: Uuid,
+    read_state: Arc<RwLock<HashMap<String, u64>>>,
+    read_receipts: Arc<RwLock<HashMap<u64, Vec<String>>>>,
+    edited_messages: Arc<RwLock<HashSet<u64>>>,
+    listener: Arc<RwLock<Option<Arc<dyn MessageListener>>>>,
+}
+
+impl ExpiryTask {
+    async fn run(self) {
+        self.scan().await;
+
+        // Longest we sleep without re-checking. tokio's clock doesn't advance
+        // while the Mac is asleep, so one long sleep could overshoot by hours.
+        const MAX_SLEEP_MS: u64 = 60_000;
+
+        while self.expiry.generation.load(Ordering::SeqCst) == self.generation {
+            let mut by_channel: HashMap<String, Vec<u64>> = HashMap::new();
+            for (channel_id, ts) in self.expiry.take_due(expiry::now_ms()) {
+                by_channel.entry(channel_id).or_default().push(ts);
+            }
+            for (channel_id, timestamps) in by_channel {
+                self.delete(&channel_id, timestamps).await;
+            }
+
+            let wait = self
+                .expiry
+                .next_due()
+                .map_or(MAX_SLEEP_MS, |due| due.saturating_sub(expiry::now_ms()))
+                .min(MAX_SLEEP_MS);
+            tokio::select! {
+                _ = tokio::time::sleep(std::time::Duration::from_millis(wait)) => {}
+                _ = self.expiry.wake.notified() => {}
+            }
+        }
+        info!("Expiry task stopped");
+    }
+
+    /// Learn each chat's timer from its messages, delete whatever ran out
+    /// while Hush was closed, and queue everything else that has a countdown.
+    async fn scan(&self) {
+        let now = expiry::now_ms();
+        let mut queued = 0usize;
+        let mut deleted_any = false;
+        for channel_id in thread_channel_ids(&self.store_path) {
+            let Some(thread) = thread_from_channel_id(&channel_id) else {
+                continue;
+            };
+            let Ok(messages) = self.store.messages(&thread, ..).await else {
+                continue;
+            };
+            let last_read_ts = self.read_state.read().get(&channel_id).copied().unwrap_or(0);
+            let mut overdue = Vec::new();
+            // Newest first, so the first timer we see is the current one
+            for content in messages.flatten() {
+                let ts = content.metadata.timestamp;
+                if let Some(dm) = expiry::data_message_of(&content.body) {
+                    if let (Some(seconds), None) = (dm.expire_timer, &dm.reaction) {
+                        if self.expiry.observe_timer(&channel_id, ts, seconds) {
+                            if let Some(listener) = self.listener.read().clone() {
+                                listener.on_expire_timer_changed(channel_id.clone(), seconds);
+                            }
+                        }
+                    }
+                }
+                let timer = expiry::disappearing_timer_of(&content.body);
+                let is_outgoing = content.metadata.sender.raw_uuid() == self.my_user_id;
+                match expiry::expires_at(&self.expiry, &channel_id, ts, timer, is_outgoing, last_read_ts) {
+                    Some(due) if due <= now => overdue.push(ts),
+                    Some(due) => {
+                        self.expiry.schedule(&channel_id, ts, due);
+                        queued += 1;
+                    }
+                    None => {}
+                }
+            }
+            if !overdue.is_empty() {
+                self.delete(&channel_id, overdue).await;
+                deleted_any = true;
+            }
+        }
+        info!("Expiry scan done, {} disappearing message(s) queued", queued);
+
+        if deleted_any {
+            match expiry::compact(&self.store_path) {
+                Ok(()) => info!("Compacted the database after expiring messages"),
+                Err(e) => warn!("Failed to compact the database: {}", e),
+            }
+        }
+    }
+
+    /// Delete messages from a chat along with their downloaded attachments.
+    async fn delete(&self, channel_id: &str, timestamps: Vec<u64>) {
+        let Some(thread) = thread_from_channel_id(channel_id) else {
+            return;
+        };
+
+        // Find the attachment files before the rows that point at them go
+        let mut files = Vec::new();
+        for ts in &timestamps {
+            let Ok(Some(content)) = self.store.message(&thread, *ts).await else {
+                continue;
+            };
+            let Some(dm) = expiry::data_message_of(&content.body) else {
+                continue;
+            };
+            let preview_images = dm.preview.iter().filter_map(|p| p.image.as_ref());
+            for pointer in dm.attachments.iter().chain(preview_images) {
+                if let (Attachment { file_path: Some(path), .. }, _) =
+                    check_attachment_cache(pointer, &self.attachments_dir)
+                {
+                    files.push(path);
+                }
+            }
+        }
+
+        let key = match &thread {
+            Thread::Group(key) => expiry::ThreadKey::Group(key.to_vec()),
+            Thread::Contact(service_id) => {
+                expiry::ThreadKey::Contact(service_id.raw_uuid().as_bytes().to_vec())
+            }
+        };
+        match expiry::secure_delete_messages(&self.store_path, key, &timestamps) {
+            Ok(count) => info!("Deleted {} disappearing message(s) in {}", count, channel_id),
+            Err(e) => {
+                // Try again in a minute; get_messages already hides them
+                warn!("Failed to delete disappearing messages in {}: {}", channel_id, e);
+                let retry_at = expiry::now_ms() + 60_000;
+                for ts in &timestamps {
+                    self.expiry.schedule(channel_id, *ts, retry_at);
+                }
+                return;
+            }
+        }
+
+        // The file plus what Hush derives from it next to it on disk
+        for file in &files {
+            let _ = std::fs::remove_file(file);
+            let _ = std::fs::remove_file(format!("{file}.thumb.jpg"));
+            let _ = std::fs::remove_file(format!("{file}.transcription.json"));
+        }
+
+        {
+            let mut receipts = self.read_receipts.write();
+            let before = receipts.len();
+            for ts in &timestamps {
+                receipts.remove(ts);
+            }
+            if receipts.len() != before {
+                save_read_receipts(&self.data_dir, &receipts);
+            }
+        }
+        {
+            let mut edited = self.edited_messages.write();
+            let before = edited.len();
+            for ts in &timestamps {
+                edited.remove(ts);
+            }
+            if edited.len() != before {
+                save_edited_messages(&self.data_dir, &edited);
+            }
+        }
+        self.expiry.forget(channel_id, &timestamps);
+
+        if let Some(listener) = self.listener.read().clone() {
+            listener.on_messages_expired(
+                channel_id.to_string(),
+                timestamps.iter().map(|ts| ts.to_string()).collect(),
+                files,
+            );
+        }
+    }
+}
+
+/// Channel ids (hex master key or contact UUID) of every thread in the store.
+fn thread_channel_ids(store_path: &std::path::Path) -> Vec<String> {
+    let Ok(conn) = rusqlite::Connection::open_with_flags(
+        store_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    ) else {
+        return vec![];
+    };
+    let Ok(mut stmt) = conn.prepare("SELECT group_master_key, recipient_id FROM threads") else {
+        return vec![];
+    };
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, Option<Vec<u8>>>(0)?, row.get::<_, Option<Vec<u8>>>(1)?))
+    });
+    let Ok(rows) = rows else {
+        return vec![];
+    };
+    let ids = rows
+        .filter_map(|r| r.ok())
+        .filter_map(|(group_key, recipient)| match group_key {
+            Some(key) if key.len() == 32 => Some(hex::encode(key)),
+            Some(_) => None,
+            None => recipient
+                .and_then(|r| Uuid::from_slice(&r).ok())
+                .map(|u| u.to_string()),
+        })
+        .collect();
+    ids
+}
+
+/// A chat's current disappearing-messages timer in seconds (0 = off).
+/// presage's contact record is authoritative for 1:1 chats since it follows
+/// timer versions; groups, and contacts presage hasn't saved, fall back to
+/// the timer we've tracked from messages.
+async fn channel_timer(manager: &PresageManager, expiry: &Expiry, channel_id: &str) -> u32 {
+    match saved_contact_timer(manager, channel_id).await {
+        Some(seconds) => seconds,
+        None => expiry.tracked_timer(channel_id).unwrap_or(0),
+    }
+}
+
+/// The timer on presage's contact record for a 1:1 chat, if it has one.
+async fn saved_contact_timer(manager: &PresageManager, channel_id: &str) -> Option<u32> {
+    if channel_id.len() == 64 {
+        return None;
+    }
+    let uuid: Uuid = channel_id.parse().ok()?;
+    let service_id = ServiceId::from(Aci::from(uuid));
+    let contact = manager.store().contact_by_id(&service_id).await.ok()??;
+    Some(contact.expire_timer)
+}
+
+/// Put the chat's disappearing timer on an outgoing message and return it.
+/// presage fills it in itself for contacts it has saved, but its store drops
+/// group timers, and without one the recipients' copies would never disappear.
+async fn apply_outgoing_timer(
+    manager: &PresageManager,
+    expiry: &Expiry,
+    channel_id: &str,
+    data_message: &mut DataMessage,
+) -> u32 {
+    if let Some(seconds) = saved_contact_timer(manager, channel_id).await {
+        return seconds;
+    }
+    // Left unset if we've never seen a timer, rather than claiming "off"
+    data_message.expire_timer = expiry.tracked_timer(channel_id);
+    data_message.expire_timer.unwrap_or(0)
+}
+
+/// Start the disappearing countdown on incoming messages that were just read:
+/// those in `channel_id` newer than `previous_read_ts`, up to `up_to_ts`.
+async fn start_read_countdowns(
+    store: &SqliteStore,
+    expiry: &Expiry,
+    channel_id: &str,
+    previous_read_ts: u64,
+    up_to_ts: u64,
+    my_user_id: Uuid,
+) {
+    let Some(thread) = thread_from_channel_id(channel_id) else {
+        return;
+    };
+    let Ok(messages) = store.messages(&thread, (previous_read_ts + 1)..=up_to_ts).await else {
+        return;
+    };
+    let read_at = expiry::now_ms();
+    let mut started = Vec::new();
+    for content in messages.flatten() {
+        let timer = expiry::disappearing_timer_of(&content.body);
+        let ts = content.metadata.timestamp;
+        if timer == 0
+            || content.metadata.sender.raw_uuid() == my_user_id
+            || expiry.read_at(channel_id, ts).is_some()
+        {
+            continue;
+        }
+        expiry.schedule(channel_id, ts, read_at + timer as u64 * 1000);
+        started.push(ts);
+    }
+    expiry.record_reads(channel_id, &started, read_at);
 }
 
 /// Check the filesystem cache for an attachment. Returns (Attachment, cache_key).
@@ -3283,6 +3775,7 @@ fn build_edit_message(
             quote: None,
             message_type: MessageType::Regular,
             edited: true,
+            expire_timer: data_message.expire_timer.unwrap_or(0),
         },
         pointers,
         raw_mentions,
@@ -3290,6 +3783,39 @@ fn build_edit_message(
         raw_quote,
         edit_ts,
     ))
+}
+
+/// A "set disappearing messages to …" notice. `seconds` is the new timer.
+fn timer_update_message(
+    timestamp: u64,
+    channel_id: String,
+    sender_id: String,
+    is_outgoing: bool,
+    seconds: u32,
+) -> Message {
+    Message {
+        id: timestamp.to_string(),
+        channel_id,
+        sender_id,
+        sender_name: None,
+        body: None,
+        timestamp,
+        is_outgoing,
+        status: if is_outgoing {
+            MessageStatus::Sent
+        } else {
+            MessageStatus::Delivered
+        },
+        attachments: vec![],
+        reactions: vec![],
+        mentions: vec![],
+        read_by: vec![],
+        previews: vec![],
+        quote: None,
+        message_type: MessageType::TimerUpdate,
+        edited: false,
+        expire_timer: seconds,
+    }
 }
 
 /// Process incoming content and convert to our Message type or a reaction event.
@@ -3321,8 +3847,26 @@ fn process_content(
                 }
             }
 
+            // A disappearing-messages timer change shows as a notice in the chat
+            if expiry::is_timer_update(dm) && dm.body.is_none() && dm.attachments.is_empty() {
+                let channel_id = channel_id_from_dm(dm, sender_uuid)?;
+                return Some(ProcessedContent::Message(
+                    timer_update_message(
+                        timestamp,
+                        channel_id,
+                        sender_uuid.to_string(),
+                        is_outgoing,
+                        dm.expire_timer.unwrap_or(0),
+                    ),
+                    vec![],
+                    vec![],
+                    vec![],
+                    None,
+                ));
+            }
+
             // Skip protocol-level messages that aren't user-visible
-            // (profile key updates, expiration timer changes, end-session)
+            // (profile key updates, end-session)
             let flags = dm.flags.unwrap_or(0);
             if flags != 0 && dm.body.is_none() && dm.attachments.is_empty() {
                 return None;
@@ -3353,6 +3897,7 @@ fn process_content(
                     quote: None,
                     message_type: MessageType::Regular,
                     edited: false,
+                    expire_timer: dm.expire_timer.unwrap_or(0),
                 },
                 pointers,
                 raw_mentions,
@@ -3429,6 +3974,33 @@ fn process_content(
                         }
                     }
 
+                    let channel_id = if let Some(group_v2) = &dm.group_v2 {
+                        group_v2.master_key.as_ref().map(hex::encode)?
+                    } else if let Some(dest) = &sent.destination_service_id {
+                        dest.clone()
+                    } else if let Some(fallback) = fallback_channel_id {
+                        fallback.to_string()
+                    } else {
+                        return None;
+                    };
+
+                    // A timer change we made on another device
+                    if expiry::is_timer_update(dm) && dm.body.is_none() && dm.attachments.is_empty() {
+                        return Some(ProcessedContent::Message(
+                            timer_update_message(
+                                timestamp,
+                                channel_id,
+                                my_user_id.to_string(),
+                                true,
+                                dm.expire_timer.unwrap_or(0),
+                            ),
+                            vec![],
+                            vec![],
+                            vec![],
+                            None,
+                        ));
+                    }
+
                     let flags = dm.flags.unwrap_or(0);
                     if flags != 0 && dm.body.is_none() && dm.attachments.is_empty() {
                         return None;
@@ -3439,16 +4011,6 @@ fn process_content(
                     let raw_mentions = extract_mentions(&dm.body_ranges);
                     let raw_previews = extract_previews(dm);
                     let raw_quote = extract_raw_quote(dm);
-
-                    let channel_id = if let Some(group_v2) = &dm.group_v2 {
-                        group_v2.master_key.as_ref().map(hex::encode)?
-                    } else if let Some(dest) = &sent.destination_service_id {
-                        dest.clone()
-                    } else if let Some(fallback) = fallback_channel_id {
-                        fallback.to_string()
-                    } else {
-                        return None;
-                    };
 
                     return Some(ProcessedContent::Message(
                         Message {
@@ -3468,6 +4030,7 @@ fn process_content(
                             quote: None,
                             message_type: MessageType::Regular,
                             edited: false,
+                            expire_timer: dm.expire_timer.unwrap_or(0),
                         },
                         pointers,
                         raw_mentions,
@@ -3531,6 +4094,7 @@ fn process_content(
                         quote: None,
                         message_type,
                         edited: false,
+                        expire_timer: 0,
                     },
                     vec![],
                     vec![],

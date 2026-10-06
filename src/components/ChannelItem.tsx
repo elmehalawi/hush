@@ -62,9 +62,9 @@ export function ChannelItem({channel, isSelected, onSelect, collapsed}: ChannelI
 
   const handlePressIn = useCallback((e: any) => {
     if (e.nativeEvent?.button === 2) {
-      PresageModule?.showChannelContextMenu(channel.id, channel.isGroup);
+      PresageModule?.showChannelContextMenu(channel.id, channel.isGroup, channel.expireTimer);
     }
-  }, [channel.id, channel.isGroup]);
+  }, [channel.id, channel.isGroup, channel.expireTimer]);
 
   if (collapsed) {
     return (

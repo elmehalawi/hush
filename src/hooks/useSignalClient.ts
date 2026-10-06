@@ -23,6 +23,7 @@ interface NativeChannel {
   lastMessageTimestamp: number | null;
   avatarPath: string | null;
   phoneNumber: string | null;
+  expireTimer: number | null;
 }
 
 interface NativeAttachment {
@@ -88,6 +89,7 @@ interface NativeMessage {
   quote: NativeQuote | null;
   messageType: string | null;
   edited: boolean | null;
+  expireTimer: number | null;
 }
 
 // Convert native channel to store channel
@@ -101,6 +103,7 @@ function convertChannel(native: NativeChannel): Channel {
     lastMessageTimestamp: native.lastMessageTimestamp || undefined,
     avatarPath: native.avatarPath || undefined,
     phoneNumber: native.phoneNumber || undefined,
+    expireTimer: native.expireTimer ?? 0,
   };
 }
 
@@ -166,6 +169,7 @@ function convertMessage(native: NativeMessage): Message {
     quote: native.quote ? convertQuote(native.quote) : undefined,
     messageType: (native.messageType as Message['messageType']) || undefined,
     edited: native.edited ?? false,
+    expireTimer: native.expireTimer ?? 0,
   };
 }
 
@@ -606,6 +610,13 @@ export function useSignalClient() {
       // count, so just apply it.
       presageEventEmitter.addListener('onReadSync', (event: {channelId: string; unreadCount: number}) => {
         useSignalStore.getState().setChannelUnreadCount(event.channelId, event.unreadCount);
+      }),
+      // Disappearing messages whose timer ran out; native has deleted them
+      presageEventEmitter.addListener('onMessagesExpired', (event: {channelId: string; messageIds: string[]}) => {
+        useSignalStore.getState().removeMessages(event.channelId, event.messageIds);
+      }),
+      presageEventEmitter.addListener('onExpireTimerChanged', (event: {channelId: string; seconds: number}) => {
+        useSignalStore.getState().setChannelExpireTimer(event.channelId, event.seconds);
       }),
       presageEventEmitter.addListener('onChannelUpdated', (channel: NativeChannel) => {
         updateChannel(convertChannel(channel));

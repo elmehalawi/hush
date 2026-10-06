@@ -77,7 +77,12 @@ RCT_EXTERN_METHOD(previewFiles:(NSArray<NSString *> *)filePaths
                   index:(double)index)
 
 RCT_EXTERN_METHOD(showChannelContextMenu:(NSString *)channelId
-                  isGroup:(BOOL)isGroup)
+                  isGroup:(BOOL)isGroup
+                  expireTimer:(double)expireTimer)
+
+RCT_EXTERN_METHOD(showExpireTimerMenu:(NSString *)channelId
+                  isGroup:(BOOL)isGroup
+                  expireTimer:(double)expireTimer)
 
 RCT_EXTERN_METHOD(showMessageContextMenu:(NSString *)messageBody
                   messageTimestamp:(double)messageTimestamp

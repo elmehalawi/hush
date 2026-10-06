@@ -604,6 +604,13 @@ public protocol SignalClientProtocol : AnyObject {
     func setCallMuted(muted: Bool) throws 
     
     /**
+     * Change a 1:1 chat's disappearing-messages timer (0 turns it off).
+     * Returns the "you set the timer" notice to show in the chat. A group's
+     * timer lives in the group's server-side state, which Hush can't modify yet.
+     */
+    func setExpireTimer(channelId: String, seconds: UInt32) throws  -> Message
+    
+    /**
      * Start an outgoing call to a contact
      */
     func startCall(channelId: String, isVideo: Bool) throws 
@@ -915,6 +922,20 @@ open func setCallMuted(muted: Bool)throws  {try rustCallWithError(FfiConverterTy
         FfiConverterBool.lower(muted),$0
     )
 }
+}
+    
+    /**
+     * Change a 1:1 chat's disappearing-messages timer (0 turns it off).
+     * Returns the "you set the timer" notice to show in the chat. A group's
+     * timer lives in the group's server-side state, which Hush can't modify yet.
+     */
+open func setExpireTimer(channelId: String, seconds: UInt32)throws  -> Message {
+    return try  FfiConverterTypeMessage.lift(try rustCallWithError(FfiConverterTypeSignalError.lift) {
+    uniffi_presage_rn_fn_method_signalclient_set_expire_timer(self.uniffiClonePointer(),
+        FfiConverterString.lower(channelId),
+        FfiConverterUInt32.lower(seconds),$0
+    )
+})
 }
     
     /**
@@ -1285,6 +1306,10 @@ public struct Channel {
      * Phone number in E.164 format (contacts only)
      */
     public var phoneNumber: String?
+    /**
+     * Disappearing-messages timer in seconds (0 = off)
+     */
+    public var expireTimer: UInt32
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1312,7 +1337,10 @@ public struct Channel {
          */avatarPath: String?, 
         /**
          * Phone number in E.164 format (contacts only)
-         */phoneNumber: String?) {
+         */phoneNumber: String?, 
+        /**
+         * Disappearing-messages timer in seconds (0 = off)
+         */expireTimer: UInt32) {
         self.id = id
         self.name = name
         self.isGroup = isGroup
@@ -1321,6 +1349,7 @@ public struct Channel {
         self.lastMessageTimestamp = lastMessageTimestamp
         self.avatarPath = avatarPath
         self.phoneNumber = phoneNumber
+        self.expireTimer = expireTimer
     }
 }
 
@@ -1352,6 +1381,9 @@ extension Channel: Equatable, Hashable {
         if lhs.phoneNumber != rhs.phoneNumber {
             return false
         }
+        if lhs.expireTimer != rhs.expireTimer {
+            return false
+        }
         return true
     }
 
@@ -1364,6 +1396,7 @@ extension Channel: Equatable, Hashable {
         hasher.combine(lastMessageTimestamp)
         hasher.combine(avatarPath)
         hasher.combine(phoneNumber)
+        hasher.combine(expireTimer)
     }
 }
 
@@ -1382,7 +1415,8 @@ public struct FfiConverterTypeChannel: FfiConverterRustBuffer {
                 lastMessage: FfiConverterOptionString.read(from: &buf), 
                 lastMessageTimestamp: FfiConverterOptionUInt64.read(from: &buf), 
                 avatarPath: FfiConverterOptionString.read(from: &buf), 
-                phoneNumber: FfiConverterOptionString.read(from: &buf)
+                phoneNumber: FfiConverterOptionString.read(from: &buf), 
+                expireTimer: FfiConverterUInt32.read(from: &buf)
         )
     }
 
@@ -1395,6 +1429,7 @@ public struct FfiConverterTypeChannel: FfiConverterRustBuffer {
         FfiConverterOptionUInt64.write(value.lastMessageTimestamp, into: &buf)
         FfiConverterOptionString.write(value.avatarPath, into: &buf)
         FfiConverterOptionString.write(value.phoneNumber, into: &buf)
+        FfiConverterUInt32.write(value.expireTimer, into: &buf)
     }
 }
 
@@ -1837,6 +1872,11 @@ public struct Message {
      * Whether this message has been edited by its sender
      */
     public var edited: Bool
+    /**
+     * Disappearing-messages timer in seconds (0 = never disappears). For a
+     * timer-change notice, the new timer.
+     */
+    public var expireTimer: UInt32
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1888,7 +1928,11 @@ public struct Message {
          */messageType: MessageType, 
         /**
          * Whether this message has been edited by its sender
-         */edited: Bool) {
+         */edited: Bool, 
+        /**
+         * Disappearing-messages timer in seconds (0 = never disappears). For a
+         * timer-change notice, the new timer.
+         */expireTimer: UInt32) {
         self.id = id
         self.channelId = channelId
         self.senderId = senderId
@@ -1905,6 +1949,7 @@ public struct Message {
         self.quote = quote
         self.messageType = messageType
         self.edited = edited
+        self.expireTimer = expireTimer
     }
 }
 
@@ -1960,6 +2005,9 @@ extension Message: Equatable, Hashable {
         if lhs.edited != rhs.edited {
             return false
         }
+        if lhs.expireTimer != rhs.expireTimer {
+            return false
+        }
         return true
     }
 
@@ -1980,6 +2028,7 @@ extension Message: Equatable, Hashable {
         hasher.combine(quote)
         hasher.combine(messageType)
         hasher.combine(edited)
+        hasher.combine(expireTimer)
     }
 }
 
@@ -2006,7 +2055,8 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
                 previews: FfiConverterSequenceTypeLinkPreview.read(from: &buf), 
                 quote: FfiConverterOptionTypeQuote.read(from: &buf), 
                 messageType: FfiConverterTypeMessageType.read(from: &buf), 
-                edited: FfiConverterBool.read(from: &buf)
+                edited: FfiConverterBool.read(from: &buf), 
+                expireTimer: FfiConverterUInt32.read(from: &buf)
         )
     }
 
@@ -2027,6 +2077,7 @@ public struct FfiConverterTypeMessage: FfiConverterRustBuffer {
         FfiConverterOptionTypeQuote.write(value.quote, into: &buf)
         FfiConverterTypeMessageType.write(value.messageType, into: &buf)
         FfiConverterBool.write(value.edited, into: &buf)
+        FfiConverterUInt32.write(value.expireTimer, into: &buf)
     }
 }
 
@@ -2778,6 +2829,10 @@ public enum MessageType {
      * Video call that was answered/completed
      */
     case videoCall
+    /**
+     * Someone changed the chat's disappearing-messages timer
+     */
+    case timerUpdate
 }
 
 
@@ -2800,6 +2855,8 @@ public struct FfiConverterTypeMessageType: FfiConverterRustBuffer {
         case 4: return .audioCall
         
         case 5: return .videoCall
+        
+        case 6: return .timerUpdate
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2827,6 +2884,10 @@ public struct FfiConverterTypeMessageType: FfiConverterRustBuffer {
         
         case .videoCall:
             writeInt(&buf, Int32(5))
+        
+        
+        case .timerUpdate:
+            writeInt(&buf, Int32(6))
         
         }
     }
@@ -3401,6 +3462,18 @@ public protocol MessageListener : AnyObject {
      */
     func onTyping(channelId: String, senderId: String, started: Bool) 
     
+    /**
+     * Called when disappearing messages have been deleted. `file_paths` are
+     * the attachment files that were removed with them, so caches derived
+     * from them (thumbnails) can go too.
+     */
+    func onMessagesExpired(channelId: String, messageIds: [String], filePaths: [String]) 
+    
+    /**
+     * Called when a chat's disappearing-messages timer changes
+     */
+    func onExpireTimerChanged(channelId: String, seconds: UInt32) 
+    
 }
 
 
@@ -3636,6 +3709,60 @@ fileprivate struct UniffiCallbackInterfaceMessageListener {
                      channelId: try FfiConverterString.lift(channelId),
                      senderId: try FfiConverterString.lift(senderId),
                      started: try FfiConverterBool.lift(started)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onMessagesExpired: { (
+            uniffiHandle: UInt64,
+            channelId: RustBuffer,
+            messageIds: RustBuffer,
+            filePaths: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMessageListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onMessagesExpired(
+                     channelId: try FfiConverterString.lift(channelId),
+                     messageIds: try FfiConverterSequenceString.lift(messageIds),
+                     filePaths: try FfiConverterSequenceString.lift(filePaths)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onExpireTimerChanged: { (
+            uniffiHandle: UInt64,
+            channelId: RustBuffer,
+            seconds: UInt32,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMessageListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onExpireTimerChanged(
+                     channelId: try FfiConverterString.lift(channelId),
+                     seconds: try FfiConverterUInt32.lift(seconds)
                 )
             }
 
@@ -4147,6 +4274,9 @@ private var initializationResult: InitializationResult = {
     if (uniffi_presage_rn_checksum_method_signalclient_set_call_muted() != 58634) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_presage_rn_checksum_method_signalclient_set_expire_timer() != 16082) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_presage_rn_checksum_method_signalclient_start_call() != 5776) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4208,6 +4338,12 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_presage_rn_checksum_method_messagelistener_on_typing() != 21255) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_presage_rn_checksum_method_messagelistener_on_messages_expired() != 16637) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_presage_rn_checksum_method_messagelistener_on_expire_timer_changed() != 54571) {
         return InitializationResult.apiChecksumMismatch
     }
 

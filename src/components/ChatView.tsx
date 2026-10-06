@@ -1,6 +1,6 @@
 import React, {useRef, useEffect, useMemo} from 'react';
-import {View, ScrollView, Text, StyleSheet, Image, TouchableOpacity} from 'react-native';
-import {Message, Attachment, Channel, useSignalStore, channelDisplayName} from '../store/signalStore';
+import {View, ScrollView, Text, StyleSheet, Image, TouchableOpacity, NativeModules} from 'react-native';
+import {Message, Attachment, Channel, useSignalStore, channelDisplayName, expireTimerLabel, expireTimerShortLabel} from '../store/signalStore';
 import {MessageBubble} from './MessageBubble';
 import {GlassView} from './GlassView';
 import {GradientBlurView} from './GradientBlurView';
@@ -20,6 +20,26 @@ function callEventLabel(messageType: Message['messageType']): string {
     case 'audioCall': return 'Voice call';
     default: return '';
   }
+}
+
+const {PresageModule} = NativeModules;
+
+function timerUpdateLabel(message: Message, channel: Channel): string {
+  const who = message.isOutgoing
+    ? 'You'
+    : channel.isGroup
+      ? message.senderName || 'Someone'
+      : channelDisplayName(channel);
+  return message.expireTimer > 0
+    ? `${who} set disappearing messages to ${expireTimerLabel(message.expireTimer)}`
+    : `${who} turned off disappearing messages`;
+}
+
+function TimerIcon({color}: {color: string}) {
+  // U+23F1: stopwatch
+  return (
+    <Text style={{fontSize: 10, color, lineHeight: 14}}>{'\u23F1\uFE0E'}</Text>
+  );
 }
 
 function CallIcon({color}: {color: string}) {
@@ -178,6 +198,10 @@ export function ChatView({channel, messages, onReply, onRetryDownload, onStartCa
 
   const displayName = channelDisplayName(channel);
   const initial = channel.isGroup ? '#' : displayName.charAt(0).toUpperCase();
+  const showCallButton = !channel.isGroup && !!onStartCall;
+  // 1:1 chats always get the timer button (it balances the call button and
+  // is how you turn the timer on); groups only show it while a timer is set
+  const showTimerButton = !channel.isGroup || channel.expireTimer > 0;
 
   return (
     <View style={styles.container}>
@@ -242,7 +266,16 @@ export function ChatView({channel, messages, onReply, onRetryDownload, onStartCa
                       </View>
                     );
                   })()}
-                  {isCallEvent(message.messageType) ? (
+                  {message.messageType === 'timerUpdate' ? (
+                    <View style={styles.callEventContainer}>
+                      <View style={[styles.callEventPill, {backgroundColor: c.separator}]}>
+                        <TimerIcon color={c.secondaryLabel} />
+                        <Text style={[styles.callEventText, {color: c.secondaryLabel}]}>
+                          {timerUpdateLabel(message, channel)}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : isCallEvent(message.messageType) ? (
                     <View style={styles.callEventContainer}>
                       <View style={[styles.callEventPill, {backgroundColor: c.separator}]}>
                         <CallIcon color={c.secondaryLabel} />
@@ -282,15 +315,17 @@ export function ChatView({channel, messages, onReply, onRetryDownload, onStartCa
             )}
           </View>
           <View style={styles.headerNameRow}>
-            {!channel.isGroup && onStartCall ? (
+            {showCallButton ? (
               <TouchableOpacity
                 style={styles.callButton}
-                onPress={() => onStartCall(channel.id, false)}
+                onPress={() => onStartCall!(channel.id, false)}
                 activeOpacity={0.7}
               >
                 <GlassView style={StyleSheet.absoluteFill} cornerRadius={14} />
                 <Text style={styles.callButtonIcon}>{'\u{1F4DE}\uFE0E'}</Text>
               </TouchableOpacity>
+            ) : showTimerButton ? (
+              <View style={styles.callButtonSpacer} />
             ) : null}
             <View style={styles.headerPill}>
               <GlassView style={StyleSheet.absoluteFill} cornerRadius={20} />
@@ -298,7 +333,22 @@ export function ChatView({channel, messages, onReply, onRetryDownload, onStartCa
                 {displayName}
               </Text>
             </View>
-            {!channel.isGroup && onStartCall ? (
+            {showTimerButton ? (
+              <TouchableOpacity
+                style={styles.callButton}
+                onPress={() => PresageModule?.showExpireTimerMenu(channel.id, channel.isGroup, channel.expireTimer)}
+                activeOpacity={0.7}
+              >
+                <GlassView style={StyleSheet.absoluteFill} cornerRadius={14} />
+                {channel.expireTimer > 0 ? (
+                  <Text style={[styles.timerButtonLabel, {color: c.label}]}>
+                    {expireTimerShortLabel(channel.expireTimer)}
+                  </Text>
+                ) : (
+                  <Text style={[styles.callButtonIcon, {color: c.secondaryLabel}]}>{'\u23F1\uFE0E'}</Text>
+                )}
+              </TouchableOpacity>
+            ) : showCallButton ? (
               <View style={styles.callButtonSpacer} />
             ) : null}
           </View>
@@ -368,6 +418,10 @@ const styles = StyleSheet.create({
   callButtonIcon: {
     fontSize: 12,
     lineHeight: 16,
+  },
+  timerButtonLabel: {
+    fontSize: 10,
+    fontWeight: '600',
   },
   headerPill: {
     alignItems: 'center',

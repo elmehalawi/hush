@@ -356,6 +356,20 @@ typedef void (*UniffiCallbackInterfaceMessageListenerMethod8)(uint64_t, RustBuff
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD9
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD9
+typedef void (*UniffiCallbackInterfaceMessageListenerMethod9)(uint64_t, RustBuffer, RustBuffer, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD10
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD10
+typedef void (*UniffiCallbackInterfaceMessageListenerMethod10)(uint64_t, RustBuffer, uint32_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_CALL_EVENT_LISTENER
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_CALL_EVENT_LISTENER
 typedef struct UniffiVTableCallbackInterfaceCallEventListener {
@@ -388,6 +402,8 @@ typedef struct UniffiVTableCallbackInterfaceMessageListener {
     UniffiCallbackInterfaceMessageListenerMethod6 _Nonnull onAttachmentDownloaded;
     UniffiCallbackInterfaceMessageListenerMethod7 _Nonnull onLinkPreviewImageDownloaded;
     UniffiCallbackInterfaceMessageListenerMethod8 _Nonnull onTyping;
+    UniffiCallbackInterfaceMessageListenerMethod9 _Nonnull onMessagesExpired;
+    UniffiCallbackInterfaceMessageListenerMethod10 _Nonnull onExpireTimerChanged;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceMessageListener;
 
@@ -500,6 +516,11 @@ void uniffi_presage_rn_fn_method_signalclient_set_call_listener(void*_Nonnull pt
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SET_CALL_MUTED
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SET_CALL_MUTED
 void uniffi_presage_rn_fn_method_signalclient_set_call_muted(void*_Nonnull ptr, int8_t muted, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SET_EXPIRE_TIMER
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_SET_EXPIRE_TIMER
+RustBuffer uniffi_presage_rn_fn_method_signalclient_set_expire_timer(void*_Nonnull ptr, RustBuffer channel_id, uint32_t seconds, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_FN_METHOD_SIGNALCLIENT_START_CALL
@@ -936,6 +957,12 @@ uint16_t uniffi_presage_rn_checksum_method_signalclient_set_call_muted(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SET_EXPIRE_TIMER
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_SET_EXPIRE_TIMER
+uint16_t uniffi_presage_rn_checksum_method_signalclient_set_expire_timer(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_START_CALL
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_SIGNALCLIENT_START_CALL
 uint16_t uniffi_presage_rn_checksum_method_signalclient_start_call(void
@@ -1059,6 +1086,18 @@ uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_link_preview_image
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_TYPING
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_TYPING
 uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_typing(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_MESSAGES_EXPIRED
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_MESSAGES_EXPIRED
+uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_messages_expired(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_EXPIRE_TIMER_CHANGED
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_EXPIRE_TIMER_CHANGED
+uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_expire_timer_changed(void
     
 );
 #endif

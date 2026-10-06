@@ -19,6 +19,8 @@ pub struct Channel {
     pub avatar_path: Option<String>,
     /// Phone number in E.164 format (contacts only)
     pub phone_number: Option<String>,
+    /// Disappearing-messages timer in seconds (0 = off)
+    pub expire_timer: u32,
 }
 
 /// Represents a message attachment (image, video, file, etc.)
@@ -155,6 +157,9 @@ pub struct Message {
     pub message_type: MessageType,
     /// Whether this message has been edited by its sender
     pub edited: bool,
+    /// Disappearing-messages timer in seconds (0 = never disappears). For a
+    /// timer-change notice, the new timer.
+    pub expire_timer: u32,
 }
 
 /// Type of message (regular text/media or call event)
@@ -170,6 +175,8 @@ pub enum MessageType {
     AudioCall,
     /// Video call that was answered/completed
     VideoCall,
+    /// Someone changed the chat's disappearing-messages timer
+    TimerUpdate,
 }
 
 /// Message delivery status

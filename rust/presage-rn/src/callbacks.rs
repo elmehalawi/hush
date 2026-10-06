@@ -45,6 +45,14 @@ pub trait MessageListener: Send + Sync {
 
     /// Called when a contact starts or stops typing
     fn on_typing(&self, channel_id: String, sender_id: String, started: bool);
+
+    /// Called when disappearing messages have been deleted. `file_paths` are
+    /// the attachment files that were removed with them, so caches derived
+    /// from them (thumbnails) can go too.
+    fn on_messages_expired(&self, channel_id: String, message_ids: Vec<String>, file_paths: Vec<String>);
+
+    /// Called when a chat's disappearing-messages timer changes
+    fn on_expire_timer_changed(&self, channel_id: String, seconds: u32);
 }
 
 /// Callback interface for call events (ringrtc → Swift/React Native)
