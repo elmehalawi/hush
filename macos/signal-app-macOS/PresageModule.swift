@@ -2264,17 +2264,28 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
     static let windowIdentifier = NSUserInterfaceItemIdentifier("HushMediaPreview")
 
     private var panel: NSPanel?
+    private let mediaContainer = NSView()
+    private var filmstrip: MediaFilmstripView?
     private var player: AVPlayer?
     private var playerView: AVPlayerView?
     private var imageView: NSImageView?
     private var keyMonitor: Any?
+    private var scrollMonitor: Any?
 
     private var items: [URL] = []
     private var currentIndex = 0
 
+    /// Horizontal travel accumulated during the current trackpad gesture.
+    private var swipeDeltaX: CGFloat = 0
+    private var swipeDeltaY: CGFloat = 0
+    /// Set once a gesture has stepped, so one swipe moves exactly one item
+    /// and its momentum events are swallowed.
+    private var swipeHandled = false
+
     override init() {
         super.init()
         setupKeyMonitor()
+        setupSwipeMonitor()
     }
 
     func previewFile(path: String) {
@@ -2336,6 +2347,12 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
         showCurrent(recenter: false)
     }
 
+    private func jump(to index: Int) {
+        guard index != currentIndex, index >= 0, index < items.count else { return }
+        currentIndex = index
+        showCurrent(recenter: false)
+    }
+
     private func titleFor(url: URL) -> String {
         if items.count > 1 {
             return "\(url.lastPathComponent)  (\(currentIndex + 1)/\(items.count))"
@@ -2343,10 +2360,16 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
         return url.lastPathComponent
     }
 
-    private func fittedSize(_ size: NSSize, minSize: NSSize) -> NSSize {
+    private var showsFilmstrip: Bool { items.count > 1 }
+
+    private var filmstripHeight: CGFloat { showsFilmstrip ? MediaFilmstripView.height : 0 }
+
+    /// Window content size for media of `size`: the media scaled to fit the
+    /// screen, plus the filmstrip bar underneath it.
+    private func contentSize(forMedia size: NSSize, minSize: NSSize) -> NSSize {
         let screen = panel?.screen ?? NSScreen.main ?? NSScreen.screens.first!
         let maxW = screen.visibleFrame.width * 0.8
-        let maxH = screen.visibleFrame.height * 0.8
+        let maxH = screen.visibleFrame.height * 0.8 - filmstripHeight
 
         var w = size.width
         var h = size.height
@@ -2358,7 +2381,8 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
             h = floor(h * scale)
         }
 
-        return NSSize(width: max(w, minSize.width), height: max(h, minSize.height))
+        let minW = showsFilmstrip ? max(minSize.width, 360) : minSize.width
+        return NSSize(width: max(w, minW), height: max(h, minSize.height) + filmstripHeight)
     }
 
     // MARK: - Image
@@ -2366,17 +2390,17 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
     private func showImage(url: URL, recenter: Bool) {
         guard let image = NSImage(contentsOf: url) else { return }
 
-        let size = fittedSize(image.size, minSize: NSSize(width: 200, height: 150))
+        let size = contentSize(forMedia: image.size, minSize: NSSize(width: 200, height: 150))
         let p = getOrCreatePanel(size: size, recenter: recenter)
 
         // Clean up previous content
         cleanUpContent()
 
-        let iv = NSImageView(frame: p.contentView!.bounds)
+        let iv = NSImageView(frame: mediaContainer.bounds)
         iv.image = image
         iv.imageScaling = .scaleProportionallyUpOrDown
         iv.autoresizingMask = [.width, .height]
-        p.contentView?.addSubview(iv)
+        mediaContainer.addSubview(iv)
         self.imageView = iv
 
         p.title = titleFor(url: url)
@@ -2389,17 +2413,17 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
         let asset = AVAsset(url: url)
         let videoSize = asset.tracks(withMediaType: .video).first?.naturalSize ?? NSSize(width: 640, height: 480)
 
-        let size = fittedSize(videoSize, minSize: NSSize(width: 320, height: 240))
+        let size = contentSize(forMedia: videoSize, minSize: NSSize(width: 320, height: 240))
         let p = getOrCreatePanel(size: size, recenter: recenter)
 
         // Clean up previous content
         cleanUpContent()
 
         let avPlayer = AVPlayer(url: url)
-        let pv = AVPlayerView(frame: p.contentView!.bounds)
+        let pv = AVPlayerView(frame: mediaContainer.bounds)
         pv.player = avPlayer
         pv.autoresizingMask = [.width, .height]
-        p.contentView?.addSubview(pv)
+        mediaContainer.addSubview(pv)
         self.player = avPlayer
         self.playerView = pv
 
@@ -2412,22 +2436,26 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
     // MARK: - Panel Management
 
     private func getOrCreatePanel(size: NSSize, recenter: Bool) -> NSPanel {
-        if let existing = panel {
-            if !recenter && existing.isVisible {
-                // Resize around the current center so cycling doesn't make
-                // the window jump back to the middle of the screen.
-                let old = existing.frame
-                existing.setContentSize(size)
-                var frame = existing.frame
-                frame.origin.x = old.midX - frame.width / 2
-                frame.origin.y = old.midY - frame.height / 2
-                existing.setFrame(frame, display: true)
-            } else {
-                existing.setContentSize(size)
-            }
-            return existing
+        let p = panel ?? makePanel(size: size)
+
+        if !recenter && p.isVisible {
+            // Resize around the current center so cycling doesn't make
+            // the window jump back to the middle of the screen.
+            let old = p.frame
+            p.setContentSize(size)
+            var frame = p.frame
+            frame.origin.x = old.midX - frame.width / 2
+            frame.origin.y = old.midY - frame.height / 2
+            p.setFrame(frame, display: true)
+        } else {
+            p.setContentSize(size)
         }
 
+        updateFilmstrip(in: p)
+        return p
+    }
+
+    private func makePanel(size: NSSize) -> NSPanel {
         let screen = NSScreen.main ?? NSScreen.screens.first!
         let x = screen.visibleFrame.midX - size.width / 2
         let y = screen.visibleFrame.midY - size.height / 2
@@ -2448,9 +2476,47 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
         p.backgroundColor = .black
         p.minSize = NSSize(width: 200, height: 150)
 
+        mediaContainer.frame = p.contentView!.bounds
+        mediaContainer.autoresizingMask = [.width, .height]
+        p.contentView?.addSubview(mediaContainer)
+
         p.delegate = self
         self.panel = p
         return p
+    }
+
+    /// Shows the filmstrip below the media when there's more than one item,
+    /// rebuilding its thumbnails when the set of items changes.
+    private func updateFilmstrip(in p: NSPanel) {
+        guard let contentView = p.contentView else { return }
+        let bounds = contentView.bounds
+
+        if showsFilmstrip {
+            let strip: MediaFilmstripView
+            if let existing = filmstrip {
+                strip = existing
+            } else {
+                strip = MediaFilmstripView(frame: NSRect(x: 0, y: 0, width: bounds.width, height: MediaFilmstripView.height))
+                strip.onSelect = { [weak self] index in self?.jump(to: index) }
+                strip.autoresizingMask = [.width, .maxYMargin]
+                contentView.addSubview(strip)
+                filmstrip = strip
+            }
+            strip.frame = NSRect(x: 0, y: 0, width: bounds.width, height: MediaFilmstripView.height)
+            if strip.items != items {
+                strip.setItems(items, isVideo: { [weak self] in self?.isVideo(ext: $0.pathExtension.lowercased()) ?? false })
+            }
+            strip.select(currentIndex)
+        } else {
+            filmstrip?.removeFromSuperview()
+            filmstrip = nil
+        }
+
+        mediaContainer.frame = NSRect(
+            x: 0, y: filmstripHeight,
+            width: bounds.width, height: bounds.height - filmstripHeight
+        )
+        p.minSize = NSSize(width: 200, height: 150 + filmstripHeight)
     }
 
     /// Only handles keys while the preview window itself is key, so the main
@@ -2497,6 +2563,51 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Two-finger horizontal swipe on the trackpad steps through the items,
+    /// one item per gesture. Fingers right → previous, like Photos/Safari.
+    private func setupSwipeMonitor() {
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self = self, let panel = self.panel, panel.isVisible,
+                  event.window === panel else { return event }
+            return self.handleSwipe(event)
+        }
+    }
+
+    /// Returns nil when the event was consumed as part of a swipe.
+    private func handleSwipe(_ event: NSEvent) -> NSEvent? {
+        guard items.count > 1, event.hasPreciseScrollingDeltas else { return event }
+
+        // Let the filmstrip scroll itself when its thumbnails overflow
+        if let strip = filmstrip, strip.isScrollable,
+           strip.frame.contains(strip.superview!.convert(event.locationInWindow, from: nil)) {
+            return event
+        }
+
+        // Inertia after the fingers lift
+        if !event.momentumPhase.isEmpty {
+            return swipeHandled ? nil : event
+        }
+
+        if event.phase.contains(.began) {
+            swipeDeltaX = 0
+            swipeDeltaY = 0
+            swipeHandled = false
+        }
+
+        swipeDeltaX += event.scrollingDeltaX
+        swipeDeltaY += event.scrollingDeltaY
+
+        let horizontal = abs(swipeDeltaX) > abs(swipeDeltaY) * 1.5
+        if !swipeHandled && horizontal && abs(swipeDeltaX) > 50 {
+            swipeHandled = true
+            // Normalize so positive means the fingers physically moved right
+            let rightward = event.isDirectionInvertedFromDevice ? swipeDeltaX : -swipeDeltaX
+            step(rightward > 0 ? -1 : 1)
+        }
+
+        return horizontal || swipeHandled ? nil : event
+    }
+
     func windowWillClose(_ notification: Notification) {
         cleanUpContent()
     }
@@ -2520,11 +2631,9 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
     private func cleanUpContent() {
         player?.pause()
         player = nil
-        playerView?.removeFromSuperview()
         playerView = nil
-        imageView?.removeFromSuperview()
         imageView = nil
-        panel?.contentView?.subviews.forEach { $0.removeFromSuperview() }
+        mediaContainer.subviews.forEach { $0.removeFromSuperview() }
     }
 
     private func togglePlayPause() {
@@ -2533,6 +2642,201 @@ class MediaPreviewPanel: NSObject, NSWindowDelegate {
             player.play()
         } else {
             player.pause()
+        }
+    }
+}
+
+// MARK: - Media Filmstrip
+
+/// Bottom bar of the media preview: a row of thumbnails with the current
+/// item highlighted. Sits below the media rather than over it.
+class MediaFilmstripView: NSVisualEffectView {
+    static let height: CGFloat = 64
+    private static let thumbSize: CGFloat = 44
+    private static let spacing: CGFloat = 6
+    private static let inset: CGFloat = 12
+
+    var onSelect: ((Int) -> Void)?
+    private(set) var items: [URL] = []
+
+    private let scrollView = NSScrollView()
+    private let documentView = NSView()
+    private var thumbs: [FilmstripThumbView] = []
+    private var selectedIndex = 0
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        material = .hudWindow
+        blendingMode = .behindWindow
+        state = .followsWindowActiveState
+
+        let separator = NSBox()
+        separator.boxType = .separator
+        separator.frame = NSRect(x: 0, y: Self.height - 1, width: frameRect.width, height: 1)
+        separator.autoresizingMask = [.width, .minYMargin]
+        addSubview(separator)
+
+        scrollView.frame = bounds
+        scrollView.autoresizingMask = [.width, .height]
+        scrollView.drawsBackground = false
+        scrollView.hasHorizontalScroller = false
+        scrollView.hasVerticalScroller = false
+        scrollView.horizontalScrollElasticity = .allowed
+        scrollView.verticalScrollElasticity = .none
+        scrollView.documentView = documentView
+        addSubview(scrollView, positioned: .below, relativeTo: separator)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    /// True when the thumbnails are wider than the bar.
+    var isScrollable: Bool {
+        documentView.frame.width > scrollView.contentView.bounds.width + 0.5
+    }
+
+    func setItems(_ urls: [URL], isVideo: (URL) -> Bool) {
+        items = urls
+        thumbs.forEach { $0.removeFromSuperview() }
+        thumbs = urls.enumerated().map { index, url in
+            let thumb = FilmstripThumbView(url: url, isVideo: isVideo(url))
+            thumb.onClick = { [weak self] in self?.onSelect?(index) }
+            documentView.addSubview(thumb)
+            return thumb
+        }
+        needsLayout = true
+    }
+
+    func select(_ index: Int) {
+        selectedIndex = index
+        for (i, thumb) in thumbs.enumerated() {
+            thumb.isSelected = i == index
+        }
+        layoutSubtreeIfNeeded()
+        scrollSelectedIntoView()
+    }
+
+    override func layout() {
+        super.layout()
+        let n = CGFloat(thumbs.count)
+        let total = n * Self.thumbSize + max(n - 1, 0) * Self.spacing
+        let visibleWidth = scrollView.contentView.bounds.width
+        let docWidth = max(total + Self.inset * 2, visibleWidth)
+        documentView.frame = NSRect(x: 0, y: 0, width: docWidth, height: bounds.height)
+
+        // Centered when they fit, otherwise laid out from the leading edge
+        var x = floor((docWidth - total) / 2)
+        let y = floor((bounds.height - Self.thumbSize) / 2)
+        for thumb in thumbs {
+            thumb.frame = NSRect(x: x, y: y, width: Self.thumbSize, height: Self.thumbSize)
+            x += Self.thumbSize + Self.spacing
+        }
+    }
+
+    private func scrollSelectedIntoView() {
+        guard selectedIndex >= 0, selectedIndex < thumbs.count, isScrollable else { return }
+        // Keep the current item centered so its neighbours stay visible
+        let visibleWidth = scrollView.contentView.bounds.width
+        let maxX = documentView.frame.width - visibleWidth
+        let x = min(max(thumbs[selectedIndex].frame.midX - visibleWidth / 2, 0), maxX)
+        scrollView.contentView.scroll(to: NSPoint(x: x, y: 0))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+}
+
+private class FilmstripThumbView: NSView {
+    var onClick: (() -> Void)?
+
+    var isSelected = false {
+        didSet { updateAppearance() }
+    }
+
+    private let imageLayer = CALayer()
+    private var playBadge: NSImageView?
+
+    init(url: URL, isVideo: Bool) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 5
+        layer?.cornerCurve = .continuous
+        layer?.masksToBounds = true
+        layer?.backgroundColor = NSColor.white.withAlphaComponent(0.08).cgColor
+
+        imageLayer.contentsGravity = .resizeAspectFill
+        imageLayer.masksToBounds = true
+        layer?.addSublayer(imageLayer)
+
+        if isVideo {
+            let badge = NSImageView()
+            badge.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: "Video")
+            badge.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+            badge.contentTintColor = .white
+            badge.shadow = {
+                let s = NSShadow()
+                s.shadowBlurRadius = 3
+                s.shadowColor = NSColor.black.withAlphaComponent(0.6)
+                return s
+            }()
+            addSubview(badge)
+            playBadge = badge
+        }
+
+        updateAppearance()
+        loadThumbnail(url: url, isVideo: isVideo)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        imageLayer.frame = bounds
+        CATransaction.commit()
+        playBadge?.frame = bounds
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateAppearance()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onClick?()
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    private func updateAppearance() {
+        layer?.borderWidth = isSelected ? 2 : 0
+        layer?.borderColor = NSColor.controlAccentColor.cgColor
+        alphaValue = isSelected ? 1 : 0.55
+    }
+
+    private func loadThumbnail(url: URL, isVideo: Bool) {
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
+        let maxPixels = 44 * scale * 1.5
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var image: CGImage?
+            if isVideo {
+                let generator = AVAssetImageGenerator(asset: AVAsset(url: url))
+                generator.appliesPreferredTrackTransform = true
+                generator.maximumSize = CGSize(width: maxPixels, height: maxPixels)
+                image = try? generator.copyCGImage(at: .zero, actualTime: nil)
+            } else if let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
+                let options: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: maxPixels,
+                ]
+                image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+            }
+            DispatchQueue.main.async {
+                self?.imageLayer.contents = image
+            }
         }
     }
 }
