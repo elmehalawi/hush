@@ -3,12 +3,13 @@ import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeMod
 import {Message, Attachment, Mention, Reaction, useSignalStore, resolveContactName} from '../store/signalStore';
 import {AudioAttachmentView} from './AudioAttachmentView';
 import {AlbumView, AlbumViewHandle} from './AlbumView';
+import {SourceBadge} from './SourceBadge';
 import {AttachmentThumbnail} from './AttachmentThumbnail';
 import {CornerStyle, mediaCorners} from './bubbleCorners';
 import {LinkPreviewCard} from './LinkPreviewCard';
 import {AnimatedSwipeGestureView} from './NativeSwipeGestureView';
 import {isImageType, isVideoType, isAudioType} from '../utils/attachmentIcon';
-import {findSocialVideoUrl, socialVideoSource, useSocialVideo} from '../utils/socialVideo';
+import {findSocialMediaUrl, socialMediaSource, useSocialMedia} from '../utils/socialMedia';
 import {useColors} from '../theme/colors';
 
 const {PresageModule} = NativeModules;
@@ -66,10 +67,10 @@ function getFilledDimensions(attachment: Attachment, width: number) {
   return {width, height};
 }
 
-// Stands in for an Instagram/TikTok video while it downloads. Sized like the
-// portrait video it almost always turns out to be, so the message doesn't jump
-// when the real thumbnail replaces it.
-const SOCIAL_VIDEO_PLACEHOLDER: Attachment = {contentType: 'video/mp4', width: 1080, height: 1920};
+// Stands in for an Instagram/TikTok/Pinterest post while it downloads. Sized
+// like the portrait video it most often turns out to be, so the message usually
+// doesn't jump when the real media replaces it.
+const SOCIAL_MEDIA_PLACEHOLDER: Attachment = {contentType: 'video/mp4', width: 1080, height: 1920};
 
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
 
@@ -186,7 +187,7 @@ function AttachmentView({
   // Still being fetched by us rather than by Signal, so keep the spinner up
   // (no retry timeout) in a box the size of the media to come.
   pending?: boolean;
-  // Where a video fetched from a link came from, shown as a small label.
+  // Where media fetched from a link came from, shown as a small label.
   source?: string;
 }) {
   const c = useColors();
@@ -244,6 +245,7 @@ function AttachmentView({
           style={[styles.attachmentImage, corners, {width: dims.width, height: dims.height}]}
           resizeMode="cover"
         />
+        {source && <SourceBadge source={source} />}
       </Pressable>
     );
   }
@@ -270,11 +272,7 @@ function AttachmentView({
               <Text style={styles.playIcon}>{'\u25B6'}</Text>
             </View>
           </View>
-          {source && (
-            <View style={styles.sourceBadge}>
-              <Text style={styles.sourceBadgeText}>{source}</Text>
-            </View>
-          )}
+          {source && <SourceBadge source={source} />}
         </View>
       </Pressable>
     );
@@ -480,18 +478,20 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
   const senderAvatar = senderChannel?.avatarPath;
   const senderInitial = message.senderName?.charAt(0).toUpperCase() || '?';
 
-  // An Instagram/TikTok link is shown as the video it points to, as though it
-  // had been sent as an attachment. The link itself goes when it was the whole
-  // message, and the link preview goes either way. If the video can't be
-  // fetched the message falls back to rendering as plain text.
-  const socialUrl = message.attachments.length === 0 ? findSocialVideoUrl(message.body) : null;
-  const socialVideo = useSocialVideo(socialUrl);
-  const showSocialVideo = !!socialVideo && socialVideo.status !== 'failed';
-  const attachments = showSocialVideo
-    ? [socialVideo.status === 'ready' ? socialVideo.attachment : SOCIAL_VIDEO_PLACEHOLDER]
+  // An Instagram/TikTok/Pinterest link is shown as the media in the post it
+  // points to, as though it had been sent as attachments, so a multi-item post
+  // becomes an album. The link itself goes when it was the whole message, and
+  // the link preview goes either way. If the media can't be fetched the message
+  // falls back to rendering as plain text.
+  const socialUrl = message.attachments.length === 0 ? findSocialMediaUrl(message.body) : null;
+  const socialMedia = useSocialMedia(socialUrl);
+  const showSocialMedia = !!socialMedia && socialMedia.status !== 'failed';
+  const socialSource = showSocialMedia && socialUrl ? socialMediaSource(socialUrl) : undefined;
+  const attachments = showSocialMedia
+    ? socialMedia.status === 'ready' ? socialMedia.attachments : [SOCIAL_MEDIA_PLACEHOLDER]
     : message.attachments;
-  const body = showSocialVideo && message.body?.trim() === socialUrl ? undefined : message.body;
-  const linkPreviews = showSocialVideo ? [] : message.linkPreviews;
+  const body = showSocialMedia && message.body?.trim() === socialUrl ? undefined : message.body;
+  const linkPreviews = showSocialMedia ? [] : message.linkPreviews;
 
   const audioAttachments = attachments.filter(a => isAudioType(a.contentType));
   const nonAudioAttachments = attachments.filter(a => !isAudioType(a.contentType));
@@ -650,15 +650,15 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
               attachment={attachment}
               isOutgoing={isOutgoing}
               onRetry={
-                onRetryDownload && !attachment.filePath && !showSocialVideo
+                onRetryDownload && !attachment.filePath && !showSocialMedia
                   ? () => onRetryDownload(message.channelId, message.id, message.attachments.indexOf(attachment))
                   : undefined
               }
               onRightClick={handleBubblePressIn}
               fillWidth={captionedMediaWidth}
               corners={corners}
-              pending={showSocialVideo}
-              source={showSocialVideo && socialUrl ? socialVideoSource(socialUrl) : undefined}
+              pending={showSocialMedia}
+              source={socialSource}
             />
           ))}
         </View>
@@ -671,6 +671,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
           corners={corners}
           onPreview={(filePath) => openMediaPreview(filePath, mediaAttachments)}
           onRightClick={handleBubblePressIn}
+          source={socialSource}
         />
       )}
       {hasBody && hasMedia && (
@@ -883,20 +884,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 18,
     marginLeft: 3,
-  },
-  sourceBadge: {
-    position: 'absolute',
-    left: 8,
-    bottom: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  sourceBadgeText: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: '600',
   },
   videoPlaceholder: {
     borderRadius: 17,

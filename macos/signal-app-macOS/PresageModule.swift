@@ -3,6 +3,7 @@ import Contacts
 import AVFoundation
 import AudioToolbox
 import AppKit
+import UniformTypeIdentifiers
 import AVKit
 import UserNotifications
 import Intents
@@ -954,35 +955,61 @@ class PresageModule: RCTEventEmitter {
         }
     }
 
-    /// Downloads the video behind an Instagram/TikTok link and resolves with it
-    /// shaped like a received video attachment, so it renders the same way.
-    @objc(downloadSocialVideo:resolver:rejecter:)
-    func downloadSocialVideo(_ urlString: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
-        SocialVideoDownloader.shared.download(url: urlString) { result in
+    /// Downloads the media in the Instagram/TikTok/Pinterest post behind a link
+    /// and resolves with it shaped like received attachments, so it renders the
+    /// same way: one item, or several for an album.
+    @objc(downloadSocialMedia:resolver:rejecter:)
+    func downloadSocialMedia(_ urlString: String, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+        SocialMediaDownloader.shared.download(url: urlString) { result in
             switch result {
             case .failure(let error):
-                NSLog("PresageModule: social video download failed for %@: %@", urlString, error.localizedDescription)
-                rejecter("SOCIAL_VIDEO_FAILED", error.localizedDescription, error)
-            case .success(let path):
-                let asset = AVAsset(url: URL(fileURLWithPath: path))
-                guard let track = asset.tracks(withMediaType: .video).first else {
-                    rejecter("SOCIAL_VIDEO_FAILED", "Downloaded file has no video track", nil)
-                    return
+                NSLog("PresageModule: social media download failed for %@: %@", urlString, error.localizedDescription)
+                rejecter("SOCIAL_MEDIA_FAILED", error.localizedDescription, error)
+            case .success(let paths):
+                let attachments = paths.compactMap { self.socialMediaAttachment(path: $0) }
+                if attachments.isEmpty {
+                    rejecter("SOCIAL_MEDIA_FAILED", "Downloaded files aren't playable or viewable", nil)
+                } else {
+                    resolver(attachments)
                 }
-                // Portrait phone video is often stored landscape with a rotation.
-                let size = track.naturalSize.applying(track.preferredTransform)
-                let fileSize = (try? FileManager.default.attributesOfItem(atPath: path)[.size]) as? NSNumber
-                resolver([
-                    "contentType": "video/mp4",
-                    "filePath": path,
-                    "fileName": "video.mp4",
-                    "width": NSNumber(value: Int(abs(size.width))),
-                    "height": NSNumber(value: Int(abs(size.height))),
-                    "size": fileSize ?? NSNull(),
-                    "thumbnailPath": self.generateVideoThumbnail(videoPath: path) ?? NSNull(),
-                ])
             }
         }
+    }
+
+    private func socialMediaAttachment(path: String) -> [String: Any]? {
+        let url = URL(fileURLWithPath: path)
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: path)[.size]) as? NSNumber ?? NSNull()
+        if url.pathExtension == "mp4" {
+            guard let track = AVAsset(url: url).tracks(withMediaType: .video).first else { return nil }
+            // Portrait phone video is often stored landscape with a rotation.
+            let size = track.naturalSize.applying(track.preferredTransform)
+            return [
+                "contentType": "video/mp4",
+                "filePath": path,
+                "fileName": url.lastPathComponent,
+                "width": NSNumber(value: Int(abs(size.width))),
+                "height": NSNumber(value: Int(abs(size.height))),
+                "size": fileSize,
+                "thumbnailPath": generateVideoThumbnail(videoPath: path) ?? NSNull(),
+            ]
+        }
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let type = CGImageSourceGetType(source).flatMap({ UTType($0 as String) }),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              var width = props[kCGImagePropertyPixelWidth] as? Int,
+              var height = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
+        // EXIF orientations 5-8 are rotated a quarter turn.
+        if let orientation = props[kCGImagePropertyOrientation] as? Int, orientation >= 5 {
+            swap(&width, &height)
+        }
+        return [
+            "contentType": type.preferredMIMEType ?? "image/jpeg",
+            "filePath": path,
+            "fileName": url.lastPathComponent,
+            "width": NSNumber(value: width),
+            "height": NSNumber(value: height),
+            "size": fileSize,
+        ]
     }
 
     @objc(generateImageThumbnail:resolver:rejecter:)

@@ -2,6 +2,7 @@ import React, {useState, useCallback, useMemo, useRef, useImperativeHandle, forw
 import {View, Text, Image, StyleSheet, Pressable, Animated} from 'react-native';
 import {Attachment} from '../store/signalStore';
 import {CornerStyle} from './bubbleCorners';
+import {SourceBadge} from './SourceBadge';
 
 const MAX_IMAGE_WIDTH = 280;
 const MAX_IMAGE_HEIGHT = 360;
@@ -41,10 +42,12 @@ interface AlbumViewProps {
   onPreview?: (filePath: string) => void;
   onRightClick?: (e: any, attachment: Attachment) => void;
   corners?: CornerStyle;
+  // Where media fetched from a link came from, shown as a small label.
+  source?: string;
 }
 
 export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
-  function AlbumView({attachments, isOutgoing, onPreview, onRightClick, corners}, ref) {
+  function AlbumView({attachments, isOutgoing, onPreview, onRightClick, corners, source}, ref) {
     // order[0] = top of stack (current), order[1] = one below, etc.
     const [order, setOrder] = useState(() => attachments.map((_, i) => i));
 
@@ -253,6 +256,7 @@ export const AlbumView = forwardRef<AlbumViewHandle, AlbumViewProps>(
                     </View>
                   </View>
                 )}
+                {source && isTop && <SourceBadge source={source} />}
               </>
             );
 

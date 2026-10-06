@@ -26,7 +26,7 @@
 		CMDP001A00000000000001 /* CommandPalettePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMDP001F00000000000001 /* CommandPalettePanel.swift */; };
 		CMDP001A00000000000002 /* CommandPaletteModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMDP001F00000000000002 /* CommandPaletteModule.swift */; };
 		CMDP001A00000000000003 /* CommandPaletteModule.m in Sources */ = {isa = PBXBuildFile; fileRef = CMDP001F00000000000003 /* CommandPaletteModule.m */; };
-		SVDL001A00000000000001 /* SocialVideoDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = SVDL001F00000000000001 /* SocialVideoDownloader.swift */; };
+		SVDL001A00000000000001 /* SocialMediaDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = SVDL001F00000000000001 /* SocialMediaDownloader.swift */; };
 		F3C9B14F6A74289C100C59FD /* libpresage_rn.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 136E792A8A613D523E99B308 /* libpresage_rn.a */; };
 		GLASS001A00000000000001 /* GlassEffectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000001 /* GlassEffectView.swift */; };
 		GLASS001A00000000000002 /* GlassEffectViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = GLASS001F00000000000002 /* GlassEffectViewManager.m */; };
@@ -69,7 +69,7 @@
 		CMDP001F00000000000001 /* CommandPalettePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPalettePanel.swift; sourceTree = "<group>"; };
 		CMDP001F00000000000002 /* CommandPaletteModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteModule.swift; sourceTree = "<group>"; };
 		CMDP001F00000000000003 /* CommandPaletteModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CommandPaletteModule.m; sourceTree = "<group>"; };
-		SVDL001F00000000000001 /* SocialVideoDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialVideoDownloader.swift; sourceTree = "<group>"; };
+		SVDL001F00000000000001 /* SocialMediaDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialMediaDownloader.swift; sourceTree = "<group>"; };
 		D07DEBCB56BA0C05D6686F13 /* Pods-signal-app-macOS.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-signal-app-macOS.debug.xcconfig"; path = "Target Support Files/Pods-signal-app-macOS/Pods-signal-app-macOS.debug.xcconfig"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		FF4F3294F0B388BC62D496B0 /* presage_rn.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = presage_rn.swift; sourceTree = "<group>"; };
@@ -155,7 +155,7 @@
 				CMDP001F00000000000001 /* CommandPalettePanel.swift */,
 				CMDP001F00000000000002 /* CommandPaletteModule.swift */,
 				CMDP001F00000000000003 /* CommandPaletteModule.m */,
-				SVDL001F00000000000001 /* SocialVideoDownloader.swift */,
+				SVDL001F00000000000001 /* SocialMediaDownloader.swift */,
 				ICON001F00000000000001 /* HushIcon.icon */,
 				00B25359C6CDFF7277A3B1A5 /* DropTargetView.swift */,
 				529236F3A6B5D4A3DF76B9A7 /* DropTargetViewManager.m */,
@@ -448,7 +448,7 @@
 				CMDP001A00000000000001 /* CommandPalettePanel.swift in Sources */,
 				CMDP001A00000000000002 /* CommandPaletteModule.swift in Sources */,
 				CMDP001A00000000000003 /* CommandPaletteModule.m in Sources */,
-				SVDL001A00000000000001 /* SocialVideoDownloader.swift in Sources */,
+				SVDL001A00000000000001 /* SocialMediaDownloader.swift in Sources */,
 				16F990AFD2C1A061E32B018C /* DropTargetView.swift in Sources */,
 				65AE6D990FA263357B370F2A /* DropTargetViewManager.m in Sources */,
 				SWIP001A00000000000001 /* SwipeGestureView.swift in Sources */,
