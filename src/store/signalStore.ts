@@ -1,4 +1,5 @@
 import {create} from 'zustand';
+import {AppState} from 'react-native';
 
 // Types matching our Rust types
 export interface Channel {
@@ -267,7 +268,8 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
       if (!channel.lastMessageTimestamp || message.timestamp >= channel.lastMessageTimestamp) {
         updatedChannels = [...channels];
         const unreadDelta =
-          !isReplacement && !message.isOutgoing && message.channelId !== selectedChannelId ? 1 : 0;
+          !isReplacement && !message.isOutgoing &&
+          (message.channelId !== selectedChannelId || AppState.currentState !== 'active') ? 1 : 0;
         updatedChannels[channelIndex] = {
           ...channel,
           lastMessage: message.body

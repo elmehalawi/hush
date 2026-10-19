@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState, useRef} from 'react';
-import {View, StyleSheet, Text, Pressable} from 'react-native';
+import {AppState, View, StyleSheet, Text, Pressable} from 'react-native';
 import {useSignalStore} from './store/signalStore';
 import {useSignalClient} from './hooks/useSignalClient';
 import {useCommandPalette} from './hooks/useCommandPalette';
@@ -55,6 +55,20 @@ function App(): React.JSX.Element {
   );
 
   useCommandPalette(handleSelectChannel);
+
+  // Messages that arrived in the selected channel while the app was in the
+  // background stayed unread; mark them read once the user comes back to it.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state !== 'active') return;
+      const {selectedChannelId, channels} = useSignalStore.getState();
+      const channel = channels.find(c => c.id === selectedChannelId);
+      if (channel && channel.unreadCount > 0) {
+        markAsRead(channel.id);
+      }
+    });
+    return () => sub.remove();
+  }, [markAsRead]);
 
   // Mark listeners as ready after first render cycle completes
   // This ensures the useEffect in useSignalClient has run

@@ -1,5 +1,5 @@
 import {useEffect, useRef, useCallback} from 'react';
-import {NativeModules, NativeEventEmitter, Platform} from 'react-native';
+import {AppState, NativeModules, NativeEventEmitter, Platform} from 'react-native';
 import {useSignalStore, Message, Channel, Attachment, LinkPreview, Mention, Quote, Reaction, ReactionEvent, ActiveCall} from '../store/signalStore';
 
 // Get the native module
@@ -503,20 +503,26 @@ export function useSignalClient() {
       // Find the latest message timestamp
       const latestTs = channelMessages[channelMessages.length - 1].timestamp;
 
-      // Find the last incoming message sender + their timestamps (for read receipt)
-      const incomingMessages = channelMessages.filter(m => !m.isOutgoing);
-      const lastIncoming = incomingMessages[incomingMessages.length - 1];
+      // Group incoming timestamps by sender: a read receipt must go to the
+      // person who sent each message, so a group chat needs one per sender.
+      const timestampsBySender = new Map<string, number[]>();
+      for (const m of channelMessages) {
+        if (m.isOutgoing || !m.senderId) continue;
+        const list = timestampsBySender.get(m.senderId);
+        if (list) list.push(m.timestamp);
+        else timestampsBySender.set(m.senderId, [m.timestamp]);
+      }
 
       // Clear badge immediately in JS
       markChannelAsRead(channelId);
 
       try {
-        await PresageModule.markAsRead(
-          channelId,
-          latestTs,
-          lastIncoming?.senderId || '',
-          lastIncoming ? incomingMessages.map(m => m.timestamp) : [],
-        );
+        if (timestampsBySender.size === 0) {
+          await PresageModule.markAsRead(channelId, latestTs, '', []);
+        }
+        for (const [senderId, timestamps] of timestampsBySender) {
+          await PresageModule.markAsRead(channelId, latestTs, senderId, timestamps);
+        }
       } catch (error) {
         console.error('Failed to mark as read:', error);
       }
@@ -577,8 +583,10 @@ export function useSignalClient() {
         const converted = convertMessage(message);
         addMessage(converted);
 
-        // Auto-mark as read if this message is in the currently selected channel
-        if (!converted.isOutgoing) {
+        // Auto-mark as read only if the user is actually looking at this channel:
+        // it's selected AND the app is frontmost. A selected channel in a
+        // background window hasn't been seen, so it must not send a receipt.
+        if (!converted.isOutgoing && AppState.currentState === 'active') {
           const currentSelectedId = useSignalStore.getState().selectedChannelId;
           if (currentSelectedId === converted.channelId && PresageModule && isInitialized.current) {
             // Fire-and-forget: mark as read + send read receipt
