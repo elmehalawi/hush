@@ -32,7 +32,7 @@ interface LinkPreviewSendData {
 }
 
 interface MainScreenProps {
-  onSendMessage: (channelId: string, text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[], replyingTo?: ReplyingTo) => void;
+  onSendMessage: (channelId: string, text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[], replyingTo?: ReplyingTo) => Promise<void>;
   onSelectChannel: (channelId: string) => void;
   onReact?: (channelId: string, emoji: string, targetTimestamp: number, remove: boolean) => void;
   onRetryDownload?: (channelId: string, messageId: string, attachmentIndex: number) => void;
@@ -93,7 +93,7 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
   const handleSendMessage = useCallback(
     (text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[], replyingTo?: ReplyingTo) => {
       if (selectedChannelId) {
-        onSendMessage(selectedChannelId, text, attachmentPaths, linkPreviews, replyingTo);
+        return onSendMessage(selectedChannelId, text, attachmentPaths, linkPreviews, replyingTo);
       }
     },
     [selectedChannelId, onSendMessage],

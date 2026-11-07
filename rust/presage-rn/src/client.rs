@@ -1021,20 +1021,19 @@ impl SignalClient {
                         message: format!("Failed to upload attachments: {}", e),
                     })?;
 
+                // Fail the whole send rather than silently dropping attachments
+                // (and sending just the caption) when an upload fails.
                 let mut pointers = Vec::new();
                 for result in results {
                     match result {
                         Ok(pointer) => pointers.push(pointer),
                         Err(e) => {
                             warn!("Failed to upload attachment: {:?}", e);
+                            return Err(SignalError::SendFailed {
+                                message: format!("Attachment upload failed: {}", e),
+                            });
                         }
                     }
-                }
-
-                if pointers.is_empty() && text.is_none() {
-                    return Err(SignalError::SendFailed {
-                        message: "All attachment uploads failed".to_string(),
-                    });
                 }
 
                 // Build data message
@@ -1228,6 +1227,13 @@ impl SignalClient {
                             }
                             Err(e) => {
                                 warn!("Failed to upload attachment: {:?}", e);
+                                // Link preview images are best-effort; user
+                                // attachments are not.
+                                if result_idx < attachment_count {
+                                    return Err(SignalError::SendFailed {
+                                        message: format!("Attachment upload failed: {}", e),
+                                    });
+                                }
                             }
                         }
                     }
@@ -1470,6 +1476,13 @@ impl SignalClient {
                             }
                             Err(e) => {
                                 warn!("Failed to upload attachment: {:?}", e);
+                                // Link preview images are best-effort; user
+                                // attachments are not.
+                                if result_idx < attachment_count {
+                                    return Err(SignalError::SendFailed {
+                                        message: format!("Attachment upload failed: {}", e),
+                                    });
+                                }
                             }
                         }
                     }

@@ -55,7 +55,7 @@ export interface ReplyingTo {
 }
 
 interface MessageInputProps {
-  onSend: (text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[], replyingTo?: ReplyingTo) => void;
+  onSend: (text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewSendData[], replyingTo?: ReplyingTo) => Promise<void> | void;
   disabled?: boolean;
   channelId?: string;
 }
@@ -90,6 +90,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
     const [stagedPreview, setStagedPreview] =
       useState<LinkPreviewResult | null>(null);
     const [previewLoading, setPreviewLoading] = useState(false);
+    const [sendError, setSendError] = useState<string | null>(null);
     const previewAbortRef = useRef<AbortController | null>(null);
     const lastPreviewUrlRef = useRef<string | null>(null);
     const dismissedUrlRef = useRef<string | null>(null);
@@ -102,6 +103,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
 
     useEffect(() => {
       setReplyingTo(null);
+      setSendError(null);
     }, [channelId]);
 
     useImperativeHandle(ref, () => ({
@@ -193,7 +195,24 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
           ];
         }
 
-        onSend(trimmed, paths, linkPreviews, replyingTo || undefined);
+        // The composer clears optimistically; if the send fails, put the
+        // draft back (unless the user has started a new one) and say so.
+        const draftAttachments = attachments;
+        const draftReply = replyingTo;
+        setSendError(null);
+        Promise.resolve(
+          onSend(trimmed, paths, linkPreviews, replyingTo || undefined),
+        ).catch((e: unknown) => {
+          const detail = e instanceof Error ? e.message : String(e);
+          setSendError(
+            hasAttachments
+              ? `Couldn't send attachment: ${detail}`
+              : `Couldn't send message: ${detail}`,
+          );
+          setText(prev => (prev.length === 0 ? trimmed : prev));
+          setAttachments(prev => (prev.length === 0 ? draftAttachments : prev));
+          setReplyingTo(prev => prev ?? draftReply);
+        });
       }
       setText('');
       setAttachments([]);
@@ -207,6 +226,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
 
     const handleTextChange = (newText: string) => {
       sendingRef.current = false;
+      setSendError(null);
       setText(newText);
 
       // Debounced URL detection for link preview
@@ -323,6 +343,12 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
     const hasReply = replyingTo !== null;
 
     return (
+      <View>
+        {sendError ? (
+          <Text style={styles.sendError} numberOfLines={2}>
+            {sendError}
+          </Text>
+        ) : null}
       <View style={styles.container}>
           <GlassView
             style={[
@@ -430,11 +456,18 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
             disabled={disabled || !hasContent}
           />
         </View>
+      </View>
     );
   },
 );
 
 const styles = StyleSheet.create({
+  sendError: {
+    color: '#FF453A',
+    fontSize: 12,
+    paddingHorizontal: 28,
+    paddingTop: 6,
+  },
   container: {
     flexDirection: 'row',
     alignItems: 'flex-end',

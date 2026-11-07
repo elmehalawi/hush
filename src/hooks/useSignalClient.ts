@@ -373,6 +373,8 @@ export function useSignalClient() {
         addMessage(convertMessage(message));
       } catch (error) {
         console.error('Failed to send message:', error);
+        // Rethrow so the composer can restore the draft and show the error
+        throw error;
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
