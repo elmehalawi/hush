@@ -3,6 +3,7 @@ import {View, StyleSheet, PanResponder, NativeModules, NativeEventEmitter, Platf
 import {useSignalStore, resolveContactName} from '../store/signalStore';
 import {ChannelList} from '../components/ChannelList';
 import {ChatView} from '../components/ChatView';
+import {ConnectionStatus} from '../components/ConnectionStatus';
 import {MessageInput, MessageInputHandle, ReplyingTo} from '../components/MessageInput';
 import {GlassContainerView} from '../components/GlassContainerView';
 import {DropTargetView} from '../components/DropTargetView';
@@ -212,6 +213,7 @@ export function MainScreen({onSendMessage, onSelectChannel, onReact, onRetryDown
           onSelect={handleSelectChannel}
           collapsed={collapsed}
         />
+        <ConnectionStatus collapsed={collapsed} />
       </View>
 
       {/* Sidebar separator */}

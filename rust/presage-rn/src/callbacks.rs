@@ -53,6 +53,12 @@ pub trait MessageListener: Send + Sync {
 
     /// Called when a chat's disappearing-messages timer changes
     fn on_expire_timer_changed(&self, channel_id: String, seconds: u32);
+
+    /// Called when the connection to Signal changes. `state` is one of
+    /// "connecting", "syncing" (connected, draining messages queued while we
+    /// were away), "connected" (caught up), or "offline" (dropped; a reconnect
+    /// is attempted in `retry_in_secs`).
+    fn on_connection_state(&self, state: String, retry_in_secs: u32);
 }
 
 /// Callback interface for call events (ringrtc → Swift/React Native)

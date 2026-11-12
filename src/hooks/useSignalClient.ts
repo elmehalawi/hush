@@ -1,6 +1,6 @@
 import {useEffect, useRef, useCallback} from 'react';
 import {AppState, NativeModules, NativeEventEmitter, Platform} from 'react-native';
-import {useSignalStore, Message, Channel, Attachment, LinkPreview, Mention, Quote, Reaction, ReactionEvent, ActiveCall} from '../store/signalStore';
+import {useSignalStore, Message, Channel, Attachment, LinkPreview, Mention, Quote, Reaction, ReactionEvent, ActiveCall, ConnectionState, LOCAL_ID_PREFIX} from '../store/signalStore';
 
 // Get the native module
 const {PresageModule} = NativeModules;
@@ -173,6 +173,126 @@ function convertMessage(native: NativeMessage): Message {
   };
 }
 
+// Link preview data for sending
+export interface LinkPreviewData {
+  url: string;
+  title?: string;
+  description?: string;
+  imagePath?: string;
+  date?: number;
+}
+
+interface OutgoingMessage {
+  channelId: string;
+  text: string;
+  attachmentPaths?: string[];
+  linkPreviews?: LinkPreviewData[];
+  quote?: Quote;
+}
+
+const EXTENSION_TYPES: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+  webp: 'image/webp', heic: 'image/heic', heif: 'image/heif', bmp: 'image/bmp',
+  tiff: 'image/tiff', mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/x-m4v',
+  webm: 'video/webm', m4a: 'audio/mp4', mp3: 'audio/mpeg', pdf: 'application/pdf',
+};
+
+// Good enough to pick the right bubble layout until the real message arrives
+function guessContentType(path: string): string {
+  const ext = path.split('.').pop()?.toLowerCase() || '';
+  return EXTENSION_TYPES[ext] || 'application/octet-stream';
+}
+
+// Sends that haven't been accepted by the server yet, keyed by placeholder
+// id, so a failed one can be retried exactly as it was composed.
+const outbox = new Map<string, OutgoingMessage>();
+let localSeq = 0;
+
+function placeholderFor(localId: string, out: OutgoingMessage): Message {
+  const {userId, channels} = useSignalStore.getState();
+  return {
+    id: localId,
+    channelId: out.channelId,
+    senderId: userId || '',
+    body: out.text || undefined,
+    timestamp: Date.now(),
+    isOutgoing: true,
+    status: 'sending',
+    attachments: (out.attachmentPaths || []).map(path => ({
+      contentType: guessContentType(path),
+      filePath: path,
+      fileName: path.split('/').pop(),
+    })),
+    reactions: [],
+    mentions: [],
+    readBy: [],
+    linkPreviews: (out.linkPreviews || []).map(p => ({
+      url: p.url,
+      title: p.title,
+      description: p.description,
+      image: p.imagePath ? {contentType: guessContentType(p.imagePath), filePath: p.imagePath} : undefined,
+      date: p.date,
+    })),
+    quote: out.quote,
+    expireTimer: channels.find(c => c.id === out.channelId)?.expireTimer ?? 0,
+  };
+}
+
+async function sendToNative(out: OutgoingMessage): Promise<NativeMessage> {
+  const {channelId, text, attachmentPaths, linkPreviews, quote} = out;
+  if (quote) {
+    // Use the quote-aware send path
+    return PresageModule.sendMessageWithQuote(
+      channelId,
+      text || null,
+      attachmentPaths || [],
+      linkPreviews || [],
+      {id: quote.id, authorId: quote.authorId, authorName: quote.authorName || null, text: quote.text || null},
+    );
+  }
+  if (linkPreviews && linkPreviews.length > 0) {
+    // Use the previews-aware send path
+    return PresageModule.sendMessageWithPreviews(channelId, text || null, attachmentPaths || [], linkPreviews);
+  }
+  if (attachmentPaths && attachmentPaths.length > 0) {
+    return PresageModule.sendMessageWithAttachments(channelId, text || null, attachmentPaths);
+  }
+  return PresageModule.sendMessage(channelId, text);
+}
+
+// Show the message immediately, greyed out, then swap in the server's version
+// once it's accepted or mark it failed so it can be retried. On a bad network
+// the native call can take a long time; the user should see it pending, not
+// nothing at all.
+async function deliver(localId: string): Promise<void> {
+  const out = outbox.get(localId);
+  if (!out) return;
+  try {
+    const message = await sendToNative(out);
+    outbox.delete(localId);
+    useSignalStore.getState().replaceMessage(out.channelId, localId, convertMessage(message));
+  } catch (error) {
+    console.error('Failed to send message:', error);
+    // Still in the outbox unless it was discarded meanwhile
+    if (outbox.has(localId)) {
+      useSignalStore.getState().setMessageStatus(out.channelId, localId, 'failed');
+    }
+  }
+}
+
+/** Retry a message whose send failed. */
+export function retrySend(channelId: string, localId: string) {
+  if (!outbox.has(localId)) return;
+  useSignalStore.getState().setMessageStatus(channelId, localId, 'sending');
+  deliver(localId);
+}
+
+/** Drop a failed message instead of retrying it. */
+export function discardSend(channelId: string, localId: string) {
+  outbox.delete(localId);
+  useSignalStore.getState().removeMessages(channelId, [localId]);
+}
+
 // Hook for using the Signal client
 export function useSignalClient() {
   const isInitialized = useRef(false);
@@ -328,54 +448,17 @@ export function useSignalClient() {
     [],
   );
 
-  // Link preview data for sending
-  interface LinkPreviewData {
-    url: string;
-    title?: string;
-    description?: string;
-    imagePath?: string;
-    date?: number;
-  }
-
-  // Send message (with optional attachments, link previews, and quote)
+  // Send message (with optional attachments, link previews, and quote). Resolves
+  // as soon as the message is on screen; delivery is tracked on the message.
   const sendMessage = useCallback(
     async (channelId: string, text: string, attachmentPaths?: string[], linkPreviews?: LinkPreviewData[], quote?: Quote) => {
       if (!PresageModule || !isInitialized.current) return;
 
-      try {
-        let message;
-        if (quote) {
-          // Use the quote-aware send path
-          message = await PresageModule.sendMessageWithQuote(
-            channelId,
-            text || null,
-            attachmentPaths || [],
-            linkPreviews || [],
-            {id: quote.id, authorId: quote.authorId, authorName: quote.authorName || null, text: quote.text || null},
-          );
-        } else if (linkPreviews && linkPreviews.length > 0) {
-          // Use the previews-aware send path
-          message = await PresageModule.sendMessageWithPreviews(
-            channelId,
-            text || null,
-            attachmentPaths || [],
-            linkPreviews,
-          );
-        } else if (attachmentPaths && attachmentPaths.length > 0) {
-          message = await PresageModule.sendMessageWithAttachments(
-            channelId,
-            text || null,
-            attachmentPaths,
-          );
-        } else {
-          message = await PresageModule.sendMessage(channelId, text);
-        }
-        addMessage(convertMessage(message));
-      } catch (error) {
-        console.error('Failed to send message:', error);
-        // Rethrow so the composer can restore the draft and show the error
-        throw error;
-      }
+      const localId = `${LOCAL_ID_PREFIX}${Date.now()}-${localSeq++}`;
+      const out = {channelId, text, attachmentPaths, linkPreviews, quote};
+      outbox.set(localId, out);
+      addMessage(placeholderFor(localId, out));
+      deliver(localId);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -627,6 +710,9 @@ export function useSignalClient() {
       }),
       presageEventEmitter.addListener('onExpireTimerChanged', (event: {channelId: string; seconds: number}) => {
         useSignalStore.getState().setChannelExpireTimer(event.channelId, event.seconds);
+      }),
+      presageEventEmitter.addListener('onConnectionState', (event: {state: ConnectionState; retryInSecs: number}) => {
+        useSignalStore.getState().setConnectionState(event.state);
       }),
       presageEventEmitter.addListener('onChannelUpdated', (channel: NativeChannel) => {
         updateChannel(convertChannel(channel));

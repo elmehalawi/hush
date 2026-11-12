@@ -52,7 +52,7 @@ class PresageModule: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["onMessage", "onReaction", "onReadReceipt", "onReadSync", "onChannelUpdated", "onAttachmentDownloaded", "onLinkPreviewImageDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions", "onReplyToMessage", "onContextMenuReaction", "onTyping", "onIncomingCall", "onCallStateChanged", "onCallEnded", "onMessagesExpired", "onExpireTimerChanged"]
+        return ["onMessage", "onReaction", "onReadReceipt", "onReadSync", "onChannelUpdated", "onAttachmentDownloaded", "onLinkPreviewImageDownloaded", "onLinkingQrCode", "onLinkingComplete", "onError", "onNotificationClicked", "onPasteFiles", "onAudioProgress", "onAudioComplete", "onOpenSessions", "onReplyToMessage", "onContextMenuReaction", "onTyping", "onIncomingCall", "onCallStateChanged", "onCallEnded", "onMessagesExpired", "onExpireTimerChanged", "onConnectionState"]
     }
 
     override func startObserving() {
@@ -413,6 +413,12 @@ class PresageModule: RCTEventEmitter {
                 self?.sendEventIfListening("onExpireTimerChanged", body: [
                     "channelId": channelId,
                     "seconds": NSNumber(value: seconds),
+                ])
+            },
+            onConnectionState: { [weak self] state, retryInSecs in
+                self?.sendEventIfListening("onConnectionState", body: [
+                    "state": state,
+                    "retryInSecs": NSNumber(value: retryInSecs),
                 ])
             }
         )
@@ -2201,8 +2207,9 @@ class MessageListenerImpl: MessageListener {
     private let onTypingHandler: (String, String, Bool) -> Void
     private let onMessagesExpiredHandler: (String, [String], [String]) -> Void
     private let onExpireTimerChangedHandler: (String, UInt32) -> Void
+    private let onConnectionStateHandler: (String, UInt32) -> Void
 
-    init(onMessage: @escaping (Message) -> Void, onReaction: @escaping (ReactionEvent) -> Void, onReadReceipt: @escaping (String, [UInt64]) -> Void, onReadSync: @escaping (String, UInt32) -> Void, onChannelUpdated: @escaping (Channel) -> Void, onError: @escaping (String) -> Void, onAttachmentDownloaded: @escaping (String, String, UInt32, Attachment) -> Void, onLinkPreviewImageDownloaded: @escaping (String, String, UInt32, Attachment) -> Void, onTyping: @escaping (String, String, Bool) -> Void, onMessagesExpired: @escaping (String, [String], [String]) -> Void, onExpireTimerChanged: @escaping (String, UInt32) -> Void) {
+    init(onMessage: @escaping (Message) -> Void, onReaction: @escaping (ReactionEvent) -> Void, onReadReceipt: @escaping (String, [UInt64]) -> Void, onReadSync: @escaping (String, UInt32) -> Void, onChannelUpdated: @escaping (Channel) -> Void, onError: @escaping (String) -> Void, onAttachmentDownloaded: @escaping (String, String, UInt32, Attachment) -> Void, onLinkPreviewImageDownloaded: @escaping (String, String, UInt32, Attachment) -> Void, onTyping: @escaping (String, String, Bool) -> Void, onMessagesExpired: @escaping (String, [String], [String]) -> Void, onExpireTimerChanged: @escaping (String, UInt32) -> Void, onConnectionState: @escaping (String, UInt32) -> Void) {
         self.onMessageHandler = onMessage
         self.onReactionHandler = onReaction
         self.onReadReceiptHandler = onReadReceipt
@@ -2214,6 +2221,7 @@ class MessageListenerImpl: MessageListener {
         self.onTypingHandler = onTyping
         self.onMessagesExpiredHandler = onMessagesExpired
         self.onExpireTimerChangedHandler = onExpireTimerChanged
+        self.onConnectionStateHandler = onConnectionState
     }
 
     func onMessage(message: Message) {
@@ -2279,6 +2287,12 @@ class MessageListenerImpl: MessageListener {
     func onExpireTimerChanged(channelId: String, seconds: UInt32) {
         DispatchQueue.main.async {
             self.onExpireTimerChangedHandler(channelId, seconds)
+        }
+    }
+
+    func onConnectionState(state: String, retryInSecs: UInt32) {
+        DispatchQueue.main.async {
+            self.onConnectionStateHandler(state, retryInSecs)
         }
     }
 }

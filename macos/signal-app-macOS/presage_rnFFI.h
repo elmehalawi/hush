@@ -370,6 +370,13 @@ typedef void (*UniffiCallbackInterfaceMessageListenerMethod10)(uint64_t, RustBuf
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD11
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MESSAGE_LISTENER_METHOD11
+typedef void (*UniffiCallbackInterfaceMessageListenerMethod11)(uint64_t, RustBuffer, uint32_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_CALL_EVENT_LISTENER
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_CALL_EVENT_LISTENER
 typedef struct UniffiVTableCallbackInterfaceCallEventListener {
@@ -404,6 +411,7 @@ typedef struct UniffiVTableCallbackInterfaceMessageListener {
     UniffiCallbackInterfaceMessageListenerMethod8 _Nonnull onTyping;
     UniffiCallbackInterfaceMessageListenerMethod9 _Nonnull onMessagesExpired;
     UniffiCallbackInterfaceMessageListenerMethod10 _Nonnull onExpireTimerChanged;
+    UniffiCallbackInterfaceMessageListenerMethod11 _Nonnull onConnectionState;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceMessageListener;
 
@@ -1098,6 +1106,12 @@ uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_messages_expired(v
 #ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_EXPIRE_TIMER_CHANGED
 #define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_EXPIRE_TIMER_CHANGED
 uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_expire_timer_changed(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_CONNECTION_STATE
+#define UNIFFI_FFIDEF_UNIFFI_PRESAGE_RN_CHECKSUM_METHOD_MESSAGELISTENER_ON_CONNECTION_STATE
+uint16_t uniffi_presage_rn_checksum_method_messagelistener_on_connection_state(void
     
 );
 #endif

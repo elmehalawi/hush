@@ -3474,6 +3474,14 @@ public protocol MessageListener : AnyObject {
      */
     func onExpireTimerChanged(channelId: String, seconds: UInt32) 
     
+    /**
+     * Called when the connection to Signal changes. `state` is one of
+     * "connecting", "syncing" (connected, draining messages queued while we
+     * were away), "connected" (caught up), or "offline" (dropped; a reconnect
+     * is attempted in `retry_in_secs`).
+     */
+    func onConnectionState(state: String, retryInSecs: UInt32) 
+    
 }
 
 
@@ -3763,6 +3771,32 @@ fileprivate struct UniffiCallbackInterfaceMessageListener {
                 return uniffiObj.onExpireTimerChanged(
                      channelId: try FfiConverterString.lift(channelId),
                      seconds: try FfiConverterUInt32.lift(seconds)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onConnectionState: { (
+            uniffiHandle: UInt64,
+            state: RustBuffer,
+            retryInSecs: UInt32,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceMessageListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onConnectionState(
+                     state: try FfiConverterString.lift(state),
+                     retryInSecs: try FfiConverterUInt32.lift(retryInSecs)
                 )
             }
 
@@ -4344,6 +4378,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_presage_rn_checksum_method_messagelistener_on_expire_timer_changed() != 54571) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_presage_rn_checksum_method_messagelistener_on_connection_state() != 25891) {
         return InitializationResult.apiChecksumMismatch
     }
 

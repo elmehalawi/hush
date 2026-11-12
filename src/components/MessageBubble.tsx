@@ -1,6 +1,7 @@
 import React, {useState, useCallback, useRef, useEffect} from 'react';
 import {View, Text, Image, StyleSheet, Dimensions, Pressable, Linking, NativeModules, useColorScheme, ActivityIndicator, Animated} from 'react-native';
-import {Message, Attachment, Mention, Reaction, useSignalStore, resolveContactName} from '../store/signalStore';
+import {Message, Attachment, Mention, Reaction, useSignalStore, resolveContactName, LOCAL_ID_PREFIX} from '../store/signalStore';
+import {retrySend, discardSend} from '../hooks/useSignalClient';
 import {AudioAttachmentView} from './AudioAttachmentView';
 import {AlbumView, AlbumViewHandle} from './AlbumView';
 import {SourceBadge} from './SourceBadge';
@@ -577,16 +578,33 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
     return `Read by ${names.join(', ')}`;
   })();
 
+  // Not yet accepted by the server: still sending, or failed and retryable
+  const isUnsent = message.id.startsWith(LOCAL_ID_PREFIX);
+  const unsentStyle = isUnsent && styles.bubbleUnsent;
+
   const statusBelow = isOutgoing ? (
     <>
       {message.status === 'sending' && (
-        <View style={[styles.belowBubbleStatus, styles.belowBubbleStatusOutgoing]}>
-          <Text style={styles.sendingText}>{'\u23F3'}</Text>
+        <View style={[styles.belowBubbleStatus, styles.belowBubbleStatusOutgoing, styles.statusRow]}>
+          <ActivityIndicator size="small" color="#8E8E93" style={styles.sendingSpinner} />
+          <Text style={styles.sendingText}>Sending…</Text>
         </View>
       )}
       {message.status === 'failed' && (
-        <View style={[styles.belowBubbleStatus, styles.belowBubbleStatusOutgoing]}>
-          <Text style={styles.failedText}>{'\u26A0'} Failed</Text>
+        <View style={[styles.belowBubbleStatus, styles.belowBubbleStatusOutgoing, styles.statusRow]}>
+          <Text style={styles.failedText}>{'\u26A0'} Not sent</Text>
+          {isUnsent && (
+            <>
+              <Text style={styles.failedText}>{' · '}</Text>
+              <Pressable onPress={() => retrySend(message.channelId, message.id)}>
+                <Text style={[styles.failedText, styles.failedAction]}>Retry</Text>
+              </Pressable>
+              <Text style={styles.failedText}>{' · '}</Text>
+              <Pressable onPress={() => discardSend(message.channelId, message.id)}>
+                <Text style={[styles.failedText, styles.failedAction]}>Delete</Text>
+              </Pressable>
+            </>
+          )}
         </View>
       )}
       {showReadReceipt && (
@@ -606,7 +624,8 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
     null;
 
   const handleBubblePressIn = useCallback((e: any, target?: Attachment) => {
-    if (e.nativeEvent?.button === 2) {
+    // Reply/react need the server's timestamp, which an unsent message lacks
+    if (e.nativeEvent?.button === 2 && !isUnsent) {
       const authorName = message.isOutgoing
         ? 'You'
         : message.senderName || message.senderId;
@@ -624,7 +643,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
         fileAttachment?.fileName || '',
       );
     }
-  }, [message.body, message.timestamp, message.senderId, message.senderName, message.isOutgoing, message.channelId, myReaction?.emoji, firstFileAttachment?.filePath, firstFileAttachment?.fileName]);
+  }, [isUnsent, message.body, message.timestamp, message.senderId, message.senderName, message.isOutgoing, message.channelId, myReaction?.emoji, firstFileAttachment?.filePath, firstFileAttachment?.fileName]);
 
   const audioContent = hasAudio ? (
     <View>
@@ -755,7 +774,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
               <Text style={styles.senderName}>{message.senderName}</Text>
             )}
             {audioContent}
-            {!audioOnly && <Pressable onPressIn={handleBubblePressIn}><View style={bubbleStyle}>{bubbleContent}</View></Pressable>}
+            {!audioOnly && <Pressable onPressIn={handleBubblePressIn}><View style={[bubbleStyle, unsentStyle]}>{bubbleContent}</View></Pressable>}
             {reactionsRow}
             {statusBelow}
           </View>
@@ -763,7 +782,7 @@ export function MessageBubble({message, isGroup, isFirstInGroup = true, isLastIn
       ) : (
         <>
           {audioContent}
-          {!audioOnly && <Pressable onPressIn={handleBubblePressIn}><View style={bubbleStyle}>{bubbleContent}</View></Pressable>}
+          {!audioOnly && <Pressable onPressIn={handleBubblePressIn}><View style={[bubbleStyle, unsentStyle]}>{bubbleContent}</View></Pressable>}
           {reactionsRow}
           {statusBelow}
         </>
@@ -920,6 +939,20 @@ const styles = StyleSheet.create({
   belowBubbleStatusOutgoing: {
     alignItems: 'flex-end',
   },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  bubbleUnsent: {
+    opacity: 0.55,
+  },
+  sendingSpinner: {
+    transform: [{scale: 0.6}],
+    width: 14,
+    height: 14,
+    marginRight: 3,
+  },
   sendingText: {
     fontSize: 11,
     color: '#8E8E93',
@@ -927,6 +960,9 @@ const styles = StyleSheet.create({
   failedText: {
     fontSize: 11,
     color: '#FF3B30',
+  },
+  failedAction: {
+    fontWeight: '600',
   },
   readText: {
     fontSize: 10,

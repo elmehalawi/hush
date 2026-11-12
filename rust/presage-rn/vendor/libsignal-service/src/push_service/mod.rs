@@ -14,7 +14,11 @@ use reqwest_websocket::RequestBuilderExt;
 use serde::{Deserialize, Serialize};
 use tracing::{debug_span, Instrument};
 
-pub const KEEPALIVE_TIMEOUT_SECONDS: Duration = Duration::from_secs(55);
+// Hush: was 55s. A websocket that silently stops passing data (bad signal,
+// dead Wi-Fi) is only noticed when a keepalive goes unanswered by the next
+// tick, so this bounds how long a send spins and the app claims to be
+// connected: 15-30s instead of up to 110s.
+pub const KEEPALIVE_TIMEOUT_SECONDS: Duration = Duration::from_secs(15);
 pub static DEFAULT_DEVICE_ID: LazyLock<libsignal_core::DeviceId> =
     LazyLock::new(|| libsignal_core::DeviceId::try_from(1).unwrap());
 

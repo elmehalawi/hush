@@ -88,6 +88,15 @@ export interface ReactionEvent {
   remove: boolean;
 }
 
+/**
+ * The receive connection to Signal. `syncing` means connected but still
+ * draining messages that queued up while we were away.
+ */
+export type ConnectionState = 'connecting' | 'syncing' | 'connected' | 'offline';
+
+/** Messages added optimistically before the server has accepted them. */
+export const LOCAL_ID_PREFIX = 'local:';
+
 // Call types
 export type CallStatus = 'idle' | 'outgoing' | 'incoming' | 'ringing' | 'connected' | 'reconnecting' | 'ended';
 
@@ -110,6 +119,7 @@ interface SignalStore {
   userId: string | null;
   typingUsers: Record<string, {senderId: string; timestamp: number}[]>; // channelId -> active typers
   activeCall: ActiveCall | null;
+  connectionState: ConnectionState;
 
   // Actions
   setIsLinked: (linked: boolean) => void;
@@ -125,6 +135,10 @@ interface SignalStore {
 
   // Message actions
   addMessage: (message: Message) => void;
+  /** Swap an optimistic message for the server's version of it. */
+  replaceMessage: (channelId: string, oldId: string, message: Message) => void;
+  setMessageStatus: (channelId: string, messageId: string, status: Message['status']) => void;
+  setConnectionState: (state: ConnectionState) => void;
   addReaction: (event: ReactionEvent) => void;
   setMessages: (channelId: string, messages: Message[]) => void;
   updateChannel: (channel: Channel) => void;
@@ -160,6 +174,7 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
   userId: null,
   typingUsers: {},
   activeCall: null,
+  connectionState: 'connecting',
 
   // Actions
   setIsLinked: (linked: boolean) => set({isLinked: linked}),
@@ -321,12 +336,50 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
     });
   },
 
-  setMessages: (channelId: string, newMessages: Message[]) => {
+  replaceMessage: (channelId: string, oldId: string, message: Message) => {
     const {messages} = get();
+    const channelMessages = messages[channelId] || [];
+    const index = channelMessages.findIndex(m => m.id === oldId);
+    // The real message may already be here (e.g. a reload from the database
+    // raced the send), in which case the placeholder just goes.
+    const alreadyPresent = channelMessages.some(m => m.id === message.id);
+    if (index < 0 || alreadyPresent) {
+      if (index >= 0) {
+        set({messages: {...messages, [channelId]: channelMessages.filter(m => m.id !== oldId)}});
+      }
+      if (!alreadyPresent) get().addMessage(message);
+      return;
+    }
+    const updated = [...channelMessages];
+    updated[index] = message;
+    set({messages: {...messages, [channelId]: updated}});
+  },
+
+  setMessageStatus: (channelId: string, messageId: string, status: Message['status']) => {
+    const {messages} = get();
+    const channelMessages = messages[channelId];
+    if (!channelMessages) return;
     set({
       messages: {
         ...messages,
-        [channelId]: newMessages,
+        [channelId]: channelMessages.map(m => (m.id === messageId ? {...m, status} : m)),
+      },
+    });
+  },
+
+  setConnectionState: (state: ConnectionState) => set({connectionState: state}),
+
+  setMessages: (channelId: string, newMessages: Message[]) => {
+    const {messages} = get();
+    // Messages still being sent (or that failed) exist only here, not in the
+    // database, so a reload must carry them over.
+    const unsent = (messages[channelId] || []).filter(
+      m => m.id.startsWith(LOCAL_ID_PREFIX) && !newMessages.some(n => n.id === m.id),
+    );
+    set({
+      messages: {
+        ...messages,
+        [channelId]: unsent.length > 0 ? [...newMessages, ...unsent] : newMessages,
       },
     });
   },
@@ -496,7 +549,11 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
     let updatedChannels = channels;
     const index = channels.findIndex(c => c.id === channelId);
     const channel = index >= 0 ? channels[index] : undefined;
-    if (channel?.lastMessageTimestamp && ids.has(String(channel.lastMessageTimestamp))) {
+    // Match on timestamp, not id: an unsent message's id is a local placeholder
+    const removedPreview = channelMessages?.some(
+      m => ids.has(m.id) && m.timestamp === channel?.lastMessageTimestamp,
+    ) || ids.has(String(channel?.lastMessageTimestamp));
+    if (channel?.lastMessageTimestamp && removedPreview) {
       const visible = (remaining ?? []).filter(m => m.messageType !== 'timerUpdate');
       const latest = visible.length > 0 ? visible[visible.length - 1] : undefined;
       updatedChannels = [...channels];
@@ -560,6 +617,7 @@ export const useSignalStore = create<SignalStore>((set, get) => ({
       userId: null,
       typingUsers: {},
       activeCall: null,
+      connectionState: 'connecting',
     }),
 }));
 

@@ -1920,13 +1920,20 @@ impl SignalClient {
                                 break;
                             }
 
+                            listener.on_connection_state("connecting".into(), 0);
                             match manager_for_stream.receive_messages().await {
                                 Ok(stream) => {
+                                    // The server sends whatever queued up while we
+                                    // were away, then QueueEmpty.
+                                    listener.on_connection_state("syncing".into(), 0);
                                     let mut stream = Box::pin(stream);
                                     while let Some(received) = stream.next().await {
                                         if stop_flag.load(Ordering::SeqCst) {
                                             info!("Stop flag set, exiting receive loop");
                                             break;
+                                        }
+                                        if matches!(received, presage::model::messages::Received::QueueEmpty) {
+                                            listener.on_connection_state("connected".into(), 0);
                                         }
 
                                         // Parse message inside stacker (crypto may need stack space).
@@ -2318,6 +2325,7 @@ impl SignalClient {
                                 break;
                             }
                             info!("Receive stream ended, reconnecting in 5 seconds...");
+                            listener.on_connection_state("offline".into(), 5);
                             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                         }
 
